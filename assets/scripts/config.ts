@@ -11,6 +11,7 @@ export const CONFIG = {
     hp: 33, attack: 10, defense: 9, speed: 9 },
   damage: { defenseFactor: 0.40, randomMin: 0.86, randomMax: 1.14, min: 1 },
   defenseDamageFactor: 0.5,
+  protection: { protectorShare: 0.5 },
   visual: { unitScale: 0.5, heroHeight: 240, frogHeight: 170, enemyFlipX: true },
   positions: {
     allyGroups: [
@@ -21,7 +22,7 @@ export const CONFIG = {
       { pet: { x: 635, y: 560 }, hero: { x: 700, y: 625 } },
     ],
     enemy: [
-      { x: 340, y: 305 }, { x: 262, y: 383 }, { x: 418, y: 227 },
+      { x: 340, y: 305 }, { x: 230, y: 365 }, { x: 450, y: 245 },
       { x: 184, y: 461 }, { x: 496, y: 149 }, { x: 535, y: 335 },
       { x: 457, y: 413 }, { x: 613, y: 257 }, { x: 379, y: 491 }, { x: 535, y: 179 },
     ],

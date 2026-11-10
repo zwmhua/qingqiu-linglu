@@ -8,8 +8,8 @@ test('the active enemies fan out from a middle slot along an ascending diagonal'
   assert.ok(lowerLeft.x < middle.x && lowerLeft.y > middle.y);
   assert.ok(upperRight.x > middle.x && upperRight.y < middle.y);
   for (const other of [lowerLeft, upperRight]) {
-    const gap = Math.hypot(other.x - middle.x, other.y - middle.y);
-    assert.ok(gap >= 100 && gap <= 120);
+    assert.ok(Math.abs(other.x - middle.x) >= 105 && Math.abs(other.x - middle.x) <= 115);
+    assert.ok(Math.abs(other.y - middle.y) >= 55 && Math.abs(other.y - middle.y) <= 65);
   }
 });
 

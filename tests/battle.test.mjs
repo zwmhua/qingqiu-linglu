@@ -66,3 +66,48 @@ test('timeout gives each uncommanded living ally an attack', () => {
   assert.equal(battle.commands.size, 0);
   assert.ok(battle.enemies[0].hp < battle.enemies[0].maxHp);
 });
+
+test('protection is active before a faster enemy and splits odd damage toward protector', () => {
+  const battle = make();
+  battle.allies[0].speed = 1;
+  battle.enemies[0].speed = 20;
+  battle.enemies[0].attack = 14;
+  battle.command('hero', 'protect', 'pet');
+  battle.command('pet', 'defend');
+  assert.equal(battle.allies[0].hp, 55);
+  assert.equal(battle.allies[1].hp, 36);
+  assert.match(battle.log.join(' '), /保护.*分担/);
+  assert.ok(!battle.lastOrder.includes('hero'));
+});
+
+test('protection rejects self, absent targets, and duplicate protectors', () => {
+  const battle = make();
+  assert.throws(() => battle.command('hero', 'protect', 'hero'));
+  assert.throws(() => battle.command('hero', 'protect', 'enemy-0'));
+  battle.command('hero', 'protect', 'pet');
+  assert.throws(() => battle.command('pet', 'protect', 'pet'));
+  battle.allies.push({ ...battle.allies[0], id: 'ally-3', slot: 2 });
+  assert.throws(() => battle.command('ally-3', 'protect', 'pet'));
+});
+
+test('pet retreat and hero flee leave the battle without being downed', () => {
+  const battle = make();
+  battle.command('hero', 'flee');
+  battle.command('pet', 'retreat');
+  assert.equal(battle.winner, 'enemy');
+  assert.equal(battle.allies[0].left, true);
+  assert.equal(battle.allies[1].left, true);
+  assert.equal(battle.allies[0].hp, 58);
+  assert.equal(battle.allies[1].hp, 38);
+});
+
+test('one departing ally does not lose; enemies target the remaining ally', () => {
+  const battle = make();
+  battle.command('hero', 'defend');
+  battle.command('pet', 'retreat');
+  assert.equal(battle.winner, null);
+  assert.equal(battle.allies[1].left, true);
+  assert.equal(battle.allies[1].hp, 38);
+  assert.ok(battle.allies[0].hp < 58);
+  assert.deepEqual(battle.pending.map(u => u.id), ['hero']);
+});
