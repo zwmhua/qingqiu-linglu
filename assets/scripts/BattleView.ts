@@ -14,6 +14,7 @@ export class BattleView extends Component {
   @property(SpriteFrame) jadePressed: SpriteFrame | null = null;
   @property(SpriteFrame) jadeDisabled: SpriteFrame | null = null;
   private battle = new Battle();
+  private layoutTest = new URLSearchParams(window.location.search).get('layout') === '10v10';
   private choosingTarget: 'attack' | 'protect' | null = null;
   private lastShownSecond = -1;
   private layer!: Node;
@@ -39,6 +40,7 @@ export class BattleView extends Component {
   }
 
   update(dt: number): void {
+    if (this.layoutTest) return;
     if (this.playing) { this.syncMovingUnits(); return; }
     if (this.confirmingTarget) return;
     const before = this.battle.round;
@@ -173,7 +175,27 @@ export class BattleView extends Component {
     return unit.slot % 2 === 0 ? group.pet : group.hero;
   }
 
+  private isHero(unit: Unit): boolean { return unit.id === 'hero' || unit.id.startsWith('layout-hero-'); }
+  private isPet(unit: Unit): boolean { return unit.id.startsWith('pet') || unit.id.startsWith('layout-pet-'); }
+
+  private layoutUnits(): Unit[] {
+    const enemy = this.battle.enemies[0];
+    const hero = this.battle.allies[0];
+    const pet = this.battle.pets[0];
+    return [
+      ...CONFIG.positions.enemy.map((_, slot) => ({ ...enemy,
+        id: `layout-enemy-${slot}`, slot, hp: enemy.maxHp, left: false, deployed: true })),
+      ...CONFIG.positions.allyGroups.flatMap((_, index) => [
+        { ...pet, id: `layout-pet-${index}`, slot: index * 2,
+          hp: pet.maxHp, left: false, deployed: true },
+        { ...hero, id: `layout-hero-${index}`, slot: index * 2 + 1,
+          hp: hero.maxHp, left: false, deployed: true },
+      ]),
+    ];
+  }
+
   private canSelect(unit: Unit): boolean {
+    if (this.layoutTest) return false;
     const actor = this.battle.pending[0];
     if (!actor || unit.hp === 0 || unit.left) return false;
     if (this.choosingTarget === 'attack') return unit.side === 'enemy';
@@ -202,7 +224,7 @@ export class BattleView extends Component {
     if (unit.left) return;
     const point = this.unitPoint(unit);
     const dead = (this.displayedHp?.get(unit.id) ?? unit.hp) === 0;
-    const isPet = unit.id.startsWith('pet') || unit.side === 'enemy';
+    const isPet = this.isPet(unit) || unit.side === 'enemy';
     const visual = new Node(`unit-${unit.id}`);
     this.layer.addChild(visual);
     this.pos(visual, point.x, point.y);
@@ -231,9 +253,9 @@ export class BattleView extends Component {
     const point = this.unitPoint(unit);
     const targetable = this.canSelect(unit);
     const v = CONFIG.visual;
-    const height = (unit.id === 'hero' ? CONFIG.visual.heroHeight : CONFIG.visual.frogHeight)
+    const height = (this.isHero(unit) ? CONFIG.visual.heroHeight : CONFIG.visual.frogHeight)
       * CONFIG.visual.unitScale;
-    const headX = point.x + (unit.id === 'hero' ? 50 : 0);
+    const headX = point.x + (this.isHero(unit) ? v.heroHeadOffsetX : 0);
     const barX = headX - v.barWidth / 2;
     const healthY = point.y - height - v.headGap - v.barHeight - (unit.side === 'ally' ? v.barHeight + v.barGap : 0);
     const targetClick = targetable ? () => this.chooseTarget(unit.id) : undefined;
@@ -244,9 +266,10 @@ export class BattleView extends Component {
     };
     bar(healthY, v.barWidth * (this.displayedHp?.get(unit.id) ?? unit.hp) / unit.maxHp, '#D95757');
     if (unit.side === 'ally') bar(healthY + v.barHeight + v.barGap, v.barWidth, '#559DD8');
-    const nameX = point.x + (unit.side === 'enemy' ? 22 : unit.id.startsWith('pet') ? -50 : 0) - 64;
+    const nameWidth = this.isPet(unit) ? v.petNameWidth : v.nameWidth;
+    const nameX = point.x + (this.isPet(unit) ? v.petNameOffsetX : 0) - nameWidth / 2;
     const name = this.text(`${unit.name} Lv.${unit.level}`, nameX,
-      point.y + 19 + v.nameGap, v.nameSize, '#FFFFFF', 128, 1, targetClick);
+      point.y + 19 + v.nameGap, v.nameSize, '#FFFFFF', nameWidth, 1, targetClick);
     const label = name.getComponent(Label)!;
     label.enableOutline = true;
     label.outlineColor = C('#1A2826');
@@ -548,6 +571,17 @@ export class BattleView extends Component {
     this.layer = background;
     this.image(0, 0, CONFIG.width, CONFIG.height, this.battleBackground);
     this.layer = interfaceLayer;
+    if (this.layoutTest) {
+      this.rect(24, 16, 450, 76, '#18312F', '', 10, undefined, 190);
+      this.text('10V10 站位测试 · 仅显示', 40, 30, 28, '#F3E5BC', 425);
+      const units = this.layoutUnits();
+      this.layer = unitLayer;
+      for (const unit of units) this.unitShadow(unit);
+      for (const unit of [...units].sort((a, b) => this.unitPoint(a).y - this.unitPoint(b).y)) this.unitVisual(unit);
+      this.layer = markerLayer;
+      for (const unit of units) this.unitInfo(unit);
+      return;
+    }
     this.rect(24, 16, 285, 77, '#18312F', '', 10, undefined, 190);
     this.text('青丘灵录', 35, 24, 31, '#f3e5bc', 240);
     this.text('汀蛙 · 林间遭遇', 35, 65, 19, '#afc8ae', 280);

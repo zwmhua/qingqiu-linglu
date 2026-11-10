@@ -1,3 +1,23 @@
+const formation = {
+  enemyColumnX: 125, enemyColumnY: 65, enemyRowX: 130, enemyRowY: 100,
+  allyColumnX: 110, allyColumnY: 60, allyRowX: 65, allyRowY: 150,
+  enemyBackStart: { x: 90, y: 480 }, allyFrontStart: { x: 740, y: 540 },
+} as const;
+const enemyBack = Array.from({ length: 5 }, (_, i) => ({
+  x: formation.enemyBackStart.x + i * formation.enemyColumnX,
+  y: formation.enemyBackStart.y - i * formation.enemyColumnY,
+}));
+const enemyFront = enemyBack.map(point => ({
+  x: point.x + formation.enemyRowX, y: point.y + formation.enemyRowY,
+}));
+const allyFront = Array.from({ length: 5 }, (_, i) => ({
+  x: formation.allyFrontStart.x + i * formation.allyColumnX,
+  y: formation.allyFrontStart.y - i * formation.allyColumnY,
+}));
+const allyPairs = allyFront.map(pet => ({ pet, hero: {
+  x: pet.x + formation.allyRowX, y: pet.y + formation.allyRowY,
+} }));
+
 export const CONFIG = {
   width: 1334, height: 750, commandSeconds: 29,
   encounter: [{ count: 1, weight: 0.50 }, { count: 2, weight: 0.35 }, { count: 3, weight: 0.15 }],
@@ -17,6 +37,7 @@ export const CONFIG = {
   visual: {
     unitScale: 0.5, heroHeight: 240, frogHeight: 170, enemyFlipX: true,
     barWidth: 70, barHeight: 6, barGap: 3, headGap: 8, nameGap: 6, nameSize: 18,
+    heroHeadOffsetX: 10, petNameOffsetX: -25, petNameWidth: 80, nameWidth: 128,
     ringBreathSeconds: 0.8, ringOpacityMin: 130, ringOpacityMax: 210,
     commandTop: 185, commandStep: 74, commandHeight: 64,
   },
@@ -27,18 +48,9 @@ export const CONFIG = {
     targetPadding: 20, targetConfirmSeconds: 0.16,
   },
   positions: {
-    allyGroups: [
-      { pet: { x: 775, y: 420 }, hero: { x: 840, y: 485 } },
-      { pet: { x: 845, y: 350 }, hero: { x: 910, y: 415 } },
-      { pet: { x: 705, y: 490 }, hero: { x: 770, y: 555 } },
-      { pet: { x: 915, y: 280 }, hero: { x: 980, y: 345 } },
-      { pet: { x: 635, y: 560 }, hero: { x: 700, y: 625 } },
-    ],
-    enemy: [
-      { x: 340, y: 305 }, { x: 230, y: 365 }, { x: 450, y: 245 },
-      { x: 184, y: 461 }, { x: 496, y: 149 }, { x: 535, y: 335 },
-      { x: 457, y: 413 }, { x: 613, y: 257 }, { x: 379, y: 491 }, { x: 535, y: 179 },
-    ],
+    spacing: formation,
+    allyGroups: [allyPairs[2], allyPairs[1], allyPairs[3], allyPairs[0], allyPairs[4]],
+    enemy: [enemyFront[2], enemyFront[1], enemyFront[3], enemyFront[0], enemyFront[4], ...enemyBack],
   },
 } as const;
 
