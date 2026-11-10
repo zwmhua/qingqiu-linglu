@@ -11,6 +11,7 @@ registerHooks({
   },
 });
 const { Battle } = await import('../assets/scripts/Battle.ts');
+const { CONFIG } = await import('../assets/scripts/config.ts');
 
 const fixed = () => 0.5;
 const make = (count = 1) => new Battle(fixed, count);
@@ -125,4 +126,43 @@ test('one departing ally does not lose; enemies target the remaining ally', () =
   assert.equal(battle.allies[1].hp, 38);
   assert.ok(battle.allies[0].hp < 58);
   assert.deepEqual(battle.pending.map(u => u.id), ['hero']);
+});
+
+test('summon replaces the active pet in speed order and preserves withdrawn health', () => {
+  const battle = make();
+  const active = battle.allies.find(unit => unit.id === 'pet');
+  const reserve = battle.allies.find(unit => unit.id === 'pet-2');
+  assert.equal(reserve.deployed, false);
+  active.hp = 19;
+  battle.command('hero', 'summon', 'pet-2');
+  battle.command('pet', 'attack', 'enemy-0');
+  assert.deepEqual(battle.lastOrder.slice(0, 2), ['pet', 'hero']);
+  assert.equal(active.deployed, false);
+  assert.equal(active.hp, 19);
+  assert.equal(reserve.deployed, true);
+  assert.equal(battle.summonsUsed, 1);
+  assert.deepEqual(battle.events.slice(0, 2).map(event => event.kind), ['attack', 'summon']);
+  assert.deepEqual(battle.pending.map(unit => unit.id), ['hero', 'pet-2']);
+});
+
+test('retreated and downed pets cannot be summoned; summon count is capped', () => {
+  const battle = make();
+  assert.throws(() => battle.command('hero', 'summon', 'pet'));
+  battle.allies.find(unit => unit.id === 'pet-2').hp = 0;
+  assert.throws(() => battle.command('hero', 'summon', 'pet-2'));
+  battle.allies.find(unit => unit.id === 'pet-2').hp = 38;
+  battle.summonsUsed = CONFIG.summon.maxPerBattle;
+  assert.deepEqual(battle.summonTargets(), []);
+  assert.throws(() => battle.command('hero', 'summon', 'pet-2'));
+});
+
+test('hero rage follows actual health lost, caps at 150, and can carry into the next battle', () => {
+  const battle = make();
+  battle.command('hero', 'defend');
+  battle.command('pet', 'retreat');
+  assert.equal(battle.heroRage, 58 - battle.allies[0].hp);
+  battle.heroRage = 149;
+  battle.command('hero', 'defend');
+  assert.equal(battle.heroRage, 150);
+  assert.equal(new Battle(fixed, 1, battle.heroRage).heroRage, 150);
 });

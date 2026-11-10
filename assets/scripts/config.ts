@@ -12,14 +12,19 @@ export const CONFIG = {
   damage: { defenseFactor: 0.40, randomMin: 0.86, randomMax: 1.14, min: 1 },
   defenseDamageFactor: 0.5,
   protection: { protectorShare: 0.5 },
+  summon: { maxPerBattle: 3, carriedPets: 2 },
+  status: { heroManaMax: 40, petManaMax: 30, rageMax: 150, ragePerDamage: 1 },
   visual: {
     unitScale: 0.5, heroHeight: 240, frogHeight: 170, enemyFlipX: true,
     barWidth: 70, barHeight: 6, barGap: 3, headGap: 8, nameGap: 6, nameSize: 18,
+    ringBreathSeconds: 0.8, ringOpacityMin: 130, ringOpacityMax: 210,
+    commandTop: 185, commandStep: 74, commandHeight: 64,
   },
   animation: {
     approachDistance: 60, runSeconds: 0.3, lungeDistance: 15, strikeSeconds: 0.1,
     knockbackDistance: 10, floatDistance: 60, floatSeconds: 0.6,
     fadeSeconds: 0.4, fastMultiplier: 2,
+    targetPadding: 20, targetConfirmSeconds: 0.16,
   },
   positions: {
     allyGroups: [

@@ -1,5 +1,5 @@
-import { _decorator, Color, Component, EventTouch, Graphics, Label, Node, RichText, Sprite, SpriteFrame, tween, UIOpacity, UITransform, Vec3, view } from 'cc';
-import { AttackEvent, Battle, Unit } from './Battle';
+import { _decorator, Color, Component, EventTouch, Graphics, Label, Mask, Node, RichText, Sprite, SpriteFrame, tween, Tween, UIOpacity, UITransform, Vec3, view } from 'cc';
+import { Battle, BattleEvent, Unit } from './Battle';
 import { CONFIG } from './config';
 
 const { ccclass, property } = _decorator;
@@ -23,8 +23,13 @@ export class BattleView extends Component {
   private shadowNodes = new Map<string, Node>();
   private markerNodes = new Map<string, Node>();
   private basePositions = new Map<string, Vec3>();
+  private ringOpacities = new Map<string, UIOpacity>();
+  private confirmingTarget = false;
   private displayedHp: Map<string, number> | null = null;
-  private animationQueue: AttackEvent[] = [];
+  private animationQueue: BattleEvent[] = [];
+  private displayedDeployment: Map<string, boolean> | null = null;
+  private summonOpen = false;
+  private detailsOpen: 'pet' | 'hero' | null = null;
   private playing = false;
   private speedMultiplier = 1;
 
@@ -35,11 +40,13 @@ export class BattleView extends Component {
 
   update(dt: number): void {
     if (this.playing) { this.syncMovingUnits(); return; }
+    if (this.confirmingTarget) return;
     const before = this.battle.round;
     const phase = this.battle.phase;
     const hp = this.captureHp();
+    const deployment = this.captureDeployment();
     this.battle.tick(dt);
-    if (this.startPlayback(before, phase, hp)) return;
+    if (this.startPlayback(before, phase, hp, deployment)) return;
     const second = Math.ceil(this.battle.seconds);
     if (second !== this.lastShownSecond || before !== this.battle.round) this.render();
   }
@@ -100,6 +107,23 @@ export class BattleView extends Component {
     g.fillColor = color;
     g.ellipse(0, 0, rx, ry);
     g.fill();
+  }
+
+  private selectionRing(x: number, y: number, color: string): UIOpacity {
+    const ring = new Node('selection-ring');
+    this.layer.addChild(ring);
+    this.pos(ring, x, y);
+    const graphic = ring.addComponent(Graphics);
+    graphic.strokeColor = C(color);
+    graphic.lineWidth = 5;
+    graphic.ellipse(0, 0, 64, 20);
+    graphic.stroke();
+    const opacity = ring.addComponent(UIOpacity);
+    opacity.opacity = CONFIG.visual.ringOpacityMin;
+    tween(opacity).repeatForever(tween<UIOpacity>()
+      .to(CONFIG.visual.ringBreathSeconds, { opacity: CONFIG.visual.ringOpacityMax })
+      .to(CONFIG.visual.ringBreathSeconds, { opacity: CONFIG.visual.ringOpacityMin })).start();
+    return opacity;
   }
 
   private image(x: number, y: number, w: number, h: number, frame: SpriteFrame | null,
@@ -165,8 +189,12 @@ export class BattleView extends Component {
     this.shadowNodes.set(unit.id, group);
     this.layer = group;
     const point = this.unitPoint(unit);
-    if (this.canSelect(unit)) this.ellipse(point.x, point.y + 4, 64, 20, '#F1D788', 150);
     this.ellipse(point.x, point.y + 4, 55, 15, '#17241d', 105);
+    if (!this.playing && !this.choosingTarget && this.battle.pending[0]?.id === unit.id) {
+      this.ringOpacities.set(unit.id, this.selectionRing(point.x, point.y + 4, '#F1D788'));
+    } else if (!this.playing && this.choosingTarget === 'attack' && this.canSelect(unit)) {
+      this.ringOpacities.set(unit.id, this.selectionRing(point.x, point.y + 4, '#D9514A'));
+    }
     this.layer = previous;
   }
 
@@ -174,7 +202,7 @@ export class BattleView extends Component {
     if (unit.left) return;
     const point = this.unitPoint(unit);
     const dead = (this.displayedHp?.get(unit.id) ?? unit.hp) === 0;
-    const isPet = unit.id === 'pet' || unit.side === 'enemy';
+    const isPet = unit.id.startsWith('pet') || unit.side === 'enemy';
     const visual = new Node(`unit-${unit.id}`);
     this.layer.addChild(visual);
     this.pos(visual, point.x, point.y);
@@ -201,7 +229,6 @@ export class BattleView extends Component {
     this.markerNodes.set(unit.id, group);
     this.layer = group;
     const point = this.unitPoint(unit);
-    const pending = this.battle.pending[0]?.id === unit.id;
     const targetable = this.canSelect(unit);
     const v = CONFIG.visual;
     const height = (unit.id === 'hero' ? CONFIG.visual.heroHeight : CONFIG.visual.frogHeight)
@@ -217,14 +244,13 @@ export class BattleView extends Component {
     };
     bar(healthY, v.barWidth * (this.displayedHp?.get(unit.id) ?? unit.hp) / unit.maxHp, '#D95757');
     if (unit.side === 'ally') bar(healthY + v.barHeight + v.barGap, v.barWidth, '#559DD8');
-    const nameX = point.x + (unit.side === 'enemy' ? 22 : unit.id === 'pet' ? -50 : 0) - 64;
+    const nameX = point.x + (unit.side === 'enemy' ? 22 : unit.id.startsWith('pet') ? -50 : 0) - 64;
     const name = this.text(`${unit.name} Lv.${unit.level}`, nameX,
       point.y + 19 + v.nameGap, v.nameSize, '#FFFFFF', 128, 1, targetClick);
     const label = name.getComponent(Label)!;
     label.enableOutline = true;
     label.outlineColor = C('#1A2826');
     label.outlineWidth = 2;
-    if (pending) this.text('准备中', headX - 59, healthY - 28, 18, '#F8DB91', 118, 1);
     this.layer = previous;
   }
 
@@ -242,25 +268,76 @@ export class BattleView extends Component {
 
   private chooseTarget(id: string): void {
     const actor = this.battle.pending[0];
-    if (!this.choosingTarget || !actor) return;
+    const unit = this.battle.units.find(candidate => candidate.id === id);
+    if (!this.choosingTarget || !actor || !unit || !this.canSelect(unit) || this.confirmingTarget) return;
+    this.confirmingTarget = true;
+    let ring = this.ringOpacities.get(id);
+    if (!ring) {
+      const previous = this.layer;
+      this.layer = this.shadowNodes.get(id)!;
+      const point = this.unitPoint(unit);
+      ring = this.selectionRing(point.x, point.y + 4, '#F1D788');
+      this.layer = previous;
+    }
+    Tween.stopAllByTarget(ring);
+    const command = this.choosingTarget;
+    tween(ring).to(CONFIG.animation.targetConfirmSeconds / 2, { opacity: 255 })
+      .to(CONFIG.animation.targetConfirmSeconds / 2, { opacity: 0 }).call(() => {
     const before = this.battle.round;
     const phase = this.battle.phase;
-    const hp = this.captureHp();
-    this.battle.command(actor.id, this.choosingTarget, id);
-    this.choosingTarget = null;
-    if (this.startPlayback(before, phase, hp)) return;
-    this.render();
+        const hp = this.captureHp();
+        const deployment = this.captureDeployment();
+        this.battle.command(actor.id, command, id);
+        this.choosingTarget = null;
+        this.confirmingTarget = false;
+        if (this.startPlayback(before, phase, hp, deployment)) return;
+        this.render();
+      }).start();
+  }
+
+  private renderHitAreas(units: Unit[]): void {
+    for (const unit of [...units].sort((a, b) => this.unitPoint(a).y - this.unitPoint(b).y)) {
+      if (!this.canSelect(unit)) continue;
+      const point = this.unitPoint(unit);
+      const padding = CONFIG.animation.targetPadding;
+      const width = 256 * CONFIG.visual.unitScale + padding * 2;
+      const top = point.y - 256 * CONFIG.visual.unitScale - padding;
+      const bottom = point.y + CONFIG.visual.nameSize * 2 + padding;
+      const area = new Node(`target-hitarea-${unit.id}`);
+      this.layer.addChild(area);
+      this.pos(area, point.x, (top + bottom) / 2);
+      area.addComponent(UITransform).setContentSize(width, bottom - top);
+      area.on(Node.EventType.TOUCH_END, () => this.chooseTarget(unit.id));
+      area.on(Node.EventType.MOUSE_ENTER, () => {
+        const ring = this.ringOpacities.get(unit.id);
+        if (ring) { Tween.stopAllByTarget(ring); ring.opacity = 255; }
+      });
+      area.on(Node.EventType.MOUSE_LEAVE, () => {
+        const ring = this.ringOpacities.get(unit.id);
+        if (ring && !this.confirmingTarget) {
+          ring.opacity = CONFIG.visual.ringOpacityMin;
+          tween(ring).repeatForever(tween<UIOpacity>()
+            .to(CONFIG.visual.ringBreathSeconds, { opacity: CONFIG.visual.ringOpacityMax })
+            .to(CONFIG.visual.ringBreathSeconds, { opacity: CONFIG.visual.ringOpacityMin })).start();
+        }
+      });
+    }
   }
 
   private captureHp(): Map<string, number> {
     return new Map(this.battle.units.map(unit => [unit.id, unit.hp]));
   }
 
-  private startPlayback(round: number, phase: string, hp: Map<string, number>): boolean {
+  private captureDeployment(): Map<string, boolean> {
+    return new Map(this.battle.units.map(unit => [unit.id, unit.deployed]));
+  }
+
+  private startPlayback(round: number, phase: string, hp: Map<string, number>, deployment: Map<string, boolean>): boolean {
     if (round === this.battle.round && phase === this.battle.phase) return false;
-    if (this.battle.attackEvents.length === 0) return false;
+    if (this.battle.events.length === 0) return false;
     this.displayedHp = hp;
-    this.animationQueue = [...this.battle.attackEvents];
+    this.displayedDeployment = deployment;
+    this.animationQueue = [...this.battle.events];
     this.playing = true;
     this.render();
     this.playNextAttack();
@@ -291,7 +368,15 @@ export class BattleView extends Component {
     if (!event) {
       this.playing = false;
       this.displayedHp = null;
+      this.displayedDeployment = null;
       this.render();
+      return;
+    }
+    if (event.kind === 'summon') {
+      if (event.fromId) this.displayedDeployment!.set(event.fromId, false);
+      this.displayedDeployment!.set(event.toId, true);
+      this.render();
+      this.playNextAttack();
       return;
     }
     const actor = this.unitNodes.get(event.actorId)!;
@@ -377,6 +462,72 @@ export class BattleView extends Component {
     });
   }
 
+  private statusCard(kind: 'pet' | 'hero', x: number, unit: Unit | undefined): void {
+    const y = 18;
+    this.rect(x, y, 192, 104, '#203A37', '#829183', 9, () => {
+      this.detailsOpen = this.detailsOpen === kind ? null : kind;
+      this.render();
+    }, 215);
+    if (unit) {
+      const portrait = new Node(`portrait-${kind}`);
+      this.layer.addChild(portrait);
+      this.pos(portrait, x + 32, y + 36);
+      portrait.addComponent(UITransform).setContentSize(48, 48);
+      const mask = portrait.addComponent(Mask);
+      mask.type = Mask.Type.ELLIPSE;
+      const art = new Node('portrait-art');
+      portrait.addChild(art);
+      art.addComponent(UITransform).setContentSize(256, 256);
+      const sprite = art.addComponent(Sprite);
+      sprite.spriteFrame = kind === 'hero' ? this.heroArt : this.frogArt;
+      sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+      art.setScale(0.75, 0.75, 1);
+      art.setPosition(kind === 'hero' ? -2 : 14, kind === 'hero' ? -58 : -6, 0);
+    }
+    const bars = kind === 'hero'
+      ? [
+        { label: '气血', value: unit ? this.displayedHp?.get(unit.id) ?? unit.hp : 0, max: unit?.maxHp ?? 1, color: '#D95757' },
+        { label: '法力', value: CONFIG.status.heroManaMax, max: CONFIG.status.heroManaMax, color: '#559DD8' },
+        { label: '愤怒', value: this.battle.heroRage, max: CONFIG.status.rageMax, color: '#EBA14F' },
+        { label: '经验', value: 0, max: 1, color: '#E6C95C' },
+      ]
+      : [
+        { label: '气血', value: unit ? this.displayedHp?.get(unit.id) ?? unit.hp : 0, max: unit?.maxHp ?? 1, color: '#D95757' },
+        { label: '法力', value: unit ? CONFIG.status.petManaMax : 0, max: CONFIG.status.petManaMax, color: '#559DD8' },
+        { label: '经验', value: 0, max: 1, color: '#E6C95C' },
+      ];
+    bars.forEach((bar, index) => {
+      const by = y + 17 + index * 22;
+      this.rect(x + 69, by, 112, 10, '#10201F', '#526562', 2);
+      if (bar.value > 0) this.rect(x + 70, by + 1, 110 * bar.value / bar.max, 8, bar.color, '', 1);
+      if (this.detailsOpen === kind) {
+        const value = bar.label === '经验' ? '待定' : `${bar.value}/${bar.max}`;
+        this.text(`${bar.label} ${value}`, x + 69, by - 8, 13, '#FFFFFF', 114);
+      }
+    });
+    this.text(unit?.name ?? '暂无出战宝宝', x + 8, y + 79, 15, '#F4E9C8', 180);
+  }
+
+  private renderSummonList(actorId: string): void {
+    this.rect(472, 164, 388, 342, '#1E3835', '#E5CB8D', 14);
+    this.text('选择携带的汀蛙', 510, 180, 28, '#F3DFAD', 310, 1);
+    this.battle.pets.forEach((pet, index) => {
+      const eligible = this.battle.summonTargets().some(unit => unit.id === pet.id);
+      const label = `${pet.name} ${index + 1} · 气血 ${pet.hp}/${pet.maxHp}`;
+      this.button(label, 519, 245 + index * 75, 295, 61, eligible, eligible ? () => {
+        const before = this.battle.round;
+        const phase = this.battle.phase;
+        const hp = this.captureHp();
+        const deployment = this.captureDeployment();
+        this.battle.command(actorId, 'summon', pet.id);
+        this.summonOpen = false;
+        if (this.startPlayback(before, phase, hp, deployment)) return;
+        this.render();
+      } : undefined);
+    });
+    this.button('返回', 568, 411, 192, 58, true, () => { this.summonOpen = false; this.render(); });
+  }
+
   private render(): void {
     this.lastShownSecond = Math.ceil(this.battle.seconds);
     for (const child of [...this.node.children]) if (child.name !== 'Camera') child.destroy();
@@ -384,14 +535,16 @@ export class BattleView extends Component {
     this.shadowNodes.clear();
     this.markerNodes.clear();
     this.basePositions.clear();
+    this.ringOpacities.clear();
     const background = new Node('background-layer');
     const interfaceLayer = new Node('interface-layer');
     const unitLayer = new Node('unit-layer');
     this.unitLayer = unitLayer;
     const markerLayer = new Node('unit-marker-layer');
     this.markerLayer = markerLayer;
+    const hitLayer = new Node('target-hit-layer');
     const resultLayer = new Node('result-layer');
-    for (const layer of [background, interfaceLayer, unitLayer, markerLayer, resultLayer]) this.node.addChild(layer);
+    for (const layer of [background, interfaceLayer, unitLayer, markerLayer, hitLayer, resultLayer]) this.node.addChild(layer);
     this.layer = background;
     this.image(0, 0, CONFIG.width, CONFIG.height, this.battleBackground);
     this.layer = interfaceLayer;
@@ -409,24 +562,18 @@ export class BattleView extends Component {
     this.text(`第 ${this.battle.round} 回合`, 460, 34, 27, '#f1e4bd', 145, 1);
     this.text(this.playing ? '战斗进行中' : this.battle.phase === 'ended' ? '战斗结束'
       : `指令 ${this.lastShownSecond} 秒`, 605, 35, 25, '#f4cf89', 170, 1);
-    this.rect(904, 20, 408, 86, '#263e3d', '#788d78', 10);
-    for (let i = 0; i < this.battle.allies.length; i++) {
-      const u = this.battle.allies[i];
-      const x = 922 + i * 190;
-      this.ellipse(x + 20, 53, 17, 17, u.hp && !u.left ? i ? '#75ae9b' : '#d9c28f' : '#63716b');
-      this.text(u.name, x + 43, 30, 18, '#f4e9c8', 132);
-      this.rect(x + 43, 61, 120, 10, '#4d5c55', '', 4);
-      const visibleHp = this.displayedHp?.get(u.id) ?? u.hp;
-      if (visibleHp && !u.left) this.rect(x + 43, 61, 120 * visibleHp / u.maxHp, 10, '#9ccf94', '', 4);
-      this.text(u.left ? '离场' : `${visibleHp}/${u.maxHp}`, x + 43, 72, 15, '#c8d7bc', 120);
-    }
-    const units = this.battle.units;
+    const visiblePet = this.battle.pets.find(u => (this.displayedDeployment?.get(u.id) ?? u.deployed) && !u.left);
+    this.statusCard('pet', 906, visiblePet);
+    this.statusCard('hero', 1102, this.battle.allies[0]);
+    const units = this.battle.units.filter(u => this.displayedDeployment?.get(u.id) ?? u.deployed);
     this.layer = unitLayer;
     for (const unit of units) this.unitShadow(unit);
     // Screen y is measured from the top; units with lower feet are drawn later.
     for (const unit of [...units].sort((a, b) => this.unitPoint(a).y - this.unitPoint(b).y)) this.unitVisual(unit);
     this.layer = markerLayer;
     for (const unit of units) this.unitInfo(unit);
+    this.layer = hitLayer;
+    if (!this.playing) this.renderHitAreas(units);
     this.layer = interfaceLayer;
     this.renderLog();
     this.rect(1095, 119, 218, 59, '#18312F', '', 9, undefined, 205);
@@ -442,9 +589,10 @@ export class BattleView extends Component {
         const before = this.battle.round;
         const phase = this.battle.phase;
         const hp = this.captureHp();
+        const deployment = this.captureDeployment();
         this.battle.command(actor.id, command);
         this.choosingTarget = null;
-        if (this.startPlayback(before, phase, hp)) return;
+        if (this.startPlayback(before, phase, hp, deployment)) return;
         this.render();
       };
       const select = (command: 'attack' | 'protect') => {
@@ -456,6 +604,7 @@ export class BattleView extends Component {
           { label: '攻击', enabled: true, action: () => select('attack') },
           { label: '防御', enabled: true, action: () => send('defend') },
           { label: '保护', enabled: this.battle.protectTargets(actor.id).length > 0, action: () => select('protect') },
+          { label: '召唤', enabled: this.battle.summonTargets().length > 0, action: () => { this.summonOpen = true; this.render(); } },
           { label: '抓取', enabled: false },
           { label: '道具', enabled: false },
           { label: '逃跑', enabled: true, action: () => send('flee') },
@@ -466,8 +615,13 @@ export class BattleView extends Component {
           { label: '防御', enabled: true, action: () => send('defend') },
           { label: '撤退', enabled: true, action: () => send('retreat') },
         ];
-      choices.forEach((choice, index) => this.button(choice.label, 1115, 188 + index * 84,
-        195, 70, choice.enabled, choice.action));
+      choices.forEach((choice, index) => this.button(choice.label, 1115,
+        CONFIG.visual.commandTop + index * CONFIG.visual.commandStep,
+        195, CONFIG.visual.commandHeight, choice.enabled, choice.action));
+    }
+    if (this.summonOpen && actor?.id === 'hero' && !this.playing) {
+      this.layer = resultLayer;
+      this.renderSummonList(actor.id);
     }
     if (!this.playing && this.battle.phase === 'ended') {
       this.layer = resultLayer;
@@ -475,9 +629,12 @@ export class BattleView extends Component {
       this.text(this.battle.winner === 'ally' ? '战斗胜利' : '战斗失败', 441, 260, 48, '#f3dfad', 440, 1);
       this.text('汀蛙之战暂告一段落', 470, 325, 22, '#c6dbc6', 380, 1);
       this.button('再来一场', 513, 384, 286, 69, true, () => {
-        this.battle = new Battle();
+        this.battle = new Battle(Math.random, undefined, this.battle.heroRage);
         this.choosingTarget = null;
         this.displayedHp = null;
+        this.displayedDeployment = null;
+        this.detailsOpen = null;
+        this.summonOpen = false;
         this.animationQueue = [];
         this.render();
       });
