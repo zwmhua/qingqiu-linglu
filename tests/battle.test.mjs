@@ -49,6 +49,21 @@ test('dead target redirects; dead units skip actions', () => {
   assert.ok(!battle.lastOrder.includes('enemy-0'));
 });
 
+test('attack presentation events preserve resolved order, damage, and redirected targets', () => {
+  const battle = make(2);
+  battle.enemies[0].hp = 1;
+  battle.command('hero', 'attack', 'enemy-0');
+  battle.command('pet', 'attack', 'enemy-0');
+  assert.deepEqual(battle.attackEvents.slice(0, 2).map(e => [e.actorId, e.targetId]),
+    [['pet', 'enemy-0'], ['hero', 'enemy-1']]);
+  for (const event of battle.attackEvents) {
+    assert.ok(event.damage > 0);
+    assert.equal(event.targetAfter, Math.max(0, event.targetBefore - event.targetDamage));
+  }
+  assert.equal(battle.attackEvents[0].targetAfter, 0);
+  assert.equal(battle.enemies[1].hp, battle.attackEvents[1].targetAfter);
+});
+
 test('one downed ally does not end battle; all downed allies do', () => {
   const battle = make();
   battle.allies[0].hp = 0;

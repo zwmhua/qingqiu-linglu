@@ -8,6 +8,11 @@ export type Unit = {
   defending: boolean; left: boolean; skill?: string;
 };
 type Order = { actor: Unit; command: Command; target?: string };
+export type AttackEvent = {
+  actorId: string; targetId: string; damage: number; targetDamage: number;
+  targetBefore: number; targetAfter: number;
+  guardId?: string; guardDamage?: number; guardAfter?: number;
+};
 
 export class Battle {
   allies: Unit[] = [];
@@ -15,6 +20,7 @@ export class Battle {
   commands = new Map<string, { command: Command; target?: string }>();
   log: string[] = [];
   lastOrder: string[] = [];
+  attackEvents: AttackEvent[] = [];
   phase: 'command' | 'ended' = 'command';
   winner: Side | null = null;
   round = 1;
@@ -105,6 +111,7 @@ export class Battle {
   }
 
   private resolve(): void {
+    this.attackEvents = [];
     for (const ally of this.allies) {
       const chosen = this.commands.get(ally.id);
       ally.left = ally.left || chosen?.command === 'retreat' || chosen?.command === 'flee';
@@ -154,8 +161,12 @@ export class Battle {
         : undefined;
       const guardedDamage = guard ? Math.ceil(damage * CONFIG.protection.protectorShare) : 0;
       const targetDamage = damage - guardedDamage;
+      const targetBefore = target.hp;
       if (guard) guard.hp = Math.max(0, guard.hp - guardedDamage);
       target.hp = Math.max(0, target.hp - targetDamage);
+      this.attackEvents.push({ actorId: turn.actor.id, targetId: target.id, damage,
+        targetDamage, targetBefore, targetAfter: target.hp,
+        guardId: guard?.id, guardDamage: guard ? guardedDamage : undefined, guardAfter: guard?.hp });
       this.log.push(`${turn.actor.name} 攻击 ${target.name}，造成 ${damage} 点伤害${target.defending ? `（防御减伤，原 ${beforeDefense}）` : ''}${guard ? `；${guard.name} 保护分担 ${guardedDamage} 点，${target.name} 承受 ${targetDamage} 点` : ''}。${guard?.hp === 0 ? ` ${guard.name}${guard.id === 'hero' ? '倒地' : '失去战斗能力'}。` : ''}${target.hp === 0 ? ` ${target.name}${target.id === 'hero' ? '倒地' : '失去战斗能力'}。` : ''}`);
       if (this.checkWinner()) break;
     }
