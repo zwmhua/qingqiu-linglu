@@ -36,7 +36,7 @@
 
 1. 02b-3 物种成长；依据 `docs/cards/card-02b-3-species-growth.md`，须先完成 02b-2 试玩验收。
 2. 02b-4 五项基础属性 → 02b-5 变异判定 → 02b-6 变异调色；依据 `docs/cards/card-02b.md` 的拆分顺序。
-3. 卡 03：三种野怪可选并展示抓到的宠物；依据 `docs/roadmap.md`，其他两种野怪的正式名称待确认。
+3. 卡 03：汀蛙／磐龟／毛毛虫随机混合遭遇，取消营地与选怪，策划已定稿；必须等 02b 全部子卡经华周试玩通过且另行授权后开发。依据 `docs/cards/card-03-three-wild-species.md`。
 4. 卡 04：升级成长；依据 `docs/roadmap.md`，开发前需确定经验表。
 5. 卡 05：打书学技能、顶技能；依据 `docs/roadmap.md`。
 6. 卡 06：指定抓到的宠物为下一场默认出战宠；依据 `docs/roadmap.md`。
@@ -46,12 +46,11 @@
 - 物种成长、五项基础属性及详情中的对应展示尚未实现；六项资质已在最小详情中显示。出处：`docs/cards/card-02b.md`、02b-3 至 02b-4 子卡。
 - 抓取成功后以 2.5% 判定变异，六项资质乘 1.18 后四舍五入、不额外封顶，外观调色标记尚未实现。出处：`docs/cards/card-02b.md`、02b-5 至 02b-6 子卡。
 - 卡 05 打书规则为最多 4 个技能格；满格学习新技能时有 32% 概率随机顶掉旧技能。出处：`docs/roadmap.md`、`docs/design.md`。
-- 卡 03 三种野怪可选、卡 04 升级时按资质成长公式刷新属性；其他两种野怪的正式名称、升级经验数值仍待确认。出处：`docs/roadmap.md`、`docs/design.md`、`docs/config-reference.ts`。
+- 卡 03 策划已定稿但未实现：三种物种正式名汀蛙、磐龟、毛毛虫；取消营地、每场随机混合遭遇 1～3 只（50%／35%／15%），每位置独立物种等权；普通野怪 1～5 级各 20%；临时战斗面板已拍板、敌我同物种同等级通用（初始两只汀蛙保持现有 38/11/10/10），临时，待公式卡替换。卡 04 升级经验与正式属性换算仍待定。出处：`docs/cards/card-03-three-wild-species.md`、`docs/roadmap.md`。
 - 卡 06 可将抓到的一只宠物指定为后续战斗的默认出战宠；跨战斗保留与召唤已实现，指定默认出战尚未实现。出处：`docs/roadmap.md`。
 
 ## 未定事项
 
-- 另外两种野怪的正式名称待确认；旧设计文档中的名称不作为当前定稿。出处：`docs/cards/card-02b.md`、`docs/roadmap.md`。
 - 升级经验表、每场经验奖励、角色成长公式与技能书来源待确认。出处：`docs/design.md`「待定问题」。
 
 ## 文档索引
@@ -60,7 +59,7 @@
 - `ARCHITECTURE.md`：当前工程入口、分层与资源关系；修改工程结构前阅读。
 - `STATUS.md`：当前进度、待定事项与文档入口；交接或确定下一张卡时阅读。
 - `docs/design.md`：第一阶段玩法设计与旧版模拟；讨论玩法方向时阅读，注意其中部分旧名称和卡序。
-- `docs/roadmap.md`：阶段一卡片顺序；确定下一张卡时阅读，物种正式名称仍待确认。
+- `docs/roadmap.md`：阶段一卡片顺序；卡 03 已改为正式三物种的随机混合遭遇。
 - `docs/art-style.md`：美术风格、命名和素材处理要求；出图或导入资源前阅读。
 - `docs/bugs.md`：已修复问题、复现步骤与修复提交；回归相关问题时阅读。
 - `docs/config-reference.ts`：模拟用数值参考，不是运行时配置；核对旧设计数值时阅读。
@@ -74,6 +73,7 @@
 - `docs/cards/card-02b-4-five-base-stats.md`：五项基础属性；执行 02b-4 前阅读。
 - `docs/cards/card-02b-5-mutation-roll.md`：变异判定；执行 02b-5 前阅读。
 - `docs/cards/card-02b-6-mutation-tint.md`：变异调色；执行 02b-6 前阅读。
+- `docs/cards/card-03-three-wild-species.md`：卡 03 三种野怪随机混合遭遇策划定稿；02b 全部实际试玩通过后才可另行授权开发。
 - `docs/archive/AGENTS-old.md`：旧版执行规则存档；仅追溯历史时阅读。
 - `docs/archive/card-01-copy.md`：卡 01 旧副本；仅追溯历史时阅读。
 - `docs/archive/card-02-copy.md`：卡 02 旧副本；仅追溯历史时阅读。
