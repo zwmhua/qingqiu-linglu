@@ -1,0 +1,30 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { CONFIG, COMMAND_LAYOUT, COMMAND_ICON_SIZE } from '../assets/scripts/config.ts';
+
+test('command slots form the requested L with a shared flee/retreat position', () => {
+  const vertical = ['攻击', '灵术', '道具'].map(name => COMMAND_LAYOUT[name]);
+  const bottom = ['抓取', '逃跑', '召唤', '保护', '防御'].map(name => COMMAND_LAYOUT[name]);
+  assert.ok(vertical.every(slot => slot.x === vertical[0].x));
+  assert.ok(vertical[0].y < vertical[1].y && vertical[1].y < vertical[2].y);
+  assert.ok(bottom.every(slot => slot.y === bottom[0].y));
+  assert.ok(bottom.every((slot, i) => i === 0 || slot.x - bottom[i - 1].x === bottom[1].x - bottom[0].x));
+  assert.equal(bottom.at(-1).x, vertical[0].x);
+  assert.deepEqual(COMMAND_LAYOUT['撤退'], COMMAND_LAYOUT['逃跑']);
+});
+
+test('bottom icons fit the screen and avoid the log and allied labels', () => {
+  const bottom = ['抓取', '逃跑', '召唤', '保护', '防御'].map(name => COMMAND_LAYOUT[name]);
+  const first = bottom[0], last = bottom.at(-1);
+  assert.ok(first.x > 540); // battle log ends at x=540
+  assert.ok(last.x + COMMAND_ICON_SIZE <= CONFIG.width);
+  assert.ok(first.y + COMMAND_ICON_SIZE + 30 <= CONFIG.height);
+  for (const { pet, hero } of CONFIG.positions.allyGroups) {
+    for (const [unit, width] of [[pet, CONFIG.visual.petNameWidth], [hero, CONFIG.visual.nameWidth]]) {
+      const nameTop = unit.y + 19 + CONFIG.visual.nameGap;
+      const nameRight = unit.x + width / 2;
+      assert.ok(first.x >= unit.x + 128 / 2 || first.y >= unit.y);
+      assert.ok(first.x >= nameRight || first.y >= nameTop + CONFIG.visual.nameSize * 1.7);
+    }
+  }
+});

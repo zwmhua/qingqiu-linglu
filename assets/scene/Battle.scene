@@ -267,6 +267,17 @@
       "__uuid__": "8a3b6cb5-a6cf-4a6e-950e-f457709a08d2@f9941",
       "__expectedType__": "cc.SpriteFrame"
     },
+    "commandIcons": [
+      { "__uuid__": "93766f06-c9b8-4dd5-8a41-11834127f149@f9941", "__expectedType__": "cc.SpriteFrame" },
+      { "__uuid__": "20d50365-fedd-487a-829d-26da44805bc7@f9941", "__expectedType__": "cc.SpriteFrame" },
+      { "__uuid__": "5c6b798c-09a4-477d-91c6-91ca3a00f14b@f9941", "__expectedType__": "cc.SpriteFrame" },
+      { "__uuid__": "4015cd30-25e8-49c0-9af9-115504c86171@f9941", "__expectedType__": "cc.SpriteFrame" },
+      { "__uuid__": "5c197b59-0a37-4ca7-bdb5-35059e7673e4@f9941", "__expectedType__": "cc.SpriteFrame" },
+      { "__uuid__": "7f002f64-af6e-45cc-bff1-e030c3b588f6@f9941", "__expectedType__": "cc.SpriteFrame" },
+      { "__uuid__": "10d4dea4-8a97-41ae-9c11-a0b928bb0708@f9941", "__expectedType__": "cc.SpriteFrame" },
+      { "__uuid__": "626a6017-ea62-46d4-90e4-9a327c8ae47c@f9941", "__expectedType__": "cc.SpriteFrame" },
+      { "__uuid__": "78098735-da09-4edb-866d-17515fea5cc9@f9941", "__expectedType__": "cc.SpriteFrame" }
+    ],
     "_id": "5fefb165ebd6489b9624bc21"
   },
   {
