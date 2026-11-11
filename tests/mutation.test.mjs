@@ -10,11 +10,12 @@ const { MUTATION_CONFIG, isMutation, mutateAptitudes } = await import('../assets
 const { APTITUDE_KEYS, APTITUDE_RANGES } = await import('../assets/logic/aptitude.ts');
 const { Battle } = await import('../assets/scripts/Battle.ts');
 
-test('mutation boundary is exactly 2.5% and boosts all six without a cap', () => {
-  assert.deepEqual(MUTATION_CONFIG, { rate: 0.025, multiplier: 1.18 });
+test('mutation boundary is exactly 25% and boosts all six without a cap', () => {
+  assert.deepEqual(MUTATION_CONFIG, { rate: 0.25, multiplier: 1.18 });
   assert.equal(isMutation(0, MUTATION_CONFIG.rate), true);
-  assert.equal(isMutation(0.024999, MUTATION_CONFIG.rate), true);
-  assert.equal(isMutation(0.025, MUTATION_CONFIG.rate), false);
+  assert.equal(isMutation(0.025, MUTATION_CONFIG.rate), true);
+  assert.equal(isMutation(0.249999, MUTATION_CONFIG.rate), true);
+  assert.equal(isMutation(0.25, MUTATION_CONFIG.rate), false);
   const highs = Object.fromEntries(APTITUDE_KEYS.map(key => [key, APTITUDE_RANGES[key][1]]));
   const boosted = mutateAptitudes(highs, MUTATION_CONFIG.multiplier);
   for (const key of APTITUDE_KEYS) {
@@ -38,11 +39,16 @@ test('only successful capture rolls mutation once; failed or dead targets never 
   }
   let normalRolls = 0;
   const normal = new Battle(() => 0, 1, 0, undefined, () => 1,
-    () => 0, () => 0, () => 0, () => { normalRolls++; return 0.025; });
+    () => 0, () => 0, () => 0, () => { normalRolls++; return 0.25; });
   normal.command('hero', 'capture', normal.enemies[0].id);
   normal.command('pet', 'defend');
   assert.equal(normalRolls, 1);
   assert.equal(normal.roster.entries[2].isMutated, false);
+  const formerNormal = new Battle(() => 0, 1, 0, undefined, () => 1,
+    () => 0, () => 0, () => 0, () => 0.025);
+  formerNormal.command('hero', 'capture', formerNormal.enemies[0].id);
+  formerNormal.command('pet', 'defend');
+  assert.equal(formerNormal.roster.entries[2].isMutated, true);
 });
 
 test('baby mutation keeps growth, base stats and combat values through summon and next battle', () => {
