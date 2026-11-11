@@ -1,6 +1,6 @@
 import { _decorator, Color, Component, EventTouch, Graphics, Label, Mask, Node, RichText, Sprite, SpriteFrame, tween, Tween, UIOpacity, UITransform, Vec3, view } from 'cc';
 import { Battle, BattleEvent, Unit } from './Battle';
-import { CONFIG } from './config';
+import { COMMAND_ICON_SIZE, COMMAND_LAYOUT, CONFIG } from './config';
 
 const { ccclass, property } = _decorator;
 const C = (hex: string) => new Color(hex);
@@ -173,13 +173,17 @@ export class BattleView extends Component {
 
   private commandButton(label: string, x: number, y: number, enabled: boolean, onClick?: () => void): void {
     const frame = this.commandIcons[COMMAND_NAMES.indexOf(label as typeof COMMAND_NAMES[number])];
-    const { node, sprite } = this.image(x + 9, y, 78, 78, frame);
+    const { node, sprite } = this.image(x, y, COMMAND_ICON_SIZE, COMMAND_ICON_SIZE, frame);
     sprite.grayscale = !enabled;
-    this.text(label, x, y + 78, 18, enabled ? '#F7E5B6' : '#8D9690', 96, 1);
+    const title = this.text(label, x, y + COMMAND_ICON_SIZE, 19, '#233B33', COMMAND_ICON_SIZE, 1);
+    const titleLabel = title.getComponent(Label)!;
+    titleLabel.enableOutline = true;
+    titleLabel.outlineColor = C('#F7E5B6');
+    titleLabel.outlineWidth = 2;
     const hit = new Node(`command-${label}`);
     this.layer.addChild(hit);
-    this.pos(hit, x + 48, y + 54);
-    hit.addComponent(UITransform).setContentSize(96, 108);
+    this.pos(hit, x + COMMAND_ICON_SIZE / 2, y + 40);
+    hit.addComponent(UITransform).setContentSize(COMMAND_ICON_SIZE, 80);
     if (enabled && onClick) {
       hit.on(Node.EventType.TOUCH_START, () => node.setScale(0.94, 0.94, 1));
       hit.on(Node.EventType.TOUCH_CANCEL, () => node.setScale(1, 1, 1));
@@ -651,9 +655,10 @@ export class BattleView extends Component {
         this.choosingTarget = command;
         this.render();
       };
-      const choices: { label: string; enabled: boolean; action?: () => void }[] = actor.id === 'hero'
+      const choices: { label: keyof typeof COMMAND_LAYOUT; enabled: boolean; action?: () => void }[] = actor.id === 'hero'
         ? [
           { label: '攻击', enabled: true, action: () => select('attack') },
+          { label: '灵术', enabled: false },
           { label: '防御', enabled: true, action: () => send('defend') },
           { label: '保护', enabled: this.battle.protectTargets(actor.id).length > 0, action: () => select('protect') },
           { label: '召唤', enabled: this.battle.summonTargets().length > 0, action: () => { this.summonOpen = true; this.render(); } },
@@ -667,9 +672,10 @@ export class BattleView extends Component {
           { label: '防御', enabled: true, action: () => send('defend') },
           { label: '撤退', enabled: true, action: () => send('retreat') },
         ];
-      choices.forEach((choice, index) => this.commandButton(choice.label,
-        1111 + (index % 2) * 104, CONFIG.visual.commandTop + Math.floor(index / 2) * 122,
-        choice.enabled, choice.action));
+      choices.forEach(choice => {
+        const { x, y } = COMMAND_LAYOUT[choice.label];
+        this.commandButton(choice.label, x, y, choice.enabled, choice.action);
+      });
     }
     if (this.summonOpen && actor?.id === 'hero' && !this.playing) {
       this.layer = resultLayer;
