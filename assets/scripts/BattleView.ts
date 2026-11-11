@@ -360,9 +360,9 @@ export class BattleView extends Component {
     };
     bar(healthY, v.barWidth * (this.displayedHp?.get(unit.id) ?? unit.hp) / unit.maxHp, '#D95757');
     if (unit.side === 'ally') bar(healthY + v.barHeight + v.barGap, v.barWidth, '#559DD8');
-    const nameWidth = this.isPet(unit) && !unit.isBaby ? v.petNameWidth : v.nameWidth;
+    const nameWidth = unit.isMutated ? 178 : this.isPet(unit) && !unit.isBaby ? v.petNameWidth : v.nameWidth;
     const nameX = point.x + (this.isPet(unit) ? v.petNameOffsetX : 0) - nameWidth / 2;
-    const name = this.text(`${unit.name} Lv.${unit.level}`, nameX,
+    const name = this.text(`${unit.isMutated ? '变异' : ''}${unit.name} Lv.${unit.level}`, nameX,
       point.y + 19 + v.nameGap, v.nameSize, '#FFFFFF', nameWidth, 1, targetClick);
     const label = name.getComponent(Label)!;
     label.enableOutline = true;
@@ -636,7 +636,7 @@ export class BattleView extends Component {
         this.text(`${bar.label} ${value}`, x + 69, by - 8, 13, '#FFFFFF', 114);
       }
     });
-    this.text(unit?.name ?? '暂无出战宝宝', x + 8, y + 79, 15, '#F4E9C8', 180);
+    this.text(unit ? `${unit.isMutated ? '变异' : ''}${unit.name}` : '暂无出战宝宝', x + 8, y + 79, 15, '#F4E9C8', 180);
   }
 
   private renderSummonList(actorId: string): void {
