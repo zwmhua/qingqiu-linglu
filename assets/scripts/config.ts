@@ -55,6 +55,13 @@ export const CONFIG = {
   },
 } as const;
 
+export const COMMAND_ICON_SIZE = 54;
+export const COMMAND_LAYOUT = {
+  攻击: { x: 1276, y: 398 }, 灵术: { x: 1276, y: 482 }, 道具: { x: 1276, y: 566 },
+  抓取: { x: 1012, y: 650 }, 逃跑: { x: 1078, y: 650 }, 撤退: { x: 1078, y: 650 },
+  召唤: { x: 1144, y: 650 }, 保护: { x: 1210, y: 650 }, 防御: { x: 1276, y: 650 },
+} as const;
+
 export function growth(base: number, aptitude: number, level: number, hp = false): number {
   return base + Math.floor(aptitude * (level - 1) / (hp ? 18 : 52));
 }
