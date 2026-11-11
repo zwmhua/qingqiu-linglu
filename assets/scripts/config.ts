@@ -1,3 +1,5 @@
+import { BABY_CONFIG } from '../logic/baby';
+
 const formation = {
   enemyColumnX: 125, enemyColumnY: 65, enemyRowX: 130, enemyRowY: 100,
   allyColumnX: 110, allyColumnY: 60, allyRowX: 65, allyRowY: 150,
@@ -27,6 +29,7 @@ export const CONFIG = {
     aptitude: { attack: [50, 90], defense: [55, 95], hp: [70, 110], speed: [50, 90] },
     innateSkill: '露珠弹', mutated: false,
   },
+  baby: BABY_CONFIG,
   wild: { name: '野外汀蛙', level: 1, juvenileMultiplier: 0.88,
     hp: 33, attack: 10, defense: 9, speed: 9 },
   damage: { defenseFactor: 0.40, randomMin: 0.86, randomMax: 1.14, min: 1 },

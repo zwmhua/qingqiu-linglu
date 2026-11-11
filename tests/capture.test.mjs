@@ -62,7 +62,7 @@ test('capture of the final enemy wins without dealing damage', () => {
 
 test('a target killed before the capture turn is not retargeted or rolled', () => {
   let rolls = 0;
-  const battle = new Battle(() => { rolls++; return 0; }, 2);
+  const battle = new Battle(() => { rolls++; return 0; }, 2, 0, undefined, () => 1);
   battle.enemies[0].hp = 1;
   battle.command('hero', 'capture', 'enemy-0');
   battle.command('pet', 'attack', 'enemy-0');

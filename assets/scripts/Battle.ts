@@ -1,11 +1,13 @@
 import { CONFIG } from './config';
 import { captureChance } from '../logic/capture';
 import { Roster } from '../logic/roster';
+import { effectiveLevel, isBabyEncounter } from '../logic/baby';
 
 export type Side = 'ally' | 'enemy';
 export type Command = 'attack' | 'defend' | 'protect' | 'retreat' | 'flee' | 'summon' | 'capture';
 export type Unit = {
   id: string; name: string; side: Side; slot: number; level: number;
+  isBaby?: boolean; combatLevel?: number;
   hp: number; maxHp: number; attack: number; defense: number; speed: number;
   defending: boolean; left: boolean; deployed: boolean; skill?: string;
 };
@@ -38,7 +40,8 @@ export class Battle {
   seconds: number = CONFIG.commandSeconds;
   private random: () => number;
 
-  constructor(random: () => number = Math.random, count?: number, initialRage = 0, previousRoster?: Roster) {
+  constructor(random: () => number = Math.random, count?: number, initialRage = 0,
+    previousRoster?: Roster, babyRandom: () => number = random) {
     this.random = random;
     this.heroRage = Math.max(0, Math.min(CONFIG.status.rageMax, initialRage));
     const hero = CONFIG.hero;
@@ -49,15 +52,18 @@ export class Battle {
         hp: hero.hp, maxHp: hero.hp, attack: hero.attack, defense: hero.defense,
         speed: hero.speed, defending: false, left: false, deployed: true },
       { id: 'pet', name: frog.name, side: 'ally', slot: 0, level: frog.level,
+        isBaby: false, combatLevel: effectiveLevel(frog.level),
         hp: pet.hp, maxHp: pet.hp, attack: pet.attack, defense: pet.defense,
         speed: pet.speed, defending: false, left: false, deployed: true, skill: frog.innateSkill },
       { id: 'pet-2', name: frog.name, side: 'ally', slot: 0, level: frog.level,
+        isBaby: false, combatLevel: effectiveLevel(frog.level),
         hp: pet.hp, maxHp: pet.hp, attack: pet.attack, defense: pet.defense,
         speed: pet.speed, defending: false, left: false, deployed: false, skill: frog.innateSkill },
     ];
     this.roster = new Roster(CONFIG.maxCarriedPets, this.pets, previousRoster);
     if (previousRoster) this.allies = [this.allies[0], ...this.roster.entries.map((pet, index) => ({
       id: pet.id, name: pet.name, side: 'ally' as const, slot: 0, level: pet.level,
+      isBaby: pet.isBaby, combatLevel: effectiveLevel(pet.level),
       hp: pet.maxHp, maxHp: pet.maxHp, attack: pet.attack, defense: pet.defense,
       speed: pet.speed, skill: pet.skill, defending: false, left: false, deployed: index === 0,
     }))];
@@ -65,8 +71,11 @@ export class Battle {
     if (quantity < 1 || quantity > 3) throw new Error('遭遇数量超出配置范围');
     for (let i = 0; i < quantity; i++) {
       const wild = CONFIG.wild;
-      this.enemies.push({ id: `enemy-${i}`, name: wild.name, side: 'enemy', slot: i,
-        level: wild.level, hp: wild.hp, maxHp: wild.hp, attack: wild.attack,
+      const isBaby = isBabyEncounter(babyRandom(), CONFIG.baby.encounterRate);
+      const level = isBaby ? CONFIG.baby.level : wild.level;
+      this.enemies.push({ id: `enemy-${i}`, name: isBaby ? CONFIG.baby.name : wild.name,
+        side: 'enemy', slot: i, level, isBaby, combatLevel: effectiveLevel(level),
+        hp: wild.hp, maxHp: wild.hp, attack: wild.attack,
         defense: wild.defense, speed: wild.speed, defending: false, left: false, deployed: true });
     }
     this.log.push(`遭遇 ${quantity} 只野外汀蛙。`);

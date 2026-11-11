@@ -25,7 +25,7 @@ test('roster starts with two distinct initial pets and one usable summon', () =>
 });
 
 test('successful capture adds one independent wild pet with summon eligibility', () => {
-  const battle = new Battle(() => 0, 3);
+  const battle = new Battle(() => 0, 3, 0, undefined, () => 1);
   winCapture(battle, 'enemy-0');
   assert.equal(battle.roster.entries.length, 3);
   const caught = battle.roster.entries[2];
@@ -74,7 +74,7 @@ test('three captures fill five slots; full roster rejects without spending comma
   assert.equal(new Set(battle.roster.entries.map(pet => pet.id)).size, 5);
   assert.equal(battle.winner, 'ally');
   let rejectedRolls = 0;
-  const next = new Battle(() => { rejectedRolls++; return 0; }, 1);
+  const next = new Battle(() => { rejectedRolls++; return 0; }, 1, 0, undefined, () => 1);
   // A full roster is also guarded at the command boundary, before resolution.
   next.roster.entries.push(...battle.roster.entries.slice(2));
   assert.throws(() => next.command('hero', 'capture', 'enemy-0'), /携带已满（5\/5），无法抓取/);

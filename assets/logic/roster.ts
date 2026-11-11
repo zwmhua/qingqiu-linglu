@@ -1,8 +1,8 @@
 import type { Unit } from '../scripts/Battle';
 
-type PetStats = Pick<Unit, 'id' | 'name' | 'hp' | 'maxHp' | 'level' | 'attack' | 'defense' | 'speed' | 'skill'>;
+type PetStats = Pick<Unit, 'id' | 'name' | 'hp' | 'maxHp' | 'level' | 'attack' | 'defense' | 'speed' | 'skill' | 'isBaby'>;
 export type CarriedPet = PetStats & {
-  origin: 'initial' | 'captured'; sourceEnemyId?: string;
+  isBaby: boolean; origin: 'initial' | 'captured'; sourceEnemyId?: string;
 };
 
 export class Roster {
@@ -16,7 +16,7 @@ export class Roster {
     this.entries = previous ? previous.entries.map(pet => ({ ...pet, hp: pet.maxHp }))
       : initial.map(pet => ({ id: pet.id, name: pet.name, hp: pet.hp, maxHp: pet.maxHp,
         level: pet.level, attack: pet.attack, defense: pet.defense, speed: pet.speed,
-        skill: pet.skill, origin: 'initial' as const }));
+        skill: pet.skill, isBaby: false, origin: 'initial' as const }));
     this.nextCapturedId = previous?.nextCapturedId ?? 1;
   }
 
@@ -24,9 +24,11 @@ export class Roster {
 
   addCaptured(enemy: PetStats): boolean {
     if (this.full || this.capturedEnemies.has(enemy.id)) return false;
-    this.entries.push({ id: `caught-${this.nextCapturedId++}`, name: '汀蛙', hp: enemy.hp,
+    this.entries.push({ id: `caught-${this.nextCapturedId++}`,
+      name: enemy.isBaby ? enemy.name : '汀蛙', hp: enemy.hp,
       maxHp: enemy.maxHp, level: enemy.level, attack: enemy.attack, defense: enemy.defense,
-      speed: enemy.speed, skill: enemy.skill, origin: 'captured', sourceEnemyId: enemy.id });
+      speed: enemy.speed, skill: enemy.skill, isBaby: !!enemy.isBaby,
+      origin: 'captured', sourceEnemyId: enemy.id });
     this.capturedEnemies.add(enemy.id);
     return true;
   }

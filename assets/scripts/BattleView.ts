@@ -3,6 +3,7 @@ import { Battle, BattleEvent, Unit } from './Battle';
 import { COMMAND_ICON_SIZE, COMMAND_LAYOUT, CONFIG } from './config';
 import { targetCommand, toggleTarget } from '../logic/targeting';
 import { AutoCommands } from '../logic/auto';
+import { PREVIEW } from 'cc/env';
 import type { TargetMode } from '../logic/targeting';
 
 const { ccclass, property } = _decorator;
@@ -20,7 +21,8 @@ export class BattleView extends Component {
   @property([SpriteFrame]) commandIcons: SpriteFrame[] = [];
   @property(SpriteFrame) iconAuto: SpriteFrame | null = null;
   @property(SpriteFrame) iconAutoCancel: SpriteFrame | null = null;
-  private battle = new Battle();
+  private battle = PREVIEW && new URLSearchParams(window.location.search).get('babySample') === '1'
+    ? new Battle(() => 0, 1) : new Battle();
   private layoutTest = new URLSearchParams(window.location.search).get('layout') === '10v10';
   private choosingTarget: TargetMode | null = null;
   private lastShownSecond = -1;
@@ -340,7 +342,7 @@ export class BattleView extends Component {
     };
     bar(healthY, v.barWidth * (this.displayedHp?.get(unit.id) ?? unit.hp) / unit.maxHp, '#D95757');
     if (unit.side === 'ally') bar(healthY + v.barHeight + v.barGap, v.barWidth, '#559DD8');
-    const nameWidth = this.isPet(unit) ? v.petNameWidth : v.nameWidth;
+    const nameWidth = this.isPet(unit) && !unit.isBaby ? v.petNameWidth : v.nameWidth;
     const nameX = point.x + (this.isPet(unit) ? v.petNameOffsetX : 0) - nameWidth / 2;
     const name = this.text(`${unit.name} Lv.${unit.level}`, nameX,
       point.y + 19 + v.nameGap, v.nameSize, '#FFFFFF', nameWidth, 1, targetClick);
@@ -623,8 +625,8 @@ export class BattleView extends Component {
     this.text('选择携带的汀蛙', 510, 161, 28, '#F3DFAD', 310, 1);
     this.battle.pets.forEach((pet, index) => {
       const eligible = this.battle.summonTargets().some(unit => unit.id === pet.id);
-      const label = `${pet.name} ${index + 1} · 气血 ${pet.hp}/${pet.maxHp}`;
-      this.button(label, 519, 218 + index * 73, 295, 61, eligible, eligible ? () => {
+      const label = `${pet.name} ${index + 1} Lv.${pet.level} ${pet.hp}/${pet.maxHp}`;
+      this.button(label, 499, 218 + index * 73, 335, 61, eligible, eligible ? () => {
         const before = this.battle.round;
         const phase = this.battle.phase;
         const hp = this.captureHp();
@@ -644,7 +646,7 @@ export class BattleView extends Component {
     this.text(`携带 ${roster.entries.length}/${roster.capacity}`, 475, 153, 30, '#F3DFAD', 385, 1);
     roster.entries.forEach((pet, index) => {
       const current = this.battle.pets.find(unit => unit.id === pet.id);
-      this.text(`${pet.name} · ${pet.origin === 'initial' ? '初始' : '抓取获得'}`,
+      this.text(`${pet.name} Lv.${pet.level} · ${pet.origin === 'initial' ? '初始' : '抓取获得'}`,
         478, 211 + index * 65, 22, '#F6F0DC', 370);
       this.text(`气血 ${current?.hp ?? pet.hp}/${pet.maxHp}`,
         478, 238 + index * 65, 17, '#C6DBC6', 370);
