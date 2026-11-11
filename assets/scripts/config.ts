@@ -1,5 +1,6 @@
 import { BABY_CONFIG } from '../logic/baby';
 import { APTITUDE_RANGES } from '../logic/aptitude';
+import { TINGWA_GROWTH } from '../logic/growth';
 
 const formation = {
   enemyColumnX: 125, enemyColumnY: 65, enemyRowX: 130, enemyRowY: 100,
@@ -28,6 +29,7 @@ export const CONFIG = {
   frog: {
     name: '汀蛙', level: 1, base: { hp: 38, attack: 11, defense: 10, speed: 10 },
     aptitude: APTITUDE_RANGES,
+    growth: TINGWA_GROWTH,
     innateSkill: '露珠弹', mutated: false,
   },
   baby: BABY_CONFIG,

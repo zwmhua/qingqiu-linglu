@@ -652,6 +652,7 @@ export class BattleView extends Component {
       const labels = ['攻击', '防御', '体力', '法力', '躲避', '速度'];
       APTITUDE_KEYS.forEach((key, index) => this.text(
         `${labels[index]}  ${selected.aptitudes[key]}`, 490, 262 + index * 45, 22, '#F6F0DC', 350));
+      this.text(`成长  ${selected.growth.toFixed(3)}`, 490, 526, 22, '#F6F0DC', 350);
       this.button('返回携带', 539, 562, 255, 55, true, () => {
         this.selectedPetId = null; this.render();
       });

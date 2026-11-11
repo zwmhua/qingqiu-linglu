@@ -1,9 +1,9 @@
 import type { Unit } from '../scripts/Battle';
 import type { Aptitudes } from './aptitude';
 
-type PetStats = Pick<Unit, 'id' | 'name' | 'hp' | 'maxHp' | 'level' | 'attack' | 'defense' | 'speed' | 'skill' | 'isBaby' | 'aptitudes'>;
+type PetStats = Pick<Unit, 'id' | 'name' | 'hp' | 'maxHp' | 'level' | 'attack' | 'defense' | 'speed' | 'skill' | 'isBaby' | 'aptitudes' | 'growth'>;
 export type CarriedPet = PetStats & {
-  isBaby: boolean; aptitudes: Aptitudes;
+  isBaby: boolean; aptitudes: Aptitudes; growth: number;
   origin: 'initial' | 'captured'; sourceEnemyId?: string;
 };
 
@@ -18,7 +18,8 @@ export class Roster {
     this.entries = previous ? previous.entries.map(pet => ({ ...pet, aptitudes: { ...pet.aptitudes }, hp: pet.maxHp }))
       : initial.map(pet => ({ id: pet.id, name: pet.name, hp: pet.hp, maxHp: pet.maxHp,
         level: pet.level, attack: pet.attack, defense: pet.defense, speed: pet.speed,
-        skill: pet.skill, isBaby: false, aptitudes: this.requireAptitudes(pet), origin: 'initial' as const }));
+        skill: pet.skill, isBaby: false, aptitudes: this.requireAptitudes(pet),
+        growth: this.requireGrowth(pet), origin: 'initial' as const }));
     this.nextCapturedId = previous?.nextCapturedId ?? 1;
   }
 
@@ -29,6 +30,11 @@ export class Roster {
     return { ...pet.aptitudes };
   }
 
+  private requireGrowth(pet: PetStats): number {
+    if (pet.growth === undefined) throw new Error('汀蛙缺少成长');
+    return pet.growth;
+  }
+
   addCaptured(enemy: PetStats): boolean {
     if (this.full || this.capturedEnemies.has(enemy.id)) return false;
     this.entries.push({ id: `caught-${this.nextCapturedId++}`,
@@ -36,6 +42,7 @@ export class Roster {
       maxHp: enemy.maxHp, level: enemy.level, attack: enemy.attack, defense: enemy.defense,
       speed: enemy.speed, skill: enemy.skill, isBaby: !!enemy.isBaby,
       aptitudes: this.requireAptitudes(enemy),
+      growth: this.requireGrowth(enemy),
       origin: 'captured', sourceEnemyId: enemy.id });
     this.capturedEnemies.add(enemy.id);
     return true;
