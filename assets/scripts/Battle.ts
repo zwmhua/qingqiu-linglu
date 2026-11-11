@@ -1,5 +1,6 @@
 import { CONFIG } from './config';
 import { captureChance } from '../logic/capture';
+import { Roster } from '../logic/roster';
 
 export type Side = 'ally' | 'enemy';
 export type Command = 'attack' | 'defend' | 'protect' | 'retreat' | 'flee' | 'summon' | 'capture';
@@ -22,6 +23,7 @@ export type BattleEvent = AttackEvent | SummonEvent | CaptureEvent;
 export class Battle {
   allies: Unit[] = [];
   enemies: Unit[] = [];
+  roster!: Roster;
   commands = new Map<string, { command: Command; target?: string }>();
   log: string[] = [];
   lastOrder: string[] = [];
@@ -52,6 +54,7 @@ export class Battle {
         hp: pet.hp, maxHp: pet.hp, attack: pet.attack, defense: pet.defense,
         speed: pet.speed, defending: false, left: false, deployed: false, skill: frog.innateSkill },
     ];
+    this.roster = new Roster(CONFIG.maxCarriedPets, this.pets);
     const quantity = count ?? this.pickCount();
     if (quantity < 1 || quantity > 3) throw new Error('遭遇数量超出配置范围');
     for (let i = 0; i < quantity; i++) {
@@ -101,6 +104,7 @@ export class Battle {
     }
     if (command === 'capture') {
       if (actor.id !== 'hero') throw new Error('只有撷灵客才能抓取');
+      if (this.roster.full) throw new Error(`携带已满（${this.roster.entries.length}/${this.roster.capacity}），无法抓取`);
       const enemy = this.enemies.find(u => u.id === target);
       if (enemy?.hp === 0) throw new Error('已倒下，无法抓取');
       if (!enemy || enemy.left) throw new Error('抓取需要存活目标');
@@ -186,9 +190,13 @@ export class Battle {
       if (turn.command === 'capture') {
         const target = this.enemies.find(u => u.id === turn.target && u.hp > 0 && !u.left);
         if (!target) { this.log.push('目标已倒下，无法抓取。'); continue; }
+        if (this.roster.full) { this.log.push('携带已满，无法抓取。'); continue; }
         const success = this.random() < captureChance(target.hp, target.maxHp);
         this.events.push({ kind: success ? 'captureSuccess' : 'captureFail', actorId: turn.actor.id, targetId: target.id });
-        if (success) target.left = true;
+        if (success) {
+          if (!this.roster.addCaptured(target)) throw new Error('携带记录无法新增');
+          target.left = true;
+        }
         this.log.push(success ? `${turn.actor.name} 抓取成功，${target.name} 离场。` : `${turn.actor.name} 抓取 ${target.name} 失败。`);
         if (this.checkWinner()) break;
         continue;

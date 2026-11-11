@@ -33,6 +33,7 @@ export const CONFIG = {
   defenseDamageFactor: 0.5,
   protection: { protectorShare: 0.5 },
   summon: { maxPerBattle: 3, carriedPets: 2 },
+  maxCarriedPets: 5,
   status: { heroManaMax: 40, petManaMax: 30, rageMax: 150, ragePerDamage: 1 },
   visual: {
     unitScale: 0.5, heroHeight: 240, frogHeight: 170, enemyFlipX: true,

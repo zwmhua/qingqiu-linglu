@@ -33,6 +33,7 @@ export class BattleView extends Component {
   private displayedDeployment: Map<string, boolean> | null = null;
   private displayedLeft: Map<string, boolean> | null = null;
   private summonOpen = false;
+  private rosterOpen = false;
   private detailsOpen: 'pet' | 'hero' | null = null;
   private playing = false;
   private speedMultiplier = 1;
@@ -45,7 +46,7 @@ export class BattleView extends Component {
   update(dt: number): void {
     if (this.layoutTest) return;
     if (this.playing) { this.syncMovingUnits(); return; }
-    if (this.confirmingTarget) return;
+    if (this.confirmingTarget || this.rosterOpen) return;
     const before = this.battle.round;
     const phase = this.battle.phase;
     const hp = this.captureHp();
@@ -424,7 +425,7 @@ export class BattleView extends Component {
       this.playNextAttack();
       return;
     }
-    if (event.kind === 'captureSuccess' || event.kind === 'captureFail') {
+    if (event.kind !== 'attack') {
       if (event.kind === 'captureSuccess') this.displayedLeft!.set(event.targetId, true);
       this.render();
       this.playNextAttack();
@@ -579,6 +580,20 @@ export class BattleView extends Component {
     this.button('返回', 568, 411, 192, 58, true, () => { this.summonOpen = false; this.render(); });
   }
 
+  private renderRosterList(): void {
+    const roster = this.battle.roster;
+    this.rect(439, 133, 455, 500, '#1E3835', '#E5CB8D', 14);
+    this.text(`携带 ${roster.entries.length}/${roster.capacity}`, 475, 153, 30, '#F3DFAD', 385, 1);
+    roster.entries.forEach((pet, index) => {
+      const current = this.battle.pets.find(unit => unit.id === pet.id);
+      this.text(`${pet.name} · ${pet.origin === 'initial' ? '初始' : '本场抓取'}`,
+        478, 211 + index * 65, 22, '#F6F0DC', 370);
+      this.text(`气血 ${current?.hp ?? pet.hp}/${pet.maxHp}`,
+        478, 238 + index * 65, 17, '#C6DBC6', 370);
+    });
+    this.button('返回战斗', 539, 562, 255, 55, true, () => { this.rosterOpen = false; this.render(); });
+  }
+
   private render(): void {
     this.lastShownSecond = Math.ceil(this.battle.seconds);
     for (const child of [...this.node.children]) if (child.name !== 'Camera') child.destroy();
@@ -636,9 +651,18 @@ export class BattleView extends Component {
     this.layer = markerLayer;
     for (const unit of units) this.unitInfo(unit);
     this.layer = hitLayer;
-    if (!this.playing) this.renderHitAreas(units);
+    if (!this.playing && !this.rosterOpen) this.renderHitAreas(units);
     this.layer = interfaceLayer;
     this.renderLog();
+    if (!this.playing) this.button(`携带 ${this.battle.roster.entries.length}/${this.battle.roster.capacity}`,
+      25, 104, 165, 54, true, () => {
+        this.choosingTarget = null;
+        this.summonOpen = false;
+        this.rosterOpen = !this.rosterOpen;
+        this.render();
+      });
+    if (this.battle.roster.full && !this.playing) this.text(`携带已满（${this.battle.roster.entries.length}/${this.battle.roster.capacity}），无法抓取`,
+      470, 104, 20, '#F8D98A', 360, 1);
     this.rect(1095, 119, 218, 59, '#18312F', '', 9, undefined, 205);
     this.text(this.playing ? '战斗进行中' : this.battle.phase === 'ended'
       ? this.battle.winner === 'ally' ? '胜利' : '失败'
@@ -648,7 +672,7 @@ export class BattleView extends Component {
           : `请为 ${this.battle.pending[0]?.name ?? ''} 下达指令`,
       1105, 132, 18, '#F4DC9C', 200);
     const actor = this.battle.pending[0];
-    if (!this.playing && this.battle.phase === 'command' && actor) {
+    if (!this.playing && !this.rosterOpen && this.battle.phase === 'command' && actor) {
       const send = (command: 'defend' | 'retreat' | 'flee') => {
         const before = this.battle.round;
         const phase = this.battle.phase;
@@ -669,7 +693,7 @@ export class BattleView extends Component {
           { label: '防御', enabled: true, action: () => send('defend') },
           { label: '保护', enabled: this.battle.protectTargets(actor.id).length > 0, action: () => select('protect') },
           { label: '召唤', enabled: this.battle.summonTargets().length > 0, action: () => { this.summonOpen = true; this.render(); } },
-          { label: '抓取', enabled: true, action: () => select('capture') },
+          { label: '抓取', enabled: !this.battle.roster.full, action: () => select('capture') },
           { label: '道具', enabled: false },
           { label: '逃跑', enabled: true, action: () => send('flee') },
         ] : [
@@ -683,7 +707,7 @@ export class BattleView extends Component {
         1111 + (index % 2) * 104, CONFIG.visual.commandTop + Math.floor(index / 2) * 122,
         choice.enabled, choice.action));
     }
-    if (this.summonOpen && actor?.id === 'hero' && !this.playing) {
+    if (this.summonOpen && actor?.id === 'hero' && !this.playing && !this.rosterOpen) {
       this.layer = resultLayer;
       this.renderSummonList(actor.id);
     }
@@ -700,9 +724,14 @@ export class BattleView extends Component {
         this.displayedLeft = null;
         this.detailsOpen = null;
         this.summonOpen = false;
+        this.rosterOpen = false;
         this.animationQueue = [];
         this.render();
       });
+    }
+    if (this.rosterOpen && !this.playing) {
+      this.layer = resultLayer;
+      this.renderRosterList();
     }
   }
 }
