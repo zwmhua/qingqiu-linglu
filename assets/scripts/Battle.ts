@@ -1,7 +1,8 @@
 import { CONFIG } from './config';
+import { captureChance } from '../logic/capture';
 
 export type Side = 'ally' | 'enemy';
-export type Command = 'attack' | 'defend' | 'protect' | 'retreat' | 'flee' | 'summon';
+export type Command = 'attack' | 'defend' | 'protect' | 'retreat' | 'flee' | 'summon' | 'capture';
 export type Unit = {
   id: string; name: string; side: Side; slot: number; level: number;
   hp: number; maxHp: number; attack: number; defense: number; speed: number;
@@ -15,7 +16,8 @@ export type AttackEvent = {
   guardId?: string; guardDamage?: number; guardAfter?: number;
 };
 export type SummonEvent = { kind: 'summon'; actorId: string; fromId?: string; toId: string };
-export type BattleEvent = AttackEvent | SummonEvent;
+export type CaptureEvent = { kind: 'captureSuccess' | 'captureFail'; actorId: string; targetId: string };
+export type BattleEvent = AttackEvent | SummonEvent | CaptureEvent;
 
 export class Battle {
   allies: Unit[] = [];
@@ -97,6 +99,12 @@ export class Battle {
     if (command === 'attack' && !this.enemies.some(u => u.id === target && u.hp > 0 && !u.left)) {
       throw new Error('攻击需要存活目标');
     }
+    if (command === 'capture') {
+      if (actor.id !== 'hero') throw new Error('只有撷灵客才能抓取');
+      const enemy = this.enemies.find(u => u.id === target);
+      if (enemy?.hp === 0) throw new Error('已倒下，无法抓取');
+      if (!enemy || enemy.left) throw new Error('抓取需要存活目标');
+    }
     if (command === 'protect') {
       if (!this.protectTargets(actorId).some(u => u.id === target)) {
         throw new Error('保护需要其他存活的我方目标');
@@ -150,7 +158,7 @@ export class Battle {
     const turns: Order[] = [];
     for (const ally of this.allies) {
       const chosen = this.commands.get(ally.id);
-      if (chosen && ally.deployed && ally.hp > 0 && !ally.left && (chosen.command === 'attack' || chosen.command === 'defend' || chosen.command === 'summon')) {
+      if (chosen && ally.deployed && ally.hp > 0 && !ally.left && (chosen.command === 'attack' || chosen.command === 'defend' || chosen.command === 'summon' || chosen.command === 'capture')) {
         turns.push({ actor: ally, ...chosen });
       }
     }
@@ -173,6 +181,16 @@ export class Battle {
         this.summonsUsed++;
         this.events.push({ kind: 'summon', actorId: turn.actor.id, fromId: outgoing?.id, toId: incoming.id });
         this.log.push(`${turn.actor.name} 召唤 ${incoming.name} 上场。`);
+        continue;
+      }
+      if (turn.command === 'capture') {
+        const target = this.enemies.find(u => u.id === turn.target && u.hp > 0 && !u.left);
+        if (!target) { this.log.push('目标已倒下，无法抓取。'); continue; }
+        const success = this.random() < captureChance(target.hp, target.maxHp);
+        this.events.push({ kind: success ? 'captureSuccess' : 'captureFail', actorId: turn.actor.id, targetId: target.id });
+        if (success) target.left = true;
+        this.log.push(success ? `${turn.actor.name} 抓取成功，${target.name} 离场。` : `${turn.actor.name} 抓取 ${target.name} 失败。`);
+        if (this.checkWinner()) break;
         continue;
       }
       const targets = turn.actor.side === 'ally' ? this.enemies : this.allies;

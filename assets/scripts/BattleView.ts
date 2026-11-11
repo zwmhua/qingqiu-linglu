@@ -17,7 +17,7 @@ export class BattleView extends Component {
   @property([SpriteFrame]) commandIcons: SpriteFrame[] = [];
   private battle = new Battle();
   private layoutTest = new URLSearchParams(window.location.search).get('layout') === '10v10';
-  private choosingTarget: 'attack' | 'protect' | null = null;
+  private choosingTarget: 'attack' | 'protect' | 'capture' | null = null;
   private lastShownSecond = -1;
   private layer!: Node;
   private markerLayer!: Node;
@@ -31,6 +31,7 @@ export class BattleView extends Component {
   private displayedHp: Map<string, number> | null = null;
   private animationQueue: BattleEvent[] = [];
   private displayedDeployment: Map<string, boolean> | null = null;
+  private displayedLeft: Map<string, boolean> | null = null;
   private summonOpen = false;
   private detailsOpen: 'pet' | 'hero' | null = null;
   private playing = false;
@@ -216,13 +217,13 @@ export class BattleView extends Component {
     if (this.layoutTest) return false;
     const actor = this.battle.pending[0];
     if (!actor || unit.hp === 0 || unit.left) return false;
-    if (this.choosingTarget === 'attack') return unit.side === 'enemy';
+    if (this.choosingTarget === 'attack' || this.choosingTarget === 'capture') return unit.side === 'enemy';
     if (this.choosingTarget === 'protect') return this.battle.protectTargets(actor.id).some(u => u.id === unit.id);
     return false;
   }
 
   private unitShadow(unit: Unit): void {
-    if (unit.left || (this.displayedHp?.get(unit.id) ?? unit.hp) === 0) return;
+    if ((this.displayedLeft?.get(unit.id) ?? unit.left) || (this.displayedHp?.get(unit.id) ?? unit.hp) === 0) return;
     const previous = this.layer;
     const group = new Node(`shadow-${unit.id}`);
     previous.addChild(group);
@@ -232,14 +233,14 @@ export class BattleView extends Component {
     this.ellipse(point.x, point.y + 4, 55, 15, '#17241d', 105);
     if (!this.playing && !this.choosingTarget && this.battle.pending[0]?.id === unit.id) {
       this.ringOpacities.set(unit.id, this.selectionRing(point.x, point.y + 4, '#F1D788'));
-    } else if (!this.playing && this.choosingTarget === 'attack' && this.canSelect(unit)) {
+    } else if (!this.playing && (this.choosingTarget === 'attack' || this.choosingTarget === 'capture') && this.canSelect(unit)) {
       this.ringOpacities.set(unit.id, this.selectionRing(point.x, point.y + 4, '#D9514A'));
     }
     this.layer = previous;
   }
 
   private unitVisual(unit: Unit): void {
-    if (unit.left) return;
+    if (this.displayedLeft?.get(unit.id) ?? unit.left) return;
     const point = this.unitPoint(unit);
     const dead = (this.displayedHp?.get(unit.id) ?? unit.hp) === 0;
     const isPet = this.isPet(unit) || unit.side === 'enemy';
@@ -262,7 +263,7 @@ export class BattleView extends Component {
   }
 
   private unitInfo(unit: Unit): void {
-    if (unit.left || (this.displayedHp?.get(unit.id) ?? unit.hp) === 0) return;
+    if ((this.displayedLeft?.get(unit.id) ?? unit.left) || (this.displayedHp?.get(unit.id) ?? unit.hp) === 0) return;
     const previous = this.layer;
     const group = new Node(`markers-${unit.id}`);
     previous.addChild(group);
@@ -378,6 +379,8 @@ export class BattleView extends Component {
     if (this.battle.events.length === 0) return false;
     this.displayedHp = hp;
     this.displayedDeployment = deployment;
+    this.displayedLeft = new Map(this.battle.units.map(unit => [unit.id, unit.left]));
+    for (const event of this.battle.events) if (event.kind === 'captureSuccess') this.displayedLeft.set(event.targetId, false);
     this.animationQueue = [...this.battle.events];
     this.playing = true;
     this.render();
@@ -410,12 +413,19 @@ export class BattleView extends Component {
       this.playing = false;
       this.displayedHp = null;
       this.displayedDeployment = null;
+      this.displayedLeft = null;
       this.render();
       return;
     }
     if (event.kind === 'summon') {
       if (event.fromId) this.displayedDeployment!.set(event.fromId, false);
       this.displayedDeployment!.set(event.toId, true);
+      this.render();
+      this.playNextAttack();
+      return;
+    }
+    if (event.kind === 'captureSuccess' || event.kind === 'captureFail') {
+      if (event.kind === 'captureSuccess') this.displayedLeft!.set(event.targetId, true);
       this.render();
       this.playNextAttack();
       return;
@@ -617,7 +627,8 @@ export class BattleView extends Component {
     const visiblePet = this.battle.pets.find(u => (this.displayedDeployment?.get(u.id) ?? u.deployed) && !u.left);
     this.statusCard('pet', 906, visiblePet);
     this.statusCard('hero', 1102, this.battle.allies[0]);
-    const units = this.battle.units.filter(u => this.displayedDeployment?.get(u.id) ?? u.deployed);
+    const units = this.battle.units.filter(u => (this.displayedDeployment?.get(u.id) ?? u.deployed)
+      && !(this.displayedLeft?.get(u.id) ?? u.left));
     this.layer = unitLayer;
     for (const unit of units) this.unitShadow(unit);
     // Screen y is measured from the top; units with lower feet are drawn later.
@@ -632,6 +643,7 @@ export class BattleView extends Component {
     this.text(this.playing ? '战斗进行中' : this.battle.phase === 'ended'
       ? this.battle.winner === 'ally' ? '胜利' : '失败'
       : this.choosingTarget === 'attack' ? '请选择敌方目标'
+        : this.choosingTarget === 'capture' ? '请选择抓取目标'
         : this.choosingTarget === 'protect' ? '请选择我方目标'
           : `请为 ${this.battle.pending[0]?.name ?? ''} 下达指令`,
       1105, 132, 18, '#F4DC9C', 200);
@@ -647,7 +659,7 @@ export class BattleView extends Component {
         if (this.startPlayback(before, phase, hp, deployment)) return;
         this.render();
       };
-      const select = (command: 'attack' | 'protect') => {
+      const select = (command: 'attack' | 'protect' | 'capture') => {
         this.choosingTarget = command;
         this.render();
       };
@@ -657,7 +669,7 @@ export class BattleView extends Component {
           { label: '防御', enabled: true, action: () => send('defend') },
           { label: '保护', enabled: this.battle.protectTargets(actor.id).length > 0, action: () => select('protect') },
           { label: '召唤', enabled: this.battle.summonTargets().length > 0, action: () => { this.summonOpen = true; this.render(); } },
-          { label: '抓取', enabled: false },
+          { label: '抓取', enabled: true, action: () => select('capture') },
           { label: '道具', enabled: false },
           { label: '逃跑', enabled: true, action: () => send('flee') },
         ] : [
@@ -685,6 +697,7 @@ export class BattleView extends Component {
         this.choosingTarget = null;
         this.displayedHp = null;
         this.displayedDeployment = null;
+        this.displayedLeft = null;
         this.detailsOpen = null;
         this.summonOpen = false;
         this.animationQueue = [];
