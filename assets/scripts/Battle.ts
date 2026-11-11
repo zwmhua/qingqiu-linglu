@@ -2,12 +2,15 @@ import { CONFIG } from './config';
 import { captureChance } from '../logic/capture';
 import { Roster } from '../logic/roster';
 import { effectiveLevel, isBabyEncounter } from '../logic/baby';
+import { generateAptitudes, middleAptitudes } from '../logic/aptitude';
+import type { Aptitudes } from '../logic/aptitude';
 
 export type Side = 'ally' | 'enemy';
 export type Command = 'attack' | 'defend' | 'protect' | 'retreat' | 'flee' | 'summon' | 'capture';
 export type Unit = {
   id: string; name: string; side: Side; slot: number; level: number;
   isBaby?: boolean; combatLevel?: number;
+  aptitudes?: Aptitudes;
   hp: number; maxHp: number; attack: number; defense: number; speed: number;
   defending: boolean; left: boolean; deployed: boolean; skill?: string;
 };
@@ -41,7 +44,8 @@ export class Battle {
   private random: () => number;
 
   constructor(random: () => number = Math.random, count?: number, initialRage = 0,
-    previousRoster?: Roster, babyRandom: () => number = random) {
+    previousRoster?: Roster, babyRandom: () => number = random,
+    aptitudeRandom: () => number = Math.random) {
     this.random = random;
     this.heroRage = Math.max(0, Math.min(CONFIG.status.rageMax, initialRage));
     const hero = CONFIG.hero;
@@ -52,11 +56,11 @@ export class Battle {
         hp: hero.hp, maxHp: hero.hp, attack: hero.attack, defense: hero.defense,
         speed: hero.speed, defending: false, left: false, deployed: true },
       { id: 'pet', name: frog.name, side: 'ally', slot: 0, level: frog.level,
-        isBaby: false, combatLevel: effectiveLevel(frog.level),
+        isBaby: false, combatLevel: effectiveLevel(frog.level), aptitudes: middleAptitudes(),
         hp: pet.hp, maxHp: pet.hp, attack: pet.attack, defense: pet.defense,
         speed: pet.speed, defending: false, left: false, deployed: true, skill: frog.innateSkill },
       { id: 'pet-2', name: frog.name, side: 'ally', slot: 0, level: frog.level,
-        isBaby: false, combatLevel: effectiveLevel(frog.level),
+        isBaby: false, combatLevel: effectiveLevel(frog.level), aptitudes: middleAptitudes(),
         hp: pet.hp, maxHp: pet.hp, attack: pet.attack, defense: pet.defense,
         speed: pet.speed, defending: false, left: false, deployed: false, skill: frog.innateSkill },
     ];
@@ -64,6 +68,7 @@ export class Battle {
     if (previousRoster) this.allies = [this.allies[0], ...this.roster.entries.map((pet, index) => ({
       id: pet.id, name: pet.name, side: 'ally' as const, slot: 0, level: pet.level,
       isBaby: pet.isBaby, combatLevel: effectiveLevel(pet.level),
+      aptitudes: pet.aptitudes,
       hp: pet.maxHp, maxHp: pet.maxHp, attack: pet.attack, defense: pet.defense,
       speed: pet.speed, skill: pet.skill, defending: false, left: false, deployed: index === 0,
     }))];
@@ -75,6 +80,7 @@ export class Battle {
       const level = isBaby ? CONFIG.baby.level : wild.level;
       this.enemies.push({ id: `enemy-${i}`, name: isBaby ? CONFIG.baby.name : wild.name,
         side: 'enemy', slot: i, level, isBaby, combatLevel: effectiveLevel(level),
+        aptitudes: generateAptitudes(isBaby, aptitudeRandom),
         hp: wild.hp, maxHp: wild.hp, attack: wild.attack,
         defense: wild.defense, speed: wild.speed, defending: false, left: false, deployed: true });
     }

@@ -1,4 +1,5 @@
 import { BABY_CONFIG } from '../logic/baby';
+import { APTITUDE_RANGES } from '../logic/aptitude';
 
 const formation = {
   enemyColumnX: 125, enemyColumnY: 65, enemyRowX: 130, enemyRowY: 100,
@@ -26,7 +27,7 @@ export const CONFIG = {
   hero: { name: '撷灵客', level: 1, hp: 58, attack: 10, defense: 13, speed: 9 },
   frog: {
     name: '汀蛙', level: 1, base: { hp: 38, attack: 11, defense: 10, speed: 10 },
-    aptitude: { attack: [50, 90], defense: [55, 95], hp: [70, 110], speed: [50, 90] },
+    aptitude: APTITUDE_RANGES,
     innateSkill: '露珠弹', mutated: false,
   },
   baby: BABY_CONFIG,

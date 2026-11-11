@@ -4,6 +4,7 @@ import { COMMAND_ICON_SIZE, COMMAND_LAYOUT, CONFIG } from './config';
 import { targetCommand, toggleTarget } from '../logic/targeting';
 import { AutoCommands } from '../logic/auto';
 import { PREVIEW } from 'cc/env';
+import { APTITUDE_KEYS } from '../logic/aptitude';
 import type { TargetMode } from '../logic/targeting';
 
 const { ccclass, property } = _decorator;
@@ -41,6 +42,7 @@ export class BattleView extends Component {
   private displayedLeft: Map<string, boolean> | null = null;
   private summonOpen = false;
   private rosterOpen = false;
+  private selectedPetId: string | null = null;
   private detailsOpen: 'pet' | 'hero' | null = null;
   private playing = false;
   private speedMultiplier = 1;
@@ -643,15 +645,31 @@ export class BattleView extends Component {
   private renderRosterList(): void {
     const roster = this.battle.roster;
     this.rect(439, 133, 455, 500, '#1E3835', '#E5CB8D', 14);
+    const selected = roster.entries.find(pet => pet.id === this.selectedPetId);
+    if (selected) {
+      this.text(`${selected.name} Lv.${selected.level}`, 475, 156, 30, '#F3DFAD', 385, 1);
+      this.text('资质', 478, 214, 25, '#F3DFAD', 370);
+      const labels = ['攻击', '防御', '体力', '法力', '躲避', '速度'];
+      APTITUDE_KEYS.forEach((key, index) => this.text(
+        `${labels[index]}  ${selected.aptitudes[key]}`, 490, 262 + index * 45, 22, '#F6F0DC', 350));
+      this.button('返回携带', 539, 562, 255, 55, true, () => {
+        this.selectedPetId = null; this.render();
+      });
+      return;
+    }
     this.text(`携带 ${roster.entries.length}/${roster.capacity}`, 475, 153, 30, '#F3DFAD', 385, 1);
     roster.entries.forEach((pet, index) => {
       const current = this.battle.pets.find(unit => unit.id === pet.id);
+      const open = () => { this.selectedPetId = pet.id; this.render(); };
+      this.rect(470, 202 + index * 65, 390, 54, '#294743', '', 6, open);
       this.text(`${pet.name} Lv.${pet.level} · ${pet.origin === 'initial' ? '初始' : '抓取获得'}`,
-        478, 211 + index * 65, 22, '#F6F0DC', 370);
+        478, 211 + index * 65, 22, '#F6F0DC', 370, 0, open);
       this.text(`气血 ${current?.hp ?? pet.hp}/${pet.maxHp}`,
-        478, 238 + index * 65, 17, '#C6DBC6', 370);
+        478, 238 + index * 65, 17, '#C6DBC6', 370, 0, open);
     });
-    this.button('返回战斗', 539, 562, 255, 55, true, () => { this.rosterOpen = false; this.render(); });
+    this.button('返回战斗', 539, 562, 255, 55, true, () => {
+      this.rosterOpen = false; this.selectedPetId = null; this.render();
+    });
   }
 
   private render(): void {
@@ -730,6 +748,7 @@ export class BattleView extends Component {
         this.choosingTarget = null;
         this.summonOpen = false;
         this.rosterOpen = !this.rosterOpen;
+        this.selectedPetId = null;
         this.render();
       });
     if (this.battle.roster.full && !this.playing) this.text(`携带已满（${this.battle.roster.entries.length}/${this.battle.roster.capacity}），无法抓取`,
@@ -799,6 +818,7 @@ export class BattleView extends Component {
         this.detailsOpen = null;
         this.summonOpen = false;
         this.rosterOpen = false;
+        this.selectedPetId = null;
         this.animationQueue = [];
         this.render();
       });
