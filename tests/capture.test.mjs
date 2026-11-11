@@ -60,13 +60,44 @@ test('capture of the final enemy wins without dealing damage', () => {
   assert.match(battle.log.join(' '), /抓取成功.*战斗胜利/);
 });
 
-test('a target killed before the capture turn is not retargeted or rolled', () => {
+test('a dead capture target retargets randomly among other living enemies', () => {
+  for (const [choice, expected] of [[0, 'enemy-1'], [0.999, 'enemy-2']]) {
+    const values = [0, choice, 0];
+    let rolls = 0;
+    const battle = new Battle(() => values[rolls++] ?? 0, 3, 0, undefined, () => 1);
+    battle.enemies[0].hp = 1;
+    battle.command('hero', 'capture', 'enemy-0');
+    battle.command('pet', 'attack', 'enemy-0');
+    assert.deepEqual(battle.events.filter(e => e.kind.startsWith('capture'))
+      .map(e => [e.kind, e.targetId]), [['captureSuccess', expected]]);
+    assert.equal(battle.roster.entries[2].sourceEnemyId, expected);
+    assert.equal(battle.enemies[0].hp, 0);
+    assert.equal(battle.enemies.find(enemy => enemy.id === expected).left, true);
+    assert.match(battle.log.join(' '), /原抓取目标已倒下，改抓/);
+  }
+});
+
+test('a redirected capture can fail without removing the new target', () => {
+  const values = [0, 0.999, 0.99];
   let rolls = 0;
-  const battle = new Battle(() => { rolls++; return 0; }, 2);
+  const battle = new Battle(() => values[rolls++] ?? 0, 3, 0, undefined, () => 1);
   battle.enemies[0].hp = 1;
   battle.command('hero', 'capture', 'enemy-0');
   battle.command('pet', 'attack', 'enemy-0');
-  assert.equal(rolls, 3);
-  assert.equal(battle.enemies[1].left, false);
+  assert.deepEqual(battle.events.filter(e => e.kind.startsWith('capture'))
+    .map(e => [e.kind, e.targetId]), [['captureFail', 'enemy-2']]);
+  assert.equal(battle.enemies[2].left, false);
+  assert.equal(battle.roster.entries.length, 2);
+});
+
+test('when the last enemy dies before capture, no capture roll occurs', () => {
+  let rolls = 0;
+  const battle = new Battle(() => { rolls++; return 0; }, 1, 0, undefined, () => 1);
+  battle.enemies[0].hp = 1;
+  battle.command('hero', 'capture', 'enemy-0');
+  battle.command('pet', 'attack', 'enemy-0');
+  assert.equal(rolls, 1);
+  assert.equal(battle.winner, 'ally');
   assert.ok(!battle.events.some(e => e.kind.startsWith('capture')));
+  assert.match(battle.log.join(' '), /没有存活的敌人，抓取取消/);
 });

@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CONFIG, COMMAND_LAYOUT, COMMAND_ICON_SIZE } from '../assets/scripts/config.ts';
+import { registerHooks } from 'node:module';
+
+registerHooks({ resolve(specifier, context, nextResolve) {
+  if (specifier.startsWith('.') && !specifier.endsWith('.ts')) return nextResolve(`${specifier}.ts`, context);
+  return nextResolve(specifier, context);
+} });
+const { CONFIG, COMMAND_LAYOUT, COMMAND_ICON_SIZE } = await import('../assets/scripts/config.ts');
 
 test('command slots form the requested L with a shared flee/retreat position', () => {
   const vertical = ['道具', '灵术', '攻击'].map(name => COMMAND_LAYOUT[name]);

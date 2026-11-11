@@ -1,11 +1,16 @@
 import { CONFIG } from './config';
-import { captureChance } from '../logic/capture';
+import { captureChance, captureTarget } from '../logic/capture';
 import { Roster } from '../logic/roster';
+import { effectiveLevel, isBabyEncounter } from '../logic/baby';
+import { generateAptitudes, middleAptitudes } from '../logic/aptitude';
+import type { Aptitudes } from '../logic/aptitude';
 
 export type Side = 'ally' | 'enemy';
 export type Command = 'attack' | 'defend' | 'protect' | 'retreat' | 'flee' | 'summon' | 'capture';
 export type Unit = {
   id: string; name: string; side: Side; slot: number; level: number;
+  isBaby?: boolean; combatLevel?: number;
+  aptitudes?: Aptitudes;
   hp: number; maxHp: number; attack: number; defense: number; speed: number;
   defending: boolean; left: boolean; deployed: boolean; skill?: string;
 };
@@ -38,7 +43,9 @@ export class Battle {
   seconds: number = CONFIG.commandSeconds;
   private random: () => number;
 
-  constructor(random: () => number = Math.random, count?: number, initialRage = 0, previousRoster?: Roster) {
+  constructor(random: () => number = Math.random, count?: number, initialRage = 0,
+    previousRoster?: Roster, babyRandom: () => number = random,
+    aptitudeRandom: () => number = Math.random) {
     this.random = random;
     this.heroRage = Math.max(0, Math.min(CONFIG.status.rageMax, initialRage));
     const hero = CONFIG.hero;
@@ -49,15 +56,19 @@ export class Battle {
         hp: hero.hp, maxHp: hero.hp, attack: hero.attack, defense: hero.defense,
         speed: hero.speed, defending: false, left: false, deployed: true },
       { id: 'pet', name: frog.name, side: 'ally', slot: 0, level: frog.level,
+        isBaby: false, combatLevel: effectiveLevel(frog.level), aptitudes: middleAptitudes(),
         hp: pet.hp, maxHp: pet.hp, attack: pet.attack, defense: pet.defense,
         speed: pet.speed, defending: false, left: false, deployed: true, skill: frog.innateSkill },
       { id: 'pet-2', name: frog.name, side: 'ally', slot: 0, level: frog.level,
+        isBaby: false, combatLevel: effectiveLevel(frog.level), aptitudes: middleAptitudes(),
         hp: pet.hp, maxHp: pet.hp, attack: pet.attack, defense: pet.defense,
         speed: pet.speed, defending: false, left: false, deployed: false, skill: frog.innateSkill },
     ];
     this.roster = new Roster(CONFIG.maxCarriedPets, this.pets, previousRoster);
     if (previousRoster) this.allies = [this.allies[0], ...this.roster.entries.map((pet, index) => ({
       id: pet.id, name: pet.name, side: 'ally' as const, slot: 0, level: pet.level,
+      isBaby: pet.isBaby, combatLevel: effectiveLevel(pet.level),
+      aptitudes: pet.aptitudes,
       hp: pet.maxHp, maxHp: pet.maxHp, attack: pet.attack, defense: pet.defense,
       speed: pet.speed, skill: pet.skill, defending: false, left: false, deployed: index === 0,
     }))];
@@ -65,8 +76,12 @@ export class Battle {
     if (quantity < 1 || quantity > 3) throw new Error('遭遇数量超出配置范围');
     for (let i = 0; i < quantity; i++) {
       const wild = CONFIG.wild;
-      this.enemies.push({ id: `enemy-${i}`, name: wild.name, side: 'enemy', slot: i,
-        level: wild.level, hp: wild.hp, maxHp: wild.hp, attack: wild.attack,
+      const isBaby = isBabyEncounter(babyRandom(), CONFIG.baby.encounterRate);
+      const level = isBaby ? CONFIG.baby.level : wild.level;
+      this.enemies.push({ id: `enemy-${i}`, name: isBaby ? CONFIG.baby.name : wild.name,
+        side: 'enemy', slot: i, level, isBaby, combatLevel: effectiveLevel(level),
+        aptitudes: generateAptitudes(isBaby, aptitudeRandom),
+        hp: wild.hp, maxHp: wild.hp, attack: wild.attack,
         defense: wild.defense, speed: wild.speed, defending: false, left: false, deployed: true });
     }
     this.log.push(`遭遇 ${quantity} 只野外汀蛙。`);
@@ -195,8 +210,9 @@ export class Battle {
         continue;
       }
       if (turn.command === 'capture') {
-        const target = this.enemies.find(u => u.id === turn.target && u.hp > 0 && !u.left);
-        if (!target) { this.log.push('目标已倒下，无法抓取。'); continue; }
+        const target = captureTarget(this.enemies, turn.target, this.random);
+        if (!target) { this.log.push('没有存活的敌人，抓取取消。'); continue; }
+        if (target.id !== turn.target) this.log.push(`原抓取目标已倒下，改抓 ${target.name}。`);
         if (this.roster.full) { this.log.push('携带已满，无法抓取。'); continue; }
         const success = this.random() < captureChance(target.hp, target.maxHp);
         this.events.push({ kind: success ? 'captureSuccess' : 'captureFail', actorId: turn.actor.id, targetId: target.id });
@@ -242,7 +258,11 @@ export class Battle {
       this.attackEvents.push(event);
       this.events.push(event);
       this.log.push(`${turn.actor.name} 攻击 ${target.name}，造成 ${damage} 点伤害${target.defending ? `（防御减伤，原 ${beforeDefense}）` : ''}${guard ? `；${guard.name} 保护分担 ${guardedDamage} 点，${target.name} 承受 ${targetDamage} 点` : ''}。${guard?.hp === 0 ? ` ${guard.name}${guard.id === 'hero' ? '倒地' : '失去战斗能力'}。` : ''}${target.hp === 0 ? ` ${target.name}${target.id === 'hero' ? '倒地' : '失去战斗能力'}。` : ''}`);
-      if (this.checkWinner()) break;
+      if (this.checkWinner()) {
+        if (this.winner === 'ally' && this.commands.get('hero')?.command === 'capture'
+          && !this.lastOrder.includes('hero')) this.log.push('没有存活的敌人，抓取取消。');
+        break;
+      }
     }
     this.commands.clear();
     if (!this.winner) {
