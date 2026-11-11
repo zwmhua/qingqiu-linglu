@@ -12,9 +12,25 @@ registerHooks({
 });
 const { Battle } = await import('../assets/scripts/Battle.ts');
 const { CONFIG } = await import('../assets/scripts/config.ts');
+const { targetCommand, toggleTarget } = await import('../assets/logic/targeting.ts');
 
 const fixed = () => 0.5;
 const make = (count = 1) => new Battle(fixed, count);
+
+test('attack button then enemy and direct enemy click submit the same order and continue', () => {
+  const direct = make();
+  const selected = make();
+  direct.command('hero', targetCommand(null), 'enemy-0');
+  selected.command('hero', targetCommand(toggleTarget(null, 'attack')), 'enemy-0');
+  assert.deepEqual([...selected.commands], [...direct.commands]);
+  assert.deepEqual(selected.pending.map(unit => unit.id), ['pet']);
+  assert.deepEqual(direct.pending.map(unit => unit.id), ['pet']);
+  direct.command('pet', 'attack', 'enemy-0');
+  selected.command('pet', 'attack', 'enemy-0');
+  assert.equal(selected.round, 2);
+  assert.equal(direct.round, 2);
+  assert.deepEqual(selected.log, direct.log);
+});
 
 test('encounter weights select one, two, or three enemies', () => {
   assert.equal(new Battle(() => 0, undefined).enemies.length, 1);

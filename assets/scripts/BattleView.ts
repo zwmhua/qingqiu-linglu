@@ -362,6 +362,7 @@ export class BattleView extends Component {
       area.addComponent(UITransform).setContentSize(width, bottom - top);
       area.on(Node.EventType.TOUCH_END, () => this.chooseTarget(unit.id));
       area.on(Node.EventType.MOUSE_ENTER, () => {
+        if (this.confirmingTarget) return;
         const ring = this.ringOpacities.get(unit.id);
         if (ring) { Tween.stopAllByTarget(ring); ring.opacity = 255; }
       });
