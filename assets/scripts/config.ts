@@ -4,8 +4,8 @@ import { TINGWA_GROWTH } from '../logic/growth';
 
 const formation = {
   enemyColumnX: 125, enemyColumnY: 65, enemyRowX: 130, enemyRowY: 100,
-  allyColumnX: 110, allyColumnY: 60, allyRowX: 185, allyRowY: 80,
-  enemyBackStart: { x: 90, y: 480 }, allyFrontStart: { x: 620, y: 610 },
+  allyColumnX: 110, allyColumnY: 60, allyRowX: 260, allyRowY: 55,
+  enemyBackStart: { x: 90, y: 480 }, allyFrontStart: { x: 545, y: 635 },
 } as const;
 const enemyBack = Array.from({ length: 5 }, (_, i) => ({
   x: formation.enemyBackStart.x + i * formation.enemyColumnX,
@@ -43,6 +43,7 @@ export const CONFIG = {
   status: { heroManaMax: 40, petManaMax: 30, rageMax: 150, ragePerDamage: 1 },
   visual: {
     unitScale: 0.5, heroHeight: 240, frogHeight: 170, enemyFlipX: true,
+    footOffset: { frog: 22, hero: 6 },
     barWidth: 70, barHeight: 6, barGap: 3, headGap: 8, nameGap: 3, nameSize: 18,
     heroHeadOffsetX: 10, petNameOffsetX: -25, petNameWidth: 80, nameWidth: 128,
     ringBreathSeconds: 0.8, ringOpacityMin: 130, ringOpacityMax: 210,
@@ -64,13 +65,15 @@ export const CONFIG = {
 export const COMMAND_ICON_SIZE = 78;
 const commandBottom = CONFIG.height - COMMAND_ICON_SIZE - 30;
 const commandVerticalStep = (commandBottom - CONFIG.visual.commandTop) / 3;
+const commandHorizontalStep = 80;
 export const COMMAND_LAYOUT = {
   攻击: { x: 1253, y: commandBottom - commandVerticalStep },
   灵术: { x: 1253, y: commandBottom - commandVerticalStep * 2 },
   道具: { x: 1253, y: CONFIG.visual.commandTop },
-  自动: { x: 918, y: commandBottom },
-  抓取: { x: 985, y: commandBottom }, 逃跑: { x: 1052, y: commandBottom }, 撤退: { x: 1052, y: commandBottom },
-  召唤: { x: 1119, y: commandBottom }, 保护: { x: 1186, y: commandBottom }, 防御: { x: 1253, y: commandBottom },
+  自动: { x: 1253 - commandHorizontalStep * 5, y: commandBottom },
+  抓取: { x: 1253 - commandHorizontalStep * 4, y: commandBottom }, 逃跑: { x: 1253 - commandHorizontalStep * 3, y: commandBottom },
+  撤退: { x: 1253 - commandHorizontalStep * 3, y: commandBottom }, 召唤: { x: 1253 - commandHorizontalStep * 2, y: commandBottom },
+  保护: { x: 1253 - commandHorizontalStep, y: commandBottom }, 防御: { x: 1253, y: commandBottom },
 } as const;
 
 export function growth(base: number, aptitude: number, level: number, hp = false): number {

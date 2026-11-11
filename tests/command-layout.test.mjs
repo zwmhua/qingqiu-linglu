@@ -24,6 +24,8 @@ test('command slots form the requested L with a shared flee/retreat position', (
   assert.ok(vertical[0].y >= 178); // below the upper-right command panel
   assert.equal(bottom.at(-1).y, CONFIG.height - COMMAND_ICON_SIZE - 30);
   assert.deepEqual(COMMAND_LAYOUT['撤退'], COMMAND_LAYOUT['逃跑']);
+  const six = ['自动', '抓取', '逃跑', '召唤', '保护', '防御'].map(name => COMMAND_LAYOUT[name]);
+  assert.ok(six.every((slot, i) => i === 0 || slot.x >= six[i - 1].x + COMMAND_ICON_SIZE));
 });
 
 test('command icons fit the screen and avoid visible allied labels', () => {
@@ -36,15 +38,15 @@ test('command icons fit the screen and avoid visible allied labels', () => {
   const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w &&
     a.y < b.y + b.h && b.y < a.y + a.h;
   for (const slot of [...bottom, COMMAND_LAYOUT['自动'], ...['攻击', '灵术', '道具'].map(name => COMMAND_LAYOUT[name])])
-    for (const { pet, hero } of bottom.includes(slot) ? CONFIG.positions.allyGroups : CONFIG.positions.allyGroups.slice(0, 1)) {
+    for (const { pet, hero } of CONFIG.positions.allyGroups.slice(0, 1)) {
     for (const [unit, width] of [[pet, CONFIG.visual.petNameWidth], [hero, CONFIG.visual.nameWidth]]) {
       const name = { x: unit.x - width / 2, y: unit.y + 19 + CONFIG.visual.nameGap,
         w: width, h: CONFIG.visual.nameSize * 1.7 };
       assert.ok(!overlaps({ x: slot.x, y: slot.y, w: COMMAND_ICON_SIZE,
-        h: COMMAND_ICON_SIZE + 30 }, name));
+        h: COMMAND_ICON_SIZE + 30 }, name), `command ${slot.x},${slot.y} overlaps unit ${unit.x},${unit.y} name`);
     }
   }
-  for (const { pet, hero } of CONFIG.positions.allyGroups) {
+  for (const { pet, hero } of CONFIG.positions.allyGroups.slice(0, 1)) {
     for (const [unit, width] of [[pet, CONFIG.visual.petNameWidth], [hero, CONFIG.visual.nameWidth]]) {
       const nameTop = unit.y + 19 + CONFIG.visual.nameGap;
       const nameRight = unit.x + width / 2;

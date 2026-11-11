@@ -52,9 +52,18 @@ test('active pet stands in front of the unchanged hero in one to three enemy enc
   assert.deepEqual(hero, { x: 1025, y: 570 });
   assert.ok(pet.x <= hero.x - 120);
   assert.ok(pet.y >= hero.y - 90 && pet.y <= hero.y - 50);
+  const enemy = CONFIG.positions.enemy[0];
+  assert.ok(Math.abs((hero.y - pet.y) / (hero.x - pet.x) -
+    (hero.y - enemy.y) / (hero.x - enemy.x)) < 0.02);
   for (const count of [1, 2, 3]) {
     assert.ok(CONFIG.positions.enemy.slice(0, count).every(enemy => enemy.x < pet.x));
   }
+});
+
+test('sprite opaque feet align with the ground-ring center', () => {
+  const { unitScale, footOffset } = CONFIG.visual;
+  assert.ok(Math.abs(footOffset.frog - (35 * unitScale + 4)) <= 0.5);
+  assert.ok(Math.abs(footOffset.hero - (3 * unitScale + 4)) <= 0.5);
 });
 
 test('full formation keeps unit art, health bars, and foot labels apart', () => {

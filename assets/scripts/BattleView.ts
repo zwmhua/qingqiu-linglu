@@ -305,7 +305,7 @@ export class BattleView extends Component {
     const isPet = this.isPet(unit) || unit.side === 'enemy';
     const visual = new Node(`unit-${unit.id}`);
     this.layer.addChild(visual);
-    this.pos(visual, point.x, point.y);
+    this.pos(visual, point.x, point.y + (isPet ? CONFIG.visual.footOffset.frog : CONFIG.visual.footOffset.hero));
     this.unitNodes.set(unit.id, visual);
     this.basePositions.set(unit.id, visual.position.clone());
     visual.addComponent(UITransform).setContentSize(256, 256);
