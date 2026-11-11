@@ -6,13 +6,15 @@ test('command slots form the requested L with a shared flee/retreat position', (
   const vertical = ['道具', '灵术', '攻击'].map(name => COMMAND_LAYOUT[name]);
   const bottom = ['抓取', '逃跑', '召唤', '保护', '防御'].map(name => COMMAND_LAYOUT[name]);
   assert.ok(vertical.every(slot => slot.x === vertical[0].x));
-  const step = bottom[1].x - bottom[0].x;
-  assert.ok(vertical.every((slot, i) => i === 0 || slot.y - vertical[i - 1].y === step));
-  assert.equal(bottom.at(-1).y - vertical.at(-1).y, step);
+  const column = [...vertical, bottom.at(-1)];
+  const verticalStep = (column.at(-1).y - column[0].y) / 3;
+  assert.ok(column.every((slot, i) => i === 0 || Math.abs(slot.y - column[i - 1].y - verticalStep) < 0.001));
+  assert.ok(column.every((slot, i) => i === 0 || slot.y - column[i - 1].y >= COMMAND_ICON_SIZE + 30));
   assert.ok(bottom.every(slot => slot.y === bottom[0].y));
-  assert.ok(bottom.every((slot, i) => i === 0 || slot.x - bottom[i - 1].x === step));
+  assert.ok(bottom.every((slot, i) => i === 0 || slot.x - bottom[i - 1].x === bottom[1].x - bottom[0].x));
   assert.equal(bottom.at(-1).x, vertical[0].x);
-  assert.ok(vertical[0].y > 230); // below the upper-right status card
+  assert.ok(vertical[0].y >= 178); // below the upper-right command panel
+  assert.equal(bottom.at(-1).y, CONFIG.height - COMMAND_ICON_SIZE - 30);
   assert.deepEqual(COMMAND_LAYOUT['撤退'], COMMAND_LAYOUT['逃跑']);
 });
 

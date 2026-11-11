@@ -56,10 +56,14 @@ export const CONFIG = {
 } as const;
 
 export const COMMAND_ICON_SIZE = 78;
+const commandBottom = CONFIG.height - COMMAND_ICON_SIZE - 30;
+const commandVerticalStep = (commandBottom - CONFIG.visual.commandTop) / 3;
 export const COMMAND_LAYOUT = {
-  攻击: { x: 1253, y: 575 }, 灵术: { x: 1253, y: 508 }, 道具: { x: 1253, y: 441 },
-  抓取: { x: 985, y: 642 }, 逃跑: { x: 1052, y: 642 }, 撤退: { x: 1052, y: 642 },
-  召唤: { x: 1119, y: 642 }, 保护: { x: 1186, y: 642 }, 防御: { x: 1253, y: 642 },
+  攻击: { x: 1253, y: commandBottom - commandVerticalStep },
+  灵术: { x: 1253, y: commandBottom - commandVerticalStep * 2 },
+  道具: { x: 1253, y: CONFIG.visual.commandTop },
+  抓取: { x: 985, y: commandBottom }, 逃跑: { x: 1052, y: commandBottom }, 撤退: { x: 1052, y: commandBottom },
+  召唤: { x: 1119, y: commandBottom }, 保护: { x: 1186, y: commandBottom }, 防御: { x: 1253, y: commandBottom },
 } as const;
 
 export function growth(base: number, aptitude: number, level: number, hp = false): number {
