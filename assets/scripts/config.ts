@@ -4,8 +4,8 @@ import { TINGWA_GROWTH } from '../logic/growth';
 
 const formation = {
   enemyColumnX: 125, enemyColumnY: 65, enemyRowX: 130, enemyRowY: 100,
-  allyColumnX: 110, allyColumnY: 60, allyRowX: 65, allyRowY: 150,
-  enemyBackStart: { x: 90, y: 480 }, allyFrontStart: { x: 740, y: 540 },
+  allyColumnX: 110, allyColumnY: 60, allyRowX: 185, allyRowY: 80,
+  enemyBackStart: { x: 90, y: 480 }, allyFrontStart: { x: 620, y: 610 },
 } as const;
 const enemyBack = Array.from({ length: 5 }, (_, i) => ({
   x: formation.enemyBackStart.x + i * formation.enemyColumnX,

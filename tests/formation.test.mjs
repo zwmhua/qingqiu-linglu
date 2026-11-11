@@ -47,6 +47,16 @@ test('five allied pets and heroes occupy parallel rows with room for art and lab
   assert.equal(CONFIG.visual.frogHeight * CONFIG.visual.unitScale, 85);
 });
 
+test('active pet stands in front of the unchanged hero in one to three enemy encounters', () => {
+  const { pet, hero } = CONFIG.positions.allyGroups[0];
+  assert.deepEqual(hero, { x: 1025, y: 570 });
+  assert.ok(pet.x <= hero.x - 120);
+  assert.ok(pet.y >= hero.y - 90 && pet.y <= hero.y - 50);
+  for (const count of [1, 2, 3]) {
+    assert.ok(CONFIG.positions.enemy.slice(0, count).every(enemy => enemy.x < pet.x));
+  }
+});
+
 test('full formation keeps unit art, health bars, and foot labels apart', () => {
   const enemy = CONFIG.positions.enemy.map((point, index) => ({ id: `enemy-${index}`, type: 'enemy', ...point }));
   const allies = CONFIG.positions.allyGroups.flatMap(({ pet, hero }, index) => [

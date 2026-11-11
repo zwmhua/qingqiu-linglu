@@ -595,8 +595,8 @@ export class BattleView extends Component {
       const sprite = art.addComponent(Sprite);
       sprite.spriteFrame = kind === 'hero' ? this.heroArt : this.frogArt;
       sprite.sizeMode = Sprite.SizeMode.CUSTOM;
-      art.setScale(0.75, 0.75, 1);
-      art.setPosition(kind === 'hero' ? -2 : 14, kind === 'hero' ? -58 : -6, 0);
+      art.setScale(kind === 'hero' ? 0.75 : 0.22, kind === 'hero' ? 0.75 : 0.22, 1);
+      art.setPosition(kind === 'hero' ? -2 : 0, kind === 'hero' ? -58 : 0, 0);
     }
     const bars = kind === 'hero'
       ? [
