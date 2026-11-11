@@ -1,6 +1,8 @@
 import { _decorator, Color, Component, EventTouch, Graphics, Label, Mask, Node, RichText, Sprite, SpriteFrame, tween, Tween, UIOpacity, UITransform, Vec3, view } from 'cc';
 import { Battle, BattleEvent, Unit } from './Battle';
 import { CONFIG } from './config';
+import { targetCommand, toggleTarget } from '../logic/targeting';
+import type { TargetMode } from '../logic/targeting';
 
 const { ccclass, property } = _decorator;
 const C = (hex: string) => new Color(hex);
@@ -17,7 +19,7 @@ export class BattleView extends Component {
   @property([SpriteFrame]) commandIcons: SpriteFrame[] = [];
   private battle = new Battle();
   private layoutTest = new URLSearchParams(window.location.search).get('layout') === '10v10';
-  private choosingTarget: 'attack' | 'protect' | 'capture' | null = null;
+  private choosingTarget: TargetMode | null = null;
   private lastShownSecond = -1;
   private layer!: Node;
   private markerLayer!: Node;
@@ -215,12 +217,11 @@ export class BattleView extends Component {
   }
 
   private canSelect(unit: Unit): boolean {
-    if (this.layoutTest) return false;
+    if (this.layoutTest || this.summonOpen || this.rosterOpen) return false;
     const actor = this.battle.pending[0];
     if (!actor || unit.hp === 0 || unit.left) return false;
-    if (this.choosingTarget === 'attack' || this.choosingTarget === 'capture') return unit.side === 'enemy';
     if (this.choosingTarget === 'protect') return this.battle.protectTargets(actor.id).some(u => u.id === unit.id);
-    return false;
+    return unit.side === 'enemy';
   }
 
   private unitShadow(unit: Unit): void {
@@ -234,8 +235,11 @@ export class BattleView extends Component {
     this.ellipse(point.x, point.y + 4, 55, 15, '#17241d', 105);
     if (!this.playing && !this.choosingTarget && this.battle.pending[0]?.id === unit.id) {
       this.ringOpacities.set(unit.id, this.selectionRing(point.x, point.y + 4, '#F1D788'));
-    } else if (!this.playing && (this.choosingTarget === 'attack' || this.choosingTarget === 'capture') && this.canSelect(unit)) {
-      this.ringOpacities.set(unit.id, this.selectionRing(point.x, point.y + 4, '#D9514A'));
+    } else if (!this.playing && this.canSelect(unit)) {
+      const color = this.choosingTarget === 'capture' ? '#E5C46C'
+        : this.choosingTarget === 'protect' ? '#73B9C6'
+          : this.choosingTarget === 'attack' ? '#D9514A' : '#C97D7B';
+      this.ringOpacities.set(unit.id, this.selectionRing(point.x, point.y + 4, color));
     }
     this.layer = previous;
   }
@@ -312,7 +316,7 @@ export class BattleView extends Component {
   private chooseTarget(id: string): void {
     const actor = this.battle.pending[0];
     const unit = this.battle.units.find(candidate => candidate.id === id);
-    if (!this.choosingTarget || !actor || !unit || !this.canSelect(unit) || this.confirmingTarget) return;
+    if (!actor || !unit || !this.canSelect(unit) || this.confirmingTarget) return;
     this.confirmingTarget = true;
     let ring = this.ringOpacities.get(id);
     if (!ring) {
@@ -323,7 +327,7 @@ export class BattleView extends Component {
       this.layer = previous;
     }
     Tween.stopAllByTarget(ring);
-    const command = this.choosingTarget;
+    const command = targetCommand(this.choosingTarget);
     tween(ring).to(CONFIG.animation.targetConfirmSeconds / 2, { opacity: 255 })
       .to(CONFIG.animation.targetConfirmSeconds / 2, { opacity: 0 }).call(() => {
     const before = this.battle.round;
@@ -339,6 +343,8 @@ export class BattleView extends Component {
   }
 
   private renderHitAreas(units: Unit[]): void {
+    if (this.choosingTarget) this.rect(0, 0, CONFIG.width, CONFIG.height, '#000000', '', 0,
+      () => { if (!this.confirmingTarget) { this.choosingTarget = null; this.render(); } }, 0);
     for (const unit of [...units].sort((a, b) => this.unitPoint(a).y - this.unitPoint(b).y)) {
       if (!this.canSelect(unit)) continue;
       const point = this.unitPoint(unit);
@@ -684,7 +690,7 @@ export class BattleView extends Component {
         this.render();
       };
       const select = (command: 'attack' | 'protect' | 'capture') => {
-        this.choosingTarget = command;
+        this.choosingTarget = toggleTarget(this.choosingTarget, command);
         this.render();
       };
       const choices: { label: string; enabled: boolean; action?: () => void }[] = actor.id === 'hero'
@@ -692,7 +698,7 @@ export class BattleView extends Component {
           { label: '攻击', enabled: true, action: () => select('attack') },
           { label: '防御', enabled: true, action: () => send('defend') },
           { label: '保护', enabled: this.battle.protectTargets(actor.id).length > 0, action: () => select('protect') },
-          { label: '召唤', enabled: this.battle.summonTargets().length > 0, action: () => { this.summonOpen = true; this.render(); } },
+          { label: '召唤', enabled: this.battle.summonTargets().length > 0, action: () => { this.choosingTarget = null; this.summonOpen = true; this.render(); } },
           { label: '抓取', enabled: !this.battle.roster.full, action: () => select('capture') },
           { label: '道具', enabled: false },
           { label: '逃跑', enabled: true, action: () => send('flee') },
