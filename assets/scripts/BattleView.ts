@@ -4,6 +4,7 @@ import { CONFIG } from './config';
 
 const { ccclass, property } = _decorator;
 const C = (hex: string) => new Color(hex);
+const COMMAND_NAMES = ['攻击', '防御', '保护', '召唤', '抓取', '道具', '逃跑', '灵术', '撤退'] as const;
 
 @ccclass('BattleView')
 export class BattleView extends Component {
@@ -13,6 +14,7 @@ export class BattleView extends Component {
   @property(SpriteFrame) jadeNormal: SpriteFrame | null = null;
   @property(SpriteFrame) jadePressed: SpriteFrame | null = null;
   @property(SpriteFrame) jadeDisabled: SpriteFrame | null = null;
+  @property([SpriteFrame]) commandIcons: SpriteFrame[] = [];
   private battle = new Battle();
   private layoutTest = new URLSearchParams(window.location.search).get('layout') === '10v10';
   private choosingTarget: 'attack' | 'protect' | null = null;
@@ -167,6 +169,22 @@ export class BattleView extends Component {
       });
     }
     return node;
+  }
+
+  private commandButton(label: string, x: number, y: number, enabled: boolean, onClick?: () => void): void {
+    const frame = this.commandIcons[COMMAND_NAMES.indexOf(label as typeof COMMAND_NAMES[number])];
+    const { node, sprite } = this.image(x + 9, y, 78, 78, frame);
+    sprite.grayscale = !enabled;
+    this.text(label, x, y + 78, 18, enabled ? '#F7E5B6' : '#8D9690', 96, 1);
+    const hit = new Node(`command-${label}`);
+    this.layer.addChild(hit);
+    this.pos(hit, x + 48, y + 54);
+    hit.addComponent(UITransform).setContentSize(96, 108);
+    if (enabled && onClick) {
+      hit.on(Node.EventType.TOUCH_START, () => node.setScale(0.94, 0.94, 1));
+      hit.on(Node.EventType.TOUCH_CANCEL, () => node.setScale(1, 1, 1));
+      hit.on(Node.EventType.TOUCH_END, () => { node.setScale(1, 1, 1); onClick(); });
+    }
   }
 
   private unitPoint(unit: Unit): { x: number; y: number } {
@@ -649,9 +667,9 @@ export class BattleView extends Component {
           { label: '防御', enabled: true, action: () => send('defend') },
           { label: '撤退', enabled: true, action: () => send('retreat') },
         ];
-      choices.forEach((choice, index) => this.button(choice.label, 1115,
-        CONFIG.visual.commandTop + index * CONFIG.visual.commandStep,
-        195, CONFIG.visual.commandHeight, choice.enabled, choice.action));
+      choices.forEach((choice, index) => this.commandButton(choice.label,
+        1111 + (index % 2) * 104, CONFIG.visual.commandTop + Math.floor(index / 2) * 122,
+        choice.enabled, choice.action));
     }
     if (this.summonOpen && actor?.id === 'hero' && !this.playing) {
       this.layer = resultLayer;
