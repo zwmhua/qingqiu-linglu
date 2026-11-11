@@ -179,15 +179,15 @@ export class BattleView extends Component {
     const frame = this.commandIcons[COMMAND_NAMES.indexOf(label as typeof COMMAND_NAMES[number])];
     const { node, sprite } = this.image(x, y, COMMAND_ICON_SIZE, COMMAND_ICON_SIZE, frame);
     sprite.grayscale = !enabled;
-    const title = this.text(label, x, y + COMMAND_ICON_SIZE, 19, '#233B33', COMMAND_ICON_SIZE, 1);
+    const title = this.text(label, x, y + COMMAND_ICON_SIZE, 17, '#233B33', COMMAND_ICON_SIZE, 1);
     const titleLabel = title.getComponent(Label)!;
     titleLabel.enableOutline = true;
     titleLabel.outlineColor = C('#F7E5B6');
     titleLabel.outlineWidth = 2;
     const hit = new Node(`command-${label}`);
     this.layer.addChild(hit);
-    this.pos(hit, x + COMMAND_ICON_SIZE / 2, y + 40);
-    hit.addComponent(UITransform).setContentSize(COMMAND_ICON_SIZE, 80);
+    this.pos(hit, x + COMMAND_ICON_SIZE / 2, y + COMMAND_ICON_SIZE / 2);
+    hit.addComponent(UITransform).setContentSize(COMMAND_ICON_SIZE, COMMAND_ICON_SIZE);
     if (enabled && onClick) {
       hit.on(Node.EventType.TOUCH_START, () => node.setScale(0.94, 0.94, 1));
       hit.on(Node.EventType.TOUCH_CANCEL, () => node.setScale(1, 1, 1));

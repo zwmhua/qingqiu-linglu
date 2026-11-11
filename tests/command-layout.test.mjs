@@ -14,11 +14,23 @@ test('command slots form the requested L with a shared flee/retreat position', (
 });
 
 test('bottom icons fit the screen and avoid the log and allied labels', () => {
+  assert.ok(COMMAND_ICON_SIZE >= 78);
   const bottom = ['抓取', '逃跑', '召唤', '保护', '防御'].map(name => COMMAND_LAYOUT[name]);
   const first = bottom[0], last = bottom.at(-1);
   assert.ok(first.x > 540); // battle log ends at x=540
   assert.ok(last.x + COMMAND_ICON_SIZE <= CONFIG.width);
   assert.ok(first.y + COMMAND_ICON_SIZE + 30 <= CONFIG.height);
+  const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w &&
+    a.y < b.y + b.h && b.y < a.y + a.h;
+  for (const slot of [...bottom, ...['攻击', '灵术', '道具'].map(name => COMMAND_LAYOUT[name])])
+    for (const { pet, hero } of CONFIG.positions.allyGroups) {
+    for (const [unit, width] of [[pet, CONFIG.visual.petNameWidth], [hero, CONFIG.visual.nameWidth]]) {
+      const name = { x: unit.x - width / 2, y: unit.y + 19 + CONFIG.visual.nameGap,
+        w: width, h: CONFIG.visual.nameSize * 1.7 };
+      assert.ok(!overlaps({ x: slot.x, y: slot.y, w: COMMAND_ICON_SIZE,
+        h: COMMAND_ICON_SIZE + 30 }, name));
+    }
+  }
   for (const { pet, hero } of CONFIG.positions.allyGroups) {
     for (const [unit, width] of [[pet, CONFIG.visual.petNameWidth], [hero, CONFIG.visual.nameWidth]]) {
       const nameTop = unit.y + 19 + CONFIG.visual.nameGap;

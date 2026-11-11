@@ -37,7 +37,7 @@ export const CONFIG = {
   status: { heroManaMax: 40, petManaMax: 30, rageMax: 150, ragePerDamage: 1 },
   visual: {
     unitScale: 0.5, heroHeight: 240, frogHeight: 170, enemyFlipX: true,
-    barWidth: 70, barHeight: 6, barGap: 3, headGap: 8, nameGap: 6, nameSize: 18,
+    barWidth: 70, barHeight: 6, barGap: 3, headGap: 8, nameGap: 3, nameSize: 18,
     heroHeadOffsetX: 10, petNameOffsetX: -25, petNameWidth: 80, nameWidth: 128,
     ringBreathSeconds: 0.8, ringOpacityMin: 130, ringOpacityMax: 210,
     commandTop: 185, commandStep: 74, commandHeight: 64,
@@ -55,11 +55,11 @@ export const CONFIG = {
   },
 } as const;
 
-export const COMMAND_ICON_SIZE = 54;
+export const COMMAND_ICON_SIZE = 78;
 export const COMMAND_LAYOUT = {
-  攻击: { x: 1276, y: 398 }, 灵术: { x: 1276, y: 482 }, 道具: { x: 1276, y: 566 },
-  抓取: { x: 1012, y: 650 }, 逃跑: { x: 1078, y: 650 }, 撤退: { x: 1078, y: 650 },
-  召唤: { x: 1144, y: 650 }, 保护: { x: 1210, y: 650 }, 防御: { x: 1276, y: 650 },
+  攻击: { x: 1253, y: 200 }, 灵术: { x: 1253, y: 355 }, 道具: { x: 1253, y: 510 },
+  抓取: { x: 985, y: 642 }, 逃跑: { x: 1052, y: 642 }, 撤退: { x: 1052, y: 642 },
+  召唤: { x: 1119, y: 642 }, 保护: { x: 1186, y: 642 }, 防御: { x: 1253, y: 642 },
 } as const;
 
 export function growth(base: number, aptitude: number, level: number, hp = false): number {
