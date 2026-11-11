@@ -6,6 +6,7 @@ import { AutoCommands } from '../logic/auto';
 import { PREVIEW } from 'cc/env';
 import { APTITUDE_KEYS } from '../logic/aptitude';
 import { BASE_STAT_KEYS } from '../logic/base-stats';
+import { petTint } from '../logic/pet-visual';
 import type { Roster } from '../logic/roster';
 import type { TargetMode } from '../logic/targeting';
 
@@ -52,7 +53,7 @@ export class BattleView extends Component {
   private createBattle(previous?: Roster, rage = 0): Battle {
     const params = new URLSearchParams(window.location.search);
     if (PREVIEW && params.get('mutationSample') === '1')
-      return new Battle(() => 0, 1, rage, previous, () => 1,
+      return new Battle(previous ? () => 0.9 : () => 0, 1, rage, previous, () => 1,
         Math.random, Math.random, Math.random, () => 0);
     if (PREVIEW && params.get('babySample') === '1') return new Battle(() => 0, 1, rage, previous);
     return new Battle(Math.random, undefined, rage, previous);
@@ -80,6 +81,10 @@ export class BattleView extends Component {
 
   private pos(node: Node, x: number, y: number): void {
     node.setPosition(x - CONFIG.width / 2, CONFIG.height / 2 - y, 0);
+  }
+
+  private unitColor(unit: Pick<Unit, 'isMutated'>): Color {
+    return C(petTint(unit.isMutated, CONFIG.visual.petTint));
   }
 
   private rect(x: number, y: number, w: number, h: number, fill: string,
@@ -326,6 +331,7 @@ export class BattleView extends Component {
     sprite.sizeMode = Sprite.SizeMode.RAW;
     sprite.trim = false;
     sprite.spriteFrame = isPet ? this.frogArt : this.heroArt;
+    sprite.color = this.unitColor(unit);
     if (dead) sprite.grayscale = true;
     visual.addComponent(UIOpacity).opacity = dead ? 0 : 255;
     if (!this.playing && this.canSelect(unit)) visual.on(Node.EventType.TOUCH_END, () => this.chooseTarget(unit.id));
@@ -530,7 +536,7 @@ export class BattleView extends Component {
       if (event.guardId && event.guardDamage) this.damageNumber(event.guardId, event.guardDamage);
     }).to(a.strikeSeconds / (2 * speed), { position: strike })
       .to(a.strikeSeconds / (2 * speed), { position: arrival }).call(() => {
-        target.getComponent(Sprite)!.color = Color.WHITE;
+        target.getComponent(Sprite)!.color = this.unitColor(this.battle.units.find(unit => unit.id === event.targetId)!);
         this.displayedHp!.set(event.targetId, event.targetAfter);
         if (event.guardId && event.guardAfter !== undefined) this.displayedHp!.set(event.guardId, event.guardAfter);
         for (const id of [event.targetId, event.guardId]) {
@@ -604,6 +610,7 @@ export class BattleView extends Component {
       art.addComponent(UITransform).setContentSize(256, 256);
       const sprite = art.addComponent(Sprite);
       sprite.spriteFrame = kind === 'hero' ? this.heroArt : this.frogArt;
+      sprite.color = this.unitColor(unit);
       sprite.sizeMode = Sprite.SizeMode.CUSTOM;
       art.setScale(kind === 'hero' ? 0.75 : 0.22, kind === 'hero' ? 0.75 : 0.22, 1);
       art.setPosition(kind === 'hero' ? -2 : 0, kind === 'hero' ? -58 : 0, 0);
@@ -658,7 +665,8 @@ export class BattleView extends Component {
     const selected = roster.entries.find(pet => pet.id === this.selectedPetId);
     if (selected) {
       this.text(`${selected.isMutated ? '变异' : ''}${selected.name} Lv.${selected.level}`,
-        475, 156, 30, '#F3DFAD', 385, 1);
+        475, 156, 30, '#F3DFAD', 315, 1);
+      this.image(800, 155, 66, 66, this.frogArt).sprite.color = this.unitColor(selected);
       this.text('资质', 478, 214, 25, '#F3DFAD', 370);
       const labels = ['攻击资质', '防御资质', '体力资质', '法力资质', '躲避资质', '速度资质'];
       APTITUDE_KEYS.forEach((key, index) => this.text(
