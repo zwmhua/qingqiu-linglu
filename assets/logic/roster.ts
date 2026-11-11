@@ -1,24 +1,33 @@
-export type CarriedPet = {
-  id: string; name: string; hp: number; maxHp: number;
+import type { Unit } from '../scripts/Battle';
+
+type PetStats = Pick<Unit, 'id' | 'name' | 'hp' | 'maxHp' | 'level' | 'attack' | 'defense' | 'speed' | 'skill'>;
+export type CarriedPet = PetStats & {
   origin: 'initial' | 'captured'; sourceEnemyId?: string;
 };
 
 export class Roster {
   readonly entries: CarriedPet[];
   readonly capacity: number;
+  private nextCapturedId: number;
+  private capturedEnemies = new Set<string>();
 
-  constructor(capacity: number, initial: ReadonlyArray<Pick<CarriedPet, 'id' | 'name' | 'hp' | 'maxHp'>>) {
+  constructor(capacity: number, initial: ReadonlyArray<PetStats>, previous?: Roster) {
     this.capacity = capacity;
-    this.entries = initial.map(pet => ({ id: pet.id, name: pet.name,
-      hp: pet.hp, maxHp: pet.maxHp, origin: 'initial' }));
+    this.entries = previous ? previous.entries.map(pet => ({ ...pet, hp: pet.maxHp }))
+      : initial.map(pet => ({ id: pet.id, name: pet.name, hp: pet.hp, maxHp: pet.maxHp,
+        level: pet.level, attack: pet.attack, defense: pet.defense, speed: pet.speed,
+        skill: pet.skill, origin: 'initial' as const }));
+    this.nextCapturedId = previous?.nextCapturedId ?? 1;
   }
 
   get full(): boolean { return this.entries.length >= this.capacity; }
 
-  addCaptured(enemy: { id: string; hp: number; maxHp: number }): boolean {
-    if (this.full || this.entries.some(pet => pet.sourceEnemyId === enemy.id)) return false;
-    this.entries.push({ id: `caught-${enemy.id}`, name: '汀蛙', hp: enemy.hp,
-      maxHp: enemy.maxHp, origin: 'captured', sourceEnemyId: enemy.id });
+  addCaptured(enemy: PetStats): boolean {
+    if (this.full || this.capturedEnemies.has(enemy.id)) return false;
+    this.entries.push({ id: `caught-${this.nextCapturedId++}`, name: '汀蛙', hp: enemy.hp,
+      maxHp: enemy.maxHp, level: enemy.level, attack: enemy.attack, defense: enemy.defense,
+      speed: enemy.speed, skill: enemy.skill, origin: 'captured', sourceEnemyId: enemy.id });
+    this.capturedEnemies.add(enemy.id);
     return true;
   }
 }

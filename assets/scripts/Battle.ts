@@ -38,7 +38,7 @@ export class Battle {
   seconds: number = CONFIG.commandSeconds;
   private random: () => number;
 
-  constructor(random: () => number = Math.random, count?: number, initialRage = 0) {
+  constructor(random: () => number = Math.random, count?: number, initialRage = 0, previousRoster?: Roster) {
     this.random = random;
     this.heroRage = Math.max(0, Math.min(CONFIG.status.rageMax, initialRage));
     const hero = CONFIG.hero;
@@ -55,7 +55,12 @@ export class Battle {
         hp: pet.hp, maxHp: pet.hp, attack: pet.attack, defense: pet.defense,
         speed: pet.speed, defending: false, left: false, deployed: false, skill: frog.innateSkill },
     ];
-    this.roster = new Roster(CONFIG.maxCarriedPets, this.pets);
+    this.roster = new Roster(CONFIG.maxCarriedPets, this.pets, previousRoster);
+    if (previousRoster) this.allies = [this.allies[0], ...this.roster.entries.map((pet, index) => ({
+      id: pet.id, name: pet.name, side: 'ally' as const, slot: 0, level: pet.level,
+      hp: pet.maxHp, maxHp: pet.maxHp, attack: pet.attack, defense: pet.defense,
+      speed: pet.speed, skill: pet.skill, defending: false, left: false, deployed: index === 0,
+    }))];
     const quantity = count ?? this.pickCount();
     if (quantity < 1 || quantity > 3) throw new Error('遭遇数量超出配置范围');
     for (let i = 0; i < quantity; i++) {

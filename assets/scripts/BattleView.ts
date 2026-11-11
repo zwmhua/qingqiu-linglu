@@ -644,7 +644,7 @@ export class BattleView extends Component {
     this.text(`携带 ${roster.entries.length}/${roster.capacity}`, 475, 153, 30, '#F3DFAD', 385, 1);
     roster.entries.forEach((pet, index) => {
       const current = this.battle.pets.find(unit => unit.id === pet.id);
-      this.text(`${pet.name} · ${pet.origin === 'initial' ? '初始' : '本场抓取'}`,
+      this.text(`${pet.name} · ${pet.origin === 'initial' ? '初始' : '抓取获得'}`,
         478, 211 + index * 65, 22, '#F6F0DC', 370);
       this.text(`气血 ${current?.hp ?? pet.hp}/${pet.maxHp}`,
         478, 238 + index * 65, 17, '#C6DBC6', 370);
@@ -788,7 +788,7 @@ export class BattleView extends Component {
       this.text(this.battle.winner === 'ally' ? '战斗胜利' : '战斗失败', 441, 260, 48, '#f3dfad', 440, 1);
       this.text('汀蛙之战暂告一段落', 470, 325, 22, '#c6dbc6', 380, 1);
       this.button('再来一场', 513, 384, 286, 69, true, () => {
-        this.battle = new Battle(Math.random, undefined, this.battle.heroRage);
+        this.battle = new Battle(Math.random, undefined, this.battle.heroRage, this.battle.roster);
         this.auto = new AutoCommands();
         this.choosingTarget = null;
         this.displayedHp = null;
