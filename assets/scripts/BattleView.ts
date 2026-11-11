@@ -196,7 +196,7 @@ export class BattleView extends Component {
   }
 
   private isHero(unit: Unit): boolean { return unit.id === 'hero' || unit.id.startsWith('layout-hero-'); }
-  private isPet(unit: Unit): boolean { return unit.id.startsWith('pet') || unit.id.startsWith('layout-pet-'); }
+  private isPet(unit: Unit): boolean { return unit.id.startsWith('pet') || unit.id.startsWith('caught-') || unit.id.startsWith('layout-pet-'); }
 
   private layoutUnits(): Unit[] {
     const enemy = this.battle.enemies[0];
@@ -561,12 +561,12 @@ export class BattleView extends Component {
   }
 
   private renderSummonList(actorId: string): void {
-    this.rect(472, 164, 388, 342, '#1E3835', '#E5CB8D', 14);
-    this.text('选择携带的汀蛙', 510, 180, 28, '#F3DFAD', 310, 1);
+    this.rect(472, 145, 388, 570, '#1E3835', '#E5CB8D', 14);
+    this.text('选择携带的汀蛙', 510, 161, 28, '#F3DFAD', 310, 1);
     this.battle.pets.forEach((pet, index) => {
       const eligible = this.battle.summonTargets().some(unit => unit.id === pet.id);
       const label = `${pet.name} ${index + 1} · 气血 ${pet.hp}/${pet.maxHp}`;
-      this.button(label, 519, 245 + index * 75, 295, 61, eligible, eligible ? () => {
+      this.button(label, 519, 218 + index * 73, 295, 61, eligible, eligible ? () => {
         const before = this.battle.round;
         const phase = this.battle.phase;
         const hp = this.captureHp();
@@ -577,7 +577,7 @@ export class BattleView extends Component {
         this.render();
       } : undefined);
     });
-    this.button('返回', 568, 411, 192, 58, true, () => { this.summonOpen = false; this.render(); });
+    this.button('返回', 568, 631, 192, 58, true, () => { this.summonOpen = false; this.render(); });
   }
 
   private renderRosterList(): void {

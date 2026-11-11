@@ -77,7 +77,7 @@ export class Battle {
   }
 
   get units(): Unit[] { return [...this.allies, ...this.enemies]; }
-  get pets(): Unit[] { return this.allies.filter(u => u.id.startsWith('pet')); }
+  get pets(): Unit[] { return this.allies.filter(u => u.id.startsWith('pet') || u.id.startsWith('caught-')); }
   get pending(): Unit[] { return this.allies.filter(u => u.deployed && u.hp > 0 && !u.left && !this.commands.has(u.id)); }
   summonTargets(): Unit[] {
     if (this.summonsUsed >= CONFIG.summon.maxPerBattle) return [];
@@ -195,6 +195,9 @@ export class Battle {
         this.events.push({ kind: success ? 'captureSuccess' : 'captureFail', actorId: turn.actor.id, targetId: target.id });
         if (success) {
           if (!this.roster.addCaptured(target)) throw new Error('携带记录无法新增');
+          const carried = this.roster.entries[this.roster.entries.length - 1];
+          this.allies.push({ ...target, id: carried.id, name: carried.name, side: 'ally',
+            slot: 0, hp: carried.hp, defending: false, left: false, deployed: false });
           target.left = true;
         }
         this.log.push(success ? `${turn.actor.name} 抓取成功，${target.name} 离场。` : `${turn.actor.name} 抓取 ${target.name} 失败。`);
