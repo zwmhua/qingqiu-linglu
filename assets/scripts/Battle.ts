@@ -8,12 +8,14 @@ import { generateBaseStats } from '../logic/base-stats';
 import type { Aptitudes } from '../logic/aptitude';
 import type { BaseStats } from '../logic/base-stats';
 import { MUTATION_CONFIG, isMutation, mutateAptitudes } from '../logic/mutation';
+import { WILD_SPECIES, pickWildLevel, pickWildSpecies, wildCombat } from '../logic/wild-encounter';
+import type { WildSpecies } from '../logic/wild-encounter';
 
 export type Side = 'ally' | 'enemy';
 export type Command = 'attack' | 'defend' | 'protect' | 'retreat' | 'flee' | 'summon' | 'capture';
 export type Unit = {
   id: string; name: string; side: Side; slot: number; level: number;
-  isBaby?: boolean; isMutated?: boolean; combatLevel?: number;
+  species?: WildSpecies; isBaby?: boolean; isMutated?: boolean; combatLevel?: number;
   aptitudes?: Aptitudes;
   growth?: number;
   baseStats?: BaseStats;
@@ -52,7 +54,9 @@ export class Battle {
   constructor(random: () => number = Math.random, count?: number, initialRage = 0,
     previousRoster?: Roster, babyRandom: () => number = random,
     aptitudeRandom: () => number = Math.random, growthRandom: () => number = Math.random,
-    baseStatsRandom: () => number = Math.random, mutationRandom: () => number = Math.random) {
+    baseStatsRandom: () => number = Math.random, mutationRandom: () => number = Math.random,
+    // Fixed-count previews and legacy fixtures retain level-one Tingwa unless given an encounter source.
+    encounterRandom: () => number = count === undefined ? random : () => 0) {
     this.random = random;
     this.heroRage = Math.max(0, Math.min(CONFIG.status.rageMax, initialRage));
     const hero = CONFIG.hero;
@@ -63,14 +67,14 @@ export class Battle {
         hp: hero.hp, maxHp: hero.hp, attack: hero.attack, defense: hero.defense,
         speed: hero.speed, defending: false, left: false, deployed: true },
       { id: 'pet', name: frog.name, side: 'ally', slot: 0, level: frog.level,
-        isBaby: false, combatLevel: effectiveLevel(frog.level),
+        species: 'tingwa', isBaby: false, combatLevel: effectiveLevel(frog.level),
         aptitudes: previousRoster ? undefined : generateAptitudes(false, aptitudeRandom),
         growth: previousRoster ? undefined : generateGrowth(false, growthRandom),
         baseStats: previousRoster ? undefined : generateBaseStats(frog.level, baseStatsRandom),
         hp: pet.hp, maxHp: pet.hp, attack: pet.attack, defense: pet.defense,
         speed: pet.speed, defending: false, left: false, deployed: true, skill: frog.innateSkill },
       { id: 'pet-2', name: frog.name, side: 'ally', slot: 0, level: frog.level,
-        isBaby: false, combatLevel: effectiveLevel(frog.level),
+        species: 'tingwa', isBaby: false, combatLevel: effectiveLevel(frog.level),
         aptitudes: previousRoster ? undefined : generateAptitudes(false, aptitudeRandom),
         growth: previousRoster ? undefined : generateGrowth(false, growthRandom),
         baseStats: previousRoster ? undefined : generateBaseStats(frog.level, baseStatsRandom),
@@ -80,7 +84,7 @@ export class Battle {
     this.roster = new Roster(CONFIG.maxCarriedPets, this.pets, previousRoster);
     if (previousRoster) this.allies = [this.allies[0], ...this.roster.entries.map((pet, index) => ({
       id: pet.id, name: pet.name, side: 'ally' as const, slot: 0, level: pet.level,
-      isBaby: pet.isBaby, combatLevel: effectiveLevel(pet.level),
+      species: pet.species, isBaby: pet.isBaby, combatLevel: effectiveLevel(pet.level),
       aptitudes: pet.aptitudes,
       growth: pet.growth,
       baseStats: pet.baseStats,
@@ -91,20 +95,20 @@ export class Battle {
     const quantity = count ?? this.pickCount();
     if (quantity < 1 || quantity > 3) throw new Error('遭遇数量超出配置范围');
     for (let i = 0; i < quantity; i++) {
-      const wild = CONFIG.wild;
+      const species = pickWildSpecies(encounterRandom());
+      const wild = WILD_SPECIES[species];
       const isBaby = isBabyEncounter(babyRandom(), CONFIG.baby.encounterRate);
       const isMutated = isMutation(mutationRandom(), MUTATION_CONFIG.rate);
-      const level = isBaby ? CONFIG.baby.level : wild.level;
-      const aptitudes = generateAptitudes(isBaby, aptitudeRandom);
-      this.enemies.push({ id: `enemy-${i}`, name: isBaby ? CONFIG.baby.name : wild.name,
-        side: 'enemy', slot: i, level, isBaby, isMutated, combatLevel: effectiveLevel(level),
+      const level = isBaby ? CONFIG.baby.level : pickWildLevel(encounterRandom());
+      const aptitudes = generateAptitudes(isBaby, aptitudeRandom, wild.aptitudes);
+      this.enemies.push({ id: `enemy-${i}`, name: isBaby ? `${wild.name}宝宝` : `野外${wild.name}`,
+        side: 'enemy', slot: i, species, level, isBaby, isMutated, combatLevel: effectiveLevel(level),
         aptitudes: isMutated ? mutateAptitudes(aptitudes, MUTATION_CONFIG.multiplier) : aptitudes,
-        growth: generateGrowth(isBaby, growthRandom),
+        growth: generateGrowth(isBaby, growthRandom, wild.growth),
         baseStats: generateBaseStats(level, baseStatsRandom),
-        hp: wild.hp, maxHp: wild.hp, attack: wild.attack,
-        defense: wild.defense, speed: wild.speed, defending: false, left: false, deployed: true });
+        ...wildCombat(species, level), defending: false, left: false, deployed: true });
     }
-    this.log.push(`遭遇 ${quantity} 只野外汀蛙。`);
+    this.log.push(`遭遇：${this.enemies.map(enemy => enemy.name).join('、')}。`);
   }
 
   private pickCount(): number {
@@ -245,7 +249,7 @@ export class Battle {
           target.left = true;
         }
         this.log.push(success
-          ? `${turn.actor.name} 抓取成功，${target.name} 离场。${this.roster.entries[this.roster.entries.length - 1].isMutated ? ' 获得变异汀蛙！' : ''}`
+          ? `${turn.actor.name} 抓取成功，${target.name} 离场。${target.isMutated ? ' 获得变异灵宠！' : ''}`
           : `${turn.actor.name} 抓取 ${target.name} 失败。`);
         if (this.checkWinner()) break;
         continue;

@@ -255,6 +255,14 @@
       "__uuid__": "640b8c8a-de57-4cd0-a7cf-6c2bde59081a@f9941",
       "__expectedType__": "cc.SpriteFrame"
     },
+    "panguiArt": {
+      "__uuid__": "2eacabef-fe53-46c5-9583-cbd2f2f0e076@f9941",
+      "__expectedType__": "cc.SpriteFrame"
+    },
+    "maomaochongArt": {
+      "__uuid__": "8bc025ee-2bcb-4443-9667-a6a8f75c258e@f9941",
+      "__expectedType__": "cc.SpriteFrame"
+    },
     "jadeNormal": {
       "__uuid__": "d8aebb7e-4694-457e-b2bd-6e1a8a1ddf6a@f9941",
       "__expectedType__": "cc.SpriteFrame"

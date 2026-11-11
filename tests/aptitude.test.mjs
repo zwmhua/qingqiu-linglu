@@ -41,7 +41,8 @@ test('each aptitude uses two independent integer rolls and rounds half upward', 
 
 test('separate wild frogs receive separate six-aptitude samples', () => {
   let rolls = 0;
-  const battle = new Battle(() => 0.5, 2, 0, undefined, () => 1, () => rolls++ < 36 ? 0 : 1);
+  const battle = new Battle(() => 0.5, 2, 0, undefined, () => 1,
+    () => rolls++ < 36 ? 0 : 1, undefined, undefined, () => 1);
   assert.equal(rolls, 48);
   assert.notStrictEqual(battle.enemies[0].aptitudes, battle.enemies[1].aptitudes);
   for (const key of APTITUDE_KEYS) {
