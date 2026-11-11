@@ -202,8 +202,9 @@ export class BattleView extends Component {
 
   private autoButton(): void {
     const { x, y } = COMMAND_LAYOUT['自动'];
-    const { node, sprite } = this.image(x, y, COMMAND_ICON_SIZE, COMMAND_ICON_SIZE, this.iconAuto);
-    const title = this.text('自动', x, y + COMMAND_ICON_SIZE, 17, '#F6E5C0', COMMAND_ICON_SIZE, 1).getComponent(Label)!;
+    const { sprite } = this.image(x, y, COMMAND_ICON_SIZE, COMMAND_ICON_SIZE, this.iconAuto);
+    const titleNode = this.text('自动', x, y + COMMAND_ICON_SIZE, 17, '#F6E5C0', COMMAND_ICON_SIZE, 1);
+    const title = titleNode.getComponent(Label)!;
     title.enableOutline = true;
     title.outlineColor = C('#1A2826');
     title.outlineWidth = 2;
@@ -220,7 +221,12 @@ export class BattleView extends Component {
       paint();
       if (this.auto.enabled) this.runAuto();
     };
-    node.on(Node.EventType.TOUCH_END, click);
+    const hit = new Node('command-auto');
+    this.layer.addChild(hit);
+    this.pos(hit, x + COMMAND_ICON_SIZE / 2, y + COMMAND_ICON_SIZE / 2);
+    hit.addComponent(UITransform).setContentSize(COMMAND_ICON_SIZE, COMMAND_ICON_SIZE);
+    hit.on(Node.EventType.TOUCH_END, click);
+    titleNode.on(Node.EventType.TOUCH_END, click);
     paint();
   }
 
