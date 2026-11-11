@@ -11,6 +11,8 @@ test('command slots form the requested L with a shared flee/retreat position', (
   assert.ok(column.every((slot, i) => i === 0 || Math.abs(slot.y - column[i - 1].y - verticalStep) < 0.001));
   assert.ok(column.every((slot, i) => i === 0 || slot.y - column[i - 1].y >= COMMAND_ICON_SIZE + 30));
   assert.ok(bottom.every(slot => slot.y === bottom[0].y));
+  assert.equal(COMMAND_LAYOUT['自动'].y, bottom[0].y);
+  assert.equal(bottom[0].x - COMMAND_LAYOUT['自动'].x, bottom[1].x - bottom[0].x);
   assert.ok(bottom.every((slot, i) => i === 0 || slot.x - bottom[i - 1].x === bottom[1].x - bottom[0].x));
   assert.equal(bottom.at(-1).x, vertical[0].x);
   assert.ok(vertical[0].y >= 178); // below the upper-right command panel
@@ -27,7 +29,7 @@ test('command icons fit the screen and avoid visible allied labels', () => {
   assert.ok(first.y + COMMAND_ICON_SIZE + 30 <= CONFIG.height);
   const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w &&
     a.y < b.y + b.h && b.y < a.y + a.h;
-  for (const slot of [...bottom, ...['攻击', '灵术', '道具'].map(name => COMMAND_LAYOUT[name])])
+  for (const slot of [...bottom, COMMAND_LAYOUT['自动'], ...['攻击', '灵术', '道具'].map(name => COMMAND_LAYOUT[name])])
     for (const { pet, hero } of bottom.includes(slot) ? CONFIG.positions.allyGroups : CONFIG.positions.allyGroups.slice(0, 1)) {
     for (const [unit, width] of [[pet, CONFIG.visual.petNameWidth], [hero, CONFIG.visual.nameWidth]]) {
       const name = { x: unit.x - width / 2, y: unit.y + 19 + CONFIG.visual.nameGap,

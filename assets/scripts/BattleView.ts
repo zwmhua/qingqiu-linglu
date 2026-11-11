@@ -2,6 +2,7 @@ import { _decorator, Color, Component, EventTouch, Graphics, Label, Mask, Node, 
 import { Battle, BattleEvent, Unit } from './Battle';
 import { COMMAND_ICON_SIZE, COMMAND_LAYOUT, CONFIG } from './config';
 import { targetCommand, toggleTarget } from '../logic/targeting';
+import { AutoCommands } from '../logic/auto';
 import type { TargetMode } from '../logic/targeting';
 
 const { ccclass, property } = _decorator;
@@ -39,6 +40,7 @@ export class BattleView extends Component {
   private detailsOpen: 'pet' | 'hero' | null = null;
   private playing = false;
   private speedMultiplier = 1;
+  private auto = new AutoCommands();
 
   start(): void {
     view.setDesignResolutionSize(CONFIG.width, CONFIG.height, 4);
@@ -49,6 +51,7 @@ export class BattleView extends Component {
     if (this.layoutTest) return;
     if (this.playing) { this.syncMovingUnits(); return; }
     if (this.confirmingTarget || this.rosterOpen) return;
+    if (this.auto.enabled && this.battle.pending.length) { this.runAuto(); return; }
     const before = this.battle.round;
     const phase = this.battle.phase;
     const hp = this.captureHp();
@@ -193,6 +196,48 @@ export class BattleView extends Component {
       hit.on(Node.EventType.TOUCH_CANCEL, () => node.setScale(1, 1, 1));
       hit.on(Node.EventType.TOUCH_END, () => { node.setScale(1, 1, 1); onClick(); });
     }
+  }
+
+  private autoButton(): void {
+    const { x, y } = COMMAND_LAYOUT['自动'];
+    const click = () => {
+      if (this.confirmingTarget) return;
+      this.auto.toggle();
+      this.choosingTarget = null;
+      this.summonOpen = false;
+      this.rosterOpen = false;
+      paint();
+      if (this.auto.enabled) this.runAuto();
+    };
+    const circle = this.rect(x, y, COMMAND_ICON_SIZE, COMMAND_ICON_SIZE, '#27685F', '#A5D1B5',
+      COMMAND_ICON_SIZE / 2, click);
+    const title = this.text('自动', x, y + 24, 20, '#F6E5C0', COMMAND_ICON_SIZE, 1, click).getComponent(Label)!;
+    title.enableOutline = true;
+    title.outlineColor = C('#1A2826');
+    title.outlineWidth = 2;
+    const paint = () => {
+      const g = circle.getComponent(Graphics)!;
+      g.clear();
+      g.fillColor = C(this.auto.enabled ? '#4CAF8A' : '#27685F');
+      g.strokeColor = C(this.auto.enabled ? '#F5DC8F' : '#A5D1B5');
+      g.lineWidth = 3;
+      g.roundRect(-COMMAND_ICON_SIZE / 2, -COMMAND_ICON_SIZE / 2,
+        COMMAND_ICON_SIZE, COMMAND_ICON_SIZE, COMMAND_ICON_SIZE / 2);
+      g.fill(); g.stroke();
+      title.string = this.auto.enabled ? '取消' : '自动';
+    };
+    paint();
+  }
+
+  private runAuto(): void {
+    if (!this.auto.enabled || this.playing || this.confirmingTarget || this.battle.phase !== 'command') return;
+    const before = this.battle.round;
+    const phase = this.battle.phase;
+    const hp = this.captureHp();
+    const deployment = this.captureDeployment();
+    this.auto.issue(this.battle);
+    if (this.startPlayback(before, phase, hp, deployment)) return;
+    this.render();
   }
 
   private unitPoint(unit: Unit): { x: number; y: number } {
@@ -426,7 +471,8 @@ export class BattleView extends Component {
       this.displayedHp = null;
       this.displayedDeployment = null;
       this.displayedLeft = null;
-      this.render();
+      if (this.auto.enabled) this.runAuto();
+      else this.render();
       return;
     }
     if (event.kind === 'summon') {
@@ -606,6 +652,7 @@ export class BattleView extends Component {
   }
 
   private render(): void {
+    this.auto.sync(this.battle);
     this.lastShownSecond = Math.ceil(this.battle.seconds);
     for (const child of [...this.node.children]) if (child.name !== 'Camera') child.destroy();
     this.unitNodes.clear();
@@ -665,6 +712,7 @@ export class BattleView extends Component {
     if (!this.playing && !this.rosterOpen) this.renderHitAreas(units);
     this.layer = interfaceLayer;
     this.renderLog();
+    if (this.battle.phase !== 'ended') this.autoButton();
     if (!this.playing) this.button(`携带 ${this.battle.roster.entries.length}/${this.battle.roster.capacity}`,
       25, 104, 165, 54, true, () => {
         this.choosingTarget = null;
@@ -731,6 +779,7 @@ export class BattleView extends Component {
       this.text('汀蛙之战暂告一段落', 470, 325, 22, '#c6dbc6', 380, 1);
       this.button('再来一场', 513, 384, 286, 69, true, () => {
         this.battle = new Battle(Math.random, undefined, this.battle.heroRage);
+        this.auto = new AutoCommands();
         this.choosingTarget = null;
         this.displayedHp = null;
         this.displayedDeployment = null;

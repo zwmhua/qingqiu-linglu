@@ -62,6 +62,7 @@ export const COMMAND_LAYOUT = {
   攻击: { x: 1253, y: commandBottom - commandVerticalStep },
   灵术: { x: 1253, y: commandBottom - commandVerticalStep * 2 },
   道具: { x: 1253, y: CONFIG.visual.commandTop },
+  自动: { x: 918, y: commandBottom },
   抓取: { x: 985, y: commandBottom }, 逃跑: { x: 1052, y: commandBottom }, 撤退: { x: 1052, y: commandBottom },
   召唤: { x: 1119, y: commandBottom }, 保护: { x: 1186, y: commandBottom }, 防御: { x: 1253, y: commandBottom },
 } as const;

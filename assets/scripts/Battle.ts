@@ -25,6 +25,7 @@ export class Battle {
   enemies: Unit[] = [];
   roster!: Roster;
   commands = new Map<string, { command: Command; target?: string }>();
+  lastCommands = new Map<string, { command: Command; target?: string }>();
   log: string[] = [];
   lastOrder: string[] = [];
   attackEvents: AttackEvent[] = [];
@@ -141,6 +142,7 @@ export class Battle {
   }
 
   private resolve(): void {
+    this.lastCommands = new Map(this.commands);
     this.attackEvents = [];
     this.events = [];
     for (const ally of this.allies) {
