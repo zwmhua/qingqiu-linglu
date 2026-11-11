@@ -5,13 +5,6 @@ export const APTITUDE_RANGES = {
 export const APTITUDE_KEYS = ['attack', 'defense', 'stamina', 'mana', 'dodge', 'speed'] as const;
 export type Aptitudes = Record<(typeof APTITUDE_KEYS)[number], number>;
 
-export function middleAptitudes(): Aptitudes {
-  return Object.fromEntries(APTITUDE_KEYS.map(key => {
-    const [min, max] = APTITUDE_RANGES[key];
-    return [key, Math.round((min + max) / 2)];
-  })) as Aptitudes;
-}
-
 export function generateAptitudes(isBaby: boolean, random: () => number): Aptitudes {
   return Object.fromEntries(APTITUDE_KEYS.map(key => {
     const [min, max] = APTITUDE_RANGES[key];

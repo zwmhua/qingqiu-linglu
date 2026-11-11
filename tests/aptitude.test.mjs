@@ -6,7 +6,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier.startsWith('.') && !specifier.endsWith('.ts')) return nextResolve(`${specifier}.ts`, context);
   return nextResolve(specifier, context);
 } });
-const { APTITUDE_RANGES, APTITUDE_KEYS, generateAptitudes, middleAptitudes } =
+const { APTITUDE_RANGES, APTITUDE_KEYS, generateAptitudes } =
   await import('../assets/logic/aptitude.ts');
 const { Battle } = await import('../assets/scripts/Battle.ts');
 
@@ -41,8 +41,8 @@ test('each aptitude uses two independent integer rolls and rounds half upward', 
 
 test('separate wild frogs receive separate six-aptitude samples', () => {
   let rolls = 0;
-  const battle = new Battle(() => 0.5, 2, 0, undefined, () => 1, () => rolls++ < 12 ? 0 : 1);
-  assert.equal(rolls, 24);
+  const battle = new Battle(() => 0.5, 2, 0, undefined, () => 1, () => rolls++ < 36 ? 0 : 1);
+  assert.equal(rolls, 48);
   assert.notStrictEqual(battle.enemies[0].aptitudes, battle.enemies[1].aptitudes);
   for (const key of APTITUDE_KEYS) {
     assert.equal(battle.enemies[0].aptitudes[key], APTITUDE_RANGES[key][0]);
@@ -50,15 +50,23 @@ test('separate wild frogs receive separate six-aptitude samples', () => {
   }
 });
 
-test('initial pets have fixed middle aptitudes without changing level or combat stats', () => {
-  const battle = new Battle(() => 0.5, 1, 0, undefined, () => 1, () => 0);
+test('initial pets independently double-roll normal aptitudes once without changing combat stats', () => {
+  let rolls = 0;
+  const battle = new Battle(() => 0.5, 1, 0, undefined, () => 1, () => rolls++ < 12 ? 0 : 1);
+  assert.equal(rolls, 36);
   for (const pet of battle.pets) {
     assert.equal(pet.level, 1);
     assert.equal(pet.isBaby, false);
-    assert.deepEqual(pet.aptitudes, middleAptitudes());
     assert.deepEqual([pet.hp, pet.attack, pet.defense, pet.speed], [38, 11, 10, 10]);
   }
+  for (const key of APTITUDE_KEYS) {
+    assert.equal(battle.pets[0].aptitudes[key], APTITUDE_RANGES[key][0]);
+    assert.equal(battle.pets[1].aptitudes[key], APTITUDE_RANGES[key][1]);
+  }
   assert.notStrictEqual(battle.pets[0].aptitudes, battle.pets[1].aptitudes);
+  const next = new Battle(() => 0.5, 1, 0, battle.roster, () => 1, () => rolls++);
+  assert.deepEqual(next.roster.entries.map(pet => pet.aptitudes), battle.roster.entries.map(pet => pet.aptitudes));
+  assert.equal(rolls, 48);
 });
 
 test('capture, summon and next battle keep each pet aptitude and battle values', () => {

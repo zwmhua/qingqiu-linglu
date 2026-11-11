@@ -2,7 +2,7 @@ import { CONFIG } from './config';
 import { captureChance, captureTarget } from '../logic/capture';
 import { Roster } from '../logic/roster';
 import { effectiveLevel, isBabyEncounter } from '../logic/baby';
-import { generateAptitudes, middleAptitudes } from '../logic/aptitude';
+import { generateAptitudes } from '../logic/aptitude';
 import type { Aptitudes } from '../logic/aptitude';
 
 export type Side = 'ally' | 'enemy';
@@ -56,11 +56,13 @@ export class Battle {
         hp: hero.hp, maxHp: hero.hp, attack: hero.attack, defense: hero.defense,
         speed: hero.speed, defending: false, left: false, deployed: true },
       { id: 'pet', name: frog.name, side: 'ally', slot: 0, level: frog.level,
-        isBaby: false, combatLevel: effectiveLevel(frog.level), aptitudes: middleAptitudes(),
+        isBaby: false, combatLevel: effectiveLevel(frog.level),
+        aptitudes: previousRoster ? undefined : generateAptitudes(false, aptitudeRandom),
         hp: pet.hp, maxHp: pet.hp, attack: pet.attack, defense: pet.defense,
         speed: pet.speed, defending: false, left: false, deployed: true, skill: frog.innateSkill },
       { id: 'pet-2', name: frog.name, side: 'ally', slot: 0, level: frog.level,
-        isBaby: false, combatLevel: effectiveLevel(frog.level), aptitudes: middleAptitudes(),
+        isBaby: false, combatLevel: effectiveLevel(frog.level),
+        aptitudes: previousRoster ? undefined : generateAptitudes(false, aptitudeRandom),
         hp: pet.hp, maxHp: pet.hp, attack: pet.attack, defense: pet.defense,
         speed: pet.speed, defending: false, left: false, deployed: false, skill: frog.innateSkill },
     ];
