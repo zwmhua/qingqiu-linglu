@@ -687,12 +687,21 @@ export class BattleView extends Component {
     this.text('青丘灵录', 35, 24, 31, '#f3e5bc', 240);
     this.text('汀蛙 · 林间遭遇', 35, 65, 19, '#afc8ae', 280);
     let speedButton: Node;
-    speedButton = this.button(this.speedMultiplier === 1 ? '加速 ×2' : '恢复 ×1',
+    speedButton = this.button(this.speedMultiplier === 1 ? '×1' : '×2',
       315, 31, 128, 52, true, () => {
         this.speedMultiplier = this.speedMultiplier === 1 ? CONFIG.animation.fastMultiplier : 1;
         speedButton.getChildByName('button-label')!.getComponent(Label)!.string =
-          this.speedMultiplier === 1 ? '加速 ×2' : '恢复 ×1';
+          this.speedMultiplier === 1 ? '×1' : '×2';
+        glow.active = this.speedMultiplier !== 1;
       });
+    const glow = new Node('speed-highlight');
+    speedButton.addChild(glow);
+    const gold = glow.addComponent(Graphics);
+    gold.strokeColor = C('#FFD889');
+    gold.lineWidth = 5;
+    gold.roundRect(-66, -28, 132, 56, 14);
+    gold.stroke();
+    glow.active = this.speedMultiplier !== 1;
     this.rect(449, 24, 340, 76, '#243d3c', '#b5a777', 12);
     this.text(`第 ${this.battle.round} 回合`, 460, 34, 27, '#f1e4bd', 145, 1);
     this.text(this.playing ? '战斗进行中' : this.battle.phase === 'ended' ? '战斗结束'
