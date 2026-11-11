@@ -2,7 +2,7 @@ import type { Unit } from '../scripts/Battle';
 import type { Aptitudes } from './aptitude';
 import type { BaseStats } from './base-stats';
 
-type PetStats = Pick<Unit, 'id' | 'name' | 'hp' | 'maxHp' | 'level' | 'attack' | 'defense' | 'speed' | 'skill' | 'isBaby' | 'aptitudes' | 'growth' | 'baseStats'>;
+type PetStats = Pick<Unit, 'id' | 'name' | 'hp' | 'maxHp' | 'level' | 'attack' | 'defense' | 'speed' | 'skill' | 'isBaby' | 'isMutated' | 'aptitudes' | 'growth' | 'baseStats'>;
 export type CarriedPet = PetStats & {
   isBaby: boolean; aptitudes: Aptitudes; growth: number; baseStats: BaseStats;
   isMutated: boolean;
@@ -52,7 +52,7 @@ export class Roster {
       aptitudes: this.requireAptitudes(enemy),
       growth: this.requireGrowth(enemy),
       baseStats: this.requireBaseStats(enemy),
-      isMutated: false,
+      isMutated: !!enemy.isMutated,
       origin: 'captured', sourceEnemyId: enemy.id });
     this.capturedEnemies.add(enemy.id);
     return true;

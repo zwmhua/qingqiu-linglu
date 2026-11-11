@@ -42,6 +42,7 @@ export const CONFIG = {
   maxCarriedPets: 5,
   status: { heroManaMax: 40, petManaMax: 30, rageMax: 150, ragePerDamage: 1 },
   visual: {
+    petTint: { normal: '#FFFFFF', mutated: '#D49CFF' },
     unitScale: 0.5, heroHeight: 240, frogHeight: 170, enemyFlipX: true,
     footOffset: { frog: 22, hero: 6 },
     barWidth: 70, barHeight: 6, barGap: 3, headGap: 8, nameGap: 3, nameSize: 18,

@@ -48,14 +48,12 @@ export class Battle {
   round = 1;
   seconds: number = CONFIG.commandSeconds;
   private random: () => number;
-  private mutationRandom: () => number;
 
   constructor(random: () => number = Math.random, count?: number, initialRage = 0,
     previousRoster?: Roster, babyRandom: () => number = random,
     aptitudeRandom: () => number = Math.random, growthRandom: () => number = Math.random,
     baseStatsRandom: () => number = Math.random, mutationRandom: () => number = Math.random) {
     this.random = random;
-    this.mutationRandom = mutationRandom;
     this.heroRage = Math.max(0, Math.min(CONFIG.status.rageMax, initialRage));
     const hero = CONFIG.hero;
     const frog = CONFIG.frog;
@@ -95,10 +93,12 @@ export class Battle {
     for (let i = 0; i < quantity; i++) {
       const wild = CONFIG.wild;
       const isBaby = isBabyEncounter(babyRandom(), CONFIG.baby.encounterRate);
+      const isMutated = isMutation(mutationRandom(), MUTATION_CONFIG.rate);
       const level = isBaby ? CONFIG.baby.level : wild.level;
+      const aptitudes = generateAptitudes(isBaby, aptitudeRandom);
       this.enemies.push({ id: `enemy-${i}`, name: isBaby ? CONFIG.baby.name : wild.name,
-        side: 'enemy', slot: i, level, isBaby, combatLevel: effectiveLevel(level),
-        aptitudes: generateAptitudes(isBaby, aptitudeRandom),
+        side: 'enemy', slot: i, level, isBaby, isMutated, combatLevel: effectiveLevel(level),
+        aptitudes: isMutated ? mutateAptitudes(aptitudes, MUTATION_CONFIG.multiplier) : aptitudes,
         growth: generateGrowth(isBaby, growthRandom),
         baseStats: generateBaseStats(level, baseStatsRandom),
         hp: wild.hp, maxHp: wild.hp, attack: wild.attack,
@@ -239,10 +239,6 @@ export class Battle {
         if (success) {
           if (!this.roster.addCaptured(target)) throw new Error('携带记录无法新增');
           const carried = this.roster.entries[this.roster.entries.length - 1];
-          if (isMutation(this.mutationRandom(), MUTATION_CONFIG.rate)) {
-            carried.isMutated = true;
-            carried.aptitudes = mutateAptitudes(carried.aptitudes, MUTATION_CONFIG.multiplier);
-          }
           this.allies.push({ ...target, id: carried.id, name: carried.name, side: 'ally',
             slot: 0, hp: carried.hp, aptitudes: carried.aptitudes, isMutated: carried.isMutated,
             defending: false, left: false, deployed: false });
