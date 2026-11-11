@@ -33,3 +33,23 @@ test('scene binds command SpriteFrames in the requested order', () => {
     assert.equal(view.commandIcons[index].__uuid__, `${meta.uuid}@f9941`, name);
   });
 });
+
+test('auto button icons are transparent 128px assets bound to the scene', () => {
+  for (const [name, field] of [['icon_auto', 'iconAuto'], ['icon_auto_cancel', 'iconAutoCancel']]) {
+    const png = readFileSync(new URL(`../assets/textures/ui/${name}.png`, import.meta.url));
+    const meta = JSON.parse(readFileSync(new URL(`../assets/textures/ui/${name}.png.meta`, import.meta.url)));
+    assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', name);
+    assert.equal(png.readUInt32BE(16), 128, name);
+    assert.equal(png.readUInt32BE(20), 128, name);
+    assert.equal(png[25], 6, `${name} must be RGBA`);
+    const chunks = [];
+    for (let offset = 8; offset < png.length;) {
+      const length = png.readUInt32BE(offset);
+      if (png.toString('ascii', offset + 4, offset + 8) === 'IDAT')
+        chunks.push(png.subarray(offset + 8, offset + 8 + length));
+      offset += length + 12;
+    }
+    assert.equal(inflateSync(Buffer.concat(chunks))[4], 0, `${name} top-left alpha`);
+    assert.equal(view[field].__uuid__, `${meta.uuid}@f9941`, name);
+  }
+});

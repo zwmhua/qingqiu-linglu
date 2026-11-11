@@ -18,6 +18,8 @@ export class BattleView extends Component {
   @property(SpriteFrame) jadePressed: SpriteFrame | null = null;
   @property(SpriteFrame) jadeDisabled: SpriteFrame | null = null;
   @property([SpriteFrame]) commandIcons: SpriteFrame[] = [];
+  @property(SpriteFrame) iconAuto: SpriteFrame | null = null;
+  @property(SpriteFrame) iconAutoCancel: SpriteFrame | null = null;
   private battle = new Battle();
   private layoutTest = new URLSearchParams(window.location.search).get('layout') === '10v10';
   private choosingTarget: TargetMode | null = null;
@@ -200,6 +202,15 @@ export class BattleView extends Component {
 
   private autoButton(): void {
     const { x, y } = COMMAND_LAYOUT['自动'];
+    const { node, sprite } = this.image(x, y, COMMAND_ICON_SIZE, COMMAND_ICON_SIZE, this.iconAuto);
+    const title = this.text('自动', x, y + COMMAND_ICON_SIZE, 17, '#F6E5C0', COMMAND_ICON_SIZE, 1).getComponent(Label)!;
+    title.enableOutline = true;
+    title.outlineColor = C('#1A2826');
+    title.outlineWidth = 2;
+    const paint = () => {
+      sprite.spriteFrame = this.auto.enabled ? this.iconAutoCancel : this.iconAuto;
+      title.string = this.auto.enabled ? '取消' : '自动';
+    };
     const click = () => {
       if (this.confirmingTarget) return;
       this.auto.toggle();
@@ -209,23 +220,7 @@ export class BattleView extends Component {
       paint();
       if (this.auto.enabled) this.runAuto();
     };
-    const circle = this.rect(x, y, COMMAND_ICON_SIZE, COMMAND_ICON_SIZE, '#27685F', '#A5D1B5',
-      COMMAND_ICON_SIZE / 2, click);
-    const title = this.text('自动', x, y + 24, 20, '#F6E5C0', COMMAND_ICON_SIZE, 1, click).getComponent(Label)!;
-    title.enableOutline = true;
-    title.outlineColor = C('#1A2826');
-    title.outlineWidth = 2;
-    const paint = () => {
-      const g = circle.getComponent(Graphics)!;
-      g.clear();
-      g.fillColor = C(this.auto.enabled ? '#4CAF8A' : '#27685F');
-      g.strokeColor = C(this.auto.enabled ? '#F5DC8F' : '#A5D1B5');
-      g.lineWidth = 3;
-      g.roundRect(-COMMAND_ICON_SIZE / 2, -COMMAND_ICON_SIZE / 2,
-        COMMAND_ICON_SIZE, COMMAND_ICON_SIZE, COMMAND_ICON_SIZE / 2);
-      g.fill(); g.stroke();
-      title.string = this.auto.enabled ? '取消' : '自动';
-    };
+    node.on(Node.EventType.TOUCH_END, click);
     paint();
   }
 

@@ -278,6 +278,8 @@
       { "__uuid__": "626a6017-ea62-46d4-90e4-9a327c8ae47c@f9941", "__expectedType__": "cc.SpriteFrame" },
       { "__uuid__": "78098735-da09-4edb-866d-17515fea5cc9@f9941", "__expectedType__": "cc.SpriteFrame" }
     ],
+    "iconAuto": { "__uuid__": "c6c11277-d679-456a-81ca-57f2bc1f7323@f9941", "__expectedType__": "cc.SpriteFrame" },
+    "iconAutoCancel": { "__uuid__": "7e676167-67a2-4958-8bb0-ad44147163fe@f9941", "__expectedType__": "cc.SpriteFrame" },
     "_id": "5fefb165ebd6489b9624bc21"
   },
   {
