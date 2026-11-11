@@ -5,6 +5,7 @@ import { targetCommand, toggleTarget } from '../logic/targeting';
 import { AutoCommands } from '../logic/auto';
 import { PREVIEW } from 'cc/env';
 import { APTITUDE_KEYS } from '../logic/aptitude';
+import { BASE_STAT_KEYS } from '../logic/base-stats';
 import type { TargetMode } from '../logic/targeting';
 
 const { ccclass, property } = _decorator;
@@ -649,10 +650,18 @@ export class BattleView extends Component {
     if (selected) {
       this.text(`${selected.name} Lv.${selected.level}`, 475, 156, 30, '#F3DFAD', 385, 1);
       this.text('资质', 478, 214, 25, '#F3DFAD', 370);
-      const labels = ['攻击', '防御', '体力', '法力', '躲避', '速度'];
+      const labels = ['攻击资质', '防御资质', '体力资质', '法力资质', '躲避资质', '速度资质'];
       APTITUDE_KEYS.forEach((key, index) => this.text(
-        `${labels[index]}  ${selected.aptitudes[key]}`, 490, 262 + index * 45, 22, '#F6F0DC', 350));
-      this.text(`成长  ${selected.growth.toFixed(3)}`, 490, 526, 22, '#F6F0DC', 350);
+        `${labels[index]}  ${selected.aptitudes[key]}`, 490 + (index % 2) * 195,
+        253 + Math.floor(index / 2) * 36, 18, '#F6F0DC', 185));
+      this.text(`成长  ${selected.growth.toFixed(3)}`, 490, 364, 21, '#F6F0DC', 350);
+      this.text('基础属性', 478, 399, 25, '#F3DFAD', 370);
+      const statLabels = ['体质', '法力', '力量', '耐力', '敏捷'];
+      BASE_STAT_KEYS.forEach((key, index) => this.text(
+        `${statLabels[index]}  ${selected.baseStats[key]}`, 490 + (index % 2) * 195,
+        438 + Math.floor(index / 2) * 33, 20, '#F6F0DC', 185));
+      this.text(`总点数  ${BASE_STAT_KEYS.reduce((sum, key) => sum + selected.baseStats[key], 0)}`,
+        685, 524, 20, '#F3DFAD', 180);
       this.button('返回携带', 539, 562, 255, 55, true, () => {
         this.selectedPetId = null; this.render();
       });
