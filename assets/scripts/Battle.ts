@@ -1,5 +1,5 @@
 import { CONFIG } from './config';
-import { captureChance } from '../logic/capture';
+import { captureChance, captureTarget } from '../logic/capture';
 import { Roster } from '../logic/roster';
 import { effectiveLevel, isBabyEncounter } from '../logic/baby';
 import { generateAptitudes, middleAptitudes } from '../logic/aptitude';
@@ -210,8 +210,9 @@ export class Battle {
         continue;
       }
       if (turn.command === 'capture') {
-        const target = this.enemies.find(u => u.id === turn.target && u.hp > 0 && !u.left);
-        if (!target) { this.log.push('目标已倒下，无法抓取。'); continue; }
+        const target = captureTarget(this.enemies, turn.target, this.random);
+        if (!target) { this.log.push('没有存活的敌人，抓取取消。'); continue; }
+        if (target.id !== turn.target) this.log.push(`原抓取目标已倒下，改抓 ${target.name}。`);
         if (this.roster.full) { this.log.push('携带已满，无法抓取。'); continue; }
         const success = this.random() < captureChance(target.hp, target.maxHp);
         this.events.push({ kind: success ? 'captureSuccess' : 'captureFail', actorId: turn.actor.id, targetId: target.id });
@@ -257,7 +258,11 @@ export class Battle {
       this.attackEvents.push(event);
       this.events.push(event);
       this.log.push(`${turn.actor.name} 攻击 ${target.name}，造成 ${damage} 点伤害${target.defending ? `（防御减伤，原 ${beforeDefense}）` : ''}${guard ? `；${guard.name} 保护分担 ${guardedDamage} 点，${target.name} 承受 ${targetDamage} 点` : ''}。${guard?.hp === 0 ? ` ${guard.name}${guard.id === 'hero' ? '倒地' : '失去战斗能力'}。` : ''}${target.hp === 0 ? ` ${target.name}${target.id === 'hero' ? '倒地' : '失去战斗能力'}。` : ''}`);
-      if (this.checkWinner()) break;
+      if (this.checkWinner()) {
+        if (this.winner === 'ally' && this.commands.get('hero')?.command === 'capture'
+          && !this.lastOrder.includes('hero')) this.log.push('没有存活的敌人，抓取取消。');
+        break;
+      }
     }
     this.commands.clear();
     if (!this.winner) {
