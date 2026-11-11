@@ -179,7 +179,9 @@ export class BattleView extends Component {
     const frame = this.commandIcons[COMMAND_NAMES.indexOf(label as typeof COMMAND_NAMES[number])];
     const { node, sprite } = this.image(x, y, COMMAND_ICON_SIZE, COMMAND_ICON_SIZE, frame);
     sprite.grayscale = !enabled;
-    const title = this.text(label, x, y + COMMAND_ICON_SIZE, 17, '#233B33', COMMAND_ICON_SIZE, 1);
+    const vertical = label === '攻击' || label === '灵术' || label === '道具';
+    const title = this.text(label, vertical ? x - COMMAND_ICON_SIZE - 2 : x,
+      vertical ? y + 25 : y + COMMAND_ICON_SIZE, 17, '#233B33', COMMAND_ICON_SIZE, 1);
     const titleLabel = title.getComponent(Label)!;
     titleLabel.enableOutline = true;
     titleLabel.outlineColor = C('#F7E5B6');

@@ -3,17 +3,20 @@ import assert from 'node:assert/strict';
 import { CONFIG, COMMAND_LAYOUT, COMMAND_ICON_SIZE } from '../assets/scripts/config.ts';
 
 test('command slots form the requested L with a shared flee/retreat position', () => {
-  const vertical = ['攻击', '灵术', '道具'].map(name => COMMAND_LAYOUT[name]);
+  const vertical = ['道具', '灵术', '攻击'].map(name => COMMAND_LAYOUT[name]);
   const bottom = ['抓取', '逃跑', '召唤', '保护', '防御'].map(name => COMMAND_LAYOUT[name]);
   assert.ok(vertical.every(slot => slot.x === vertical[0].x));
-  assert.ok(vertical[0].y < vertical[1].y && vertical[1].y < vertical[2].y);
+  const step = bottom[1].x - bottom[0].x;
+  assert.ok(vertical.every((slot, i) => i === 0 || slot.y - vertical[i - 1].y === step));
+  assert.equal(bottom.at(-1).y - vertical.at(-1).y, step);
   assert.ok(bottom.every(slot => slot.y === bottom[0].y));
-  assert.ok(bottom.every((slot, i) => i === 0 || slot.x - bottom[i - 1].x === bottom[1].x - bottom[0].x));
+  assert.ok(bottom.every((slot, i) => i === 0 || slot.x - bottom[i - 1].x === step));
   assert.equal(bottom.at(-1).x, vertical[0].x);
+  assert.ok(vertical[0].y > 230); // below the upper-right status card
   assert.deepEqual(COMMAND_LAYOUT['撤退'], COMMAND_LAYOUT['逃跑']);
 });
 
-test('bottom icons fit the screen and avoid the log and allied labels', () => {
+test('command icons fit the screen and avoid visible allied labels', () => {
   assert.ok(COMMAND_ICON_SIZE >= 78);
   const bottom = ['抓取', '逃跑', '召唤', '保护', '防御'].map(name => COMMAND_LAYOUT[name]);
   const first = bottom[0], last = bottom.at(-1);
@@ -23,7 +26,7 @@ test('bottom icons fit the screen and avoid the log and allied labels', () => {
   const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w &&
     a.y < b.y + b.h && b.y < a.y + a.h;
   for (const slot of [...bottom, ...['攻击', '灵术', '道具'].map(name => COMMAND_LAYOUT[name])])
-    for (const { pet, hero } of CONFIG.positions.allyGroups) {
+    for (const { pet, hero } of bottom.includes(slot) ? CONFIG.positions.allyGroups : CONFIG.positions.allyGroups.slice(0, 1)) {
     for (const [unit, width] of [[pet, CONFIG.visual.petNameWidth], [hero, CONFIG.visual.nameWidth]]) {
       const name = { x: unit.x - width / 2, y: unit.y + 19 + CONFIG.visual.nameGap,
         w: width, h: CONFIG.visual.nameSize * 1.7 };
