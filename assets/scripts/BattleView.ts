@@ -19,6 +19,8 @@ export class BattleView extends Component {
   @property(SpriteFrame) battleBackground: SpriteFrame | null = null;
   @property(SpriteFrame) heroArt: SpriteFrame | null = null;
   @property(SpriteFrame) frogArt: SpriteFrame | null = null;
+  @property(SpriteFrame) panguiArt: SpriteFrame | null = null;
+  @property(SpriteFrame) maomaochongArt: SpriteFrame | null = null;
   @property(SpriteFrame) jadeNormal: SpriteFrame | null = null;
   @property(SpriteFrame) jadePressed: SpriteFrame | null = null;
   @property(SpriteFrame) jadeDisabled: SpriteFrame | null = null;
@@ -313,6 +315,12 @@ export class BattleView extends Component {
     this.layer = previous;
   }
 
+  private petArt({ species }: Pick<Unit, 'species'>): SpriteFrame | null {
+    if (species === 'pangui') return this.panguiArt;
+    if (species === 'maomaochong') return this.maomaochongArt;
+    return this.frogArt;
+  }
+
   private unitVisual(unit: Unit): void {
     if (this.displayedLeft?.get(unit.id) ?? unit.left) return;
     const point = this.unitPoint(unit);
@@ -330,7 +338,7 @@ export class BattleView extends Component {
     const sprite = visual.addComponent(Sprite);
     sprite.sizeMode = Sprite.SizeMode.RAW;
     sprite.trim = false;
-    sprite.spriteFrame = isPet ? this.frogArt : this.heroArt;
+    sprite.spriteFrame = isPet ? this.petArt(unit) : this.heroArt;
     sprite.color = this.unitColor(unit);
     if (dead) sprite.grayscale = true;
     visual.addComponent(UIOpacity).opacity = dead ? 0 : 255;
@@ -609,7 +617,7 @@ export class BattleView extends Component {
       portrait.addChild(art);
       art.addComponent(UITransform).setContentSize(256, 256);
       const sprite = art.addComponent(Sprite);
-      sprite.spriteFrame = kind === 'hero' ? this.heroArt : this.frogArt;
+      sprite.spriteFrame = kind === 'hero' ? this.heroArt : this.petArt(unit);
       sprite.color = this.unitColor(unit);
       sprite.sizeMode = Sprite.SizeMode.CUSTOM;
       art.setScale(kind === 'hero' ? 0.75 : 0.22, kind === 'hero' ? 0.75 : 0.22, 1);
@@ -641,11 +649,11 @@ export class BattleView extends Component {
 
   private renderSummonList(actorId: string): void {
     this.rect(472, 145, 388, 570, '#1E3835', '#E5CB8D', 14);
-    this.text('选择携带的汀蛙', 510, 161, 28, '#F3DFAD', 310, 1);
+    this.text('选择携带的灵宠', 510, 161, 28, '#F3DFAD', 310, 1);
     this.battle.pets.forEach((pet, index) => {
       const eligible = this.battle.summonTargets().some(unit => unit.id === pet.id);
-      const label = `${pet.name} ${index + 1} Lv.${pet.level} ${pet.hp}/${pet.maxHp}`;
-      this.button(label, 499, 218 + index * 73, 335, 61, eligible, eligible ? () => {
+      const label = `${pet.isMutated ? '变异' : ''}${pet.name} Lv.${pet.level} ${pet.hp}/${pet.maxHp}`;
+      const button = this.button(label, 499, 218 + index * 73, 335, 61, eligible, eligible ? () => {
         const before = this.battle.round;
         const phase = this.battle.phase;
         const hp = this.captureHp();
@@ -655,6 +663,10 @@ export class BattleView extends Component {
         if (this.startPlayback(before, phase, hp, deployment)) return;
         this.render();
       } : undefined);
+      button.getChildByName('button-label')?.setPosition(20, 0, 0);
+      const art = this.image(506, 224 + index * 73, 49, 49, this.petArt(pet));
+      art.sprite.color = this.unitColor(pet);
+      art.node.setParent(button, true);
     });
     this.button('返回', 568, 631, 192, 58, true, () => { this.summonOpen = false; this.render(); });
   }
@@ -666,8 +678,9 @@ export class BattleView extends Component {
     if (selected) {
       this.text(`${selected.isMutated ? '变异' : ''}${selected.name} Lv.${selected.level}`,
         475, 156, 30, '#F3DFAD', 315, 1);
-      this.image(800, 155, 66, 66, this.frogArt).sprite.color = this.unitColor(selected);
+      this.image(800, 155, 66, 66, this.petArt(selected)).sprite.color = this.unitColor(selected);
       this.text('资质', 478, 214, 25, '#F3DFAD', 370);
+      this.text(selected.isBaby ? '宝宝' : '普通', 792, 222, 17, '#F3DFAD', 65, 1);
       const labels = ['攻击资质', '防御资质', '体力资质', '法力资质', '躲避资质', '速度资质'];
       APTITUDE_KEYS.forEach((key, index) => this.text(
         `${labels[index]}  ${selected.aptitudes[key]}`, 490 + (index % 2) * 195,
@@ -734,7 +747,7 @@ export class BattleView extends Component {
     }
     this.rect(24, 16, 285, 77, '#18312F', '', 10, undefined, 190);
     this.text('青丘灵录', 35, 24, 31, '#f3e5bc', 240);
-    this.text('汀蛙 · 林间遭遇', 35, 65, 19, '#afc8ae', 280);
+    this.text('林间遭遇', 35, 65, 19, '#afc8ae', 280);
     let speedButton: Node;
     speedButton = this.button(this.speedMultiplier === 1 ? '×1' : '×2',
       315, 31, 128, 52, true, () => {
@@ -835,7 +848,7 @@ export class BattleView extends Component {
       this.layer = resultLayer;
       this.rect(391, 233, 540, 249, '#1e3835', '#e5cb8d', 15);
       this.text(this.battle.winner === 'ally' ? '战斗胜利' : '战斗失败', 441, 260, 48, '#f3dfad', 440, 1);
-      this.text('汀蛙之战暂告一段落', 470, 325, 22, '#c6dbc6', 380, 1);
+      this.text('林间遭遇暂告一段落', 470, 325, 22, '#c6dbc6', 380, 1);
       this.button('再来一场', 513, 384, 286, 69, true, () => {
         this.battle = this.createBattle(this.battle.roster, this.battle.heroRage);
         this.auto = new AutoCommands();

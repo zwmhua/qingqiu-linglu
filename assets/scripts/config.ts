@@ -33,8 +33,6 @@ export const CONFIG = {
     innateSkill: '露珠弹', mutated: false,
   },
   baby: BABY_CONFIG,
-  wild: { name: '野外汀蛙', level: 1, juvenileMultiplier: 0.88,
-    hp: 33, attack: 10, defense: 9, speed: 9 },
   damage: { defenseFactor: 0.40, randomMin: 0.86, randomMax: 1.14, min: 1 },
   defenseDamageFactor: 0.5,
   protection: { protectorShare: 0.5 },
