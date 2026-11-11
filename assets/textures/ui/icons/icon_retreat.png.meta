@@ -2,7 +2,7 @@
   "ver": "1.0.27",
   "importer": "image",
   "imported": true,
-  "uuid": "10d4dea4-8a97-41ae-9c11-a0b928bb0708",
+  "uuid": "78098735-da09-4edb-866d-17515fea5cc9",
   "files": [
     ".json",
     ".png"
@@ -10,14 +10,14 @@
   "subMetas": {
     "6c48a": {
       "importer": "texture",
-      "uuid": "10d4dea4-8a97-41ae-9c11-a0b928bb0708@6c48a",
-      "displayName": "逃跑",
+      "uuid": "78098735-da09-4edb-866d-17515fea5cc9@6c48a",
+      "displayName": "icon_retreat",
       "id": "6c48a",
       "name": "texture",
       "userData": {
         "wrapModeS": "clamp-to-edge",
         "wrapModeT": "clamp-to-edge",
-        "imageUuidOrDatabaseUri": "10d4dea4-8a97-41ae-9c11-a0b928bb0708",
+        "imageUuidOrDatabaseUri": "78098735-da09-4edb-866d-17515fea5cc9",
         "isUuid": true,
         "visible": false,
         "minfilter": "linear",
@@ -34,8 +34,8 @@
     },
     "f9941": {
       "importer": "sprite-frame",
-      "uuid": "10d4dea4-8a97-41ae-9c11-a0b928bb0708@f9941",
-      "displayName": "逃跑",
+      "uuid": "78098735-da09-4edb-866d-17515fea5cc9@f9941",
+      "displayName": "icon_retreat",
       "id": "f9941",
       "name": "spriteFrame",
       "userData": {
@@ -113,7 +113,7 @@
           ]
         },
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "10d4dea4-8a97-41ae-9c11-a0b928bb0708@6c48a",
+        "imageUuidOrDatabaseUri": "78098735-da09-4edb-866d-17515fea5cc9@6c48a",
         "atlasUuid": "",
         "trimType": "auto"
       },
@@ -129,6 +129,6 @@
     "type": "sprite-frame",
     "fixAlphaTransparencyArtifacts": false,
     "hasAlpha": true,
-    "redirect": "10d4dea4-8a97-41ae-9c11-a0b928bb0708@6c48a"
+    "redirect": "78098735-da09-4edb-866d-17515fea5cc9@6c48a"
   }
 }

@@ -2,7 +2,7 @@
   "ver": "1.0.27",
   "importer": "image",
   "imported": true,
-  "uuid": "4015cd30-25e8-49c0-9af9-115504c86171",
+  "uuid": "10d4dea4-8a97-41ae-9c11-a0b928bb0708",
   "files": [
     ".json",
     ".png"
@@ -10,14 +10,14 @@
   "subMetas": {
     "6c48a": {
       "importer": "texture",
-      "uuid": "4015cd30-25e8-49c0-9af9-115504c86171@6c48a",
-      "displayName": "召唤",
+      "uuid": "10d4dea4-8a97-41ae-9c11-a0b928bb0708@6c48a",
+      "displayName": "icon_flee",
       "id": "6c48a",
       "name": "texture",
       "userData": {
         "wrapModeS": "clamp-to-edge",
         "wrapModeT": "clamp-to-edge",
-        "imageUuidOrDatabaseUri": "4015cd30-25e8-49c0-9af9-115504c86171",
+        "imageUuidOrDatabaseUri": "10d4dea4-8a97-41ae-9c11-a0b928bb0708",
         "isUuid": true,
         "visible": false,
         "minfilter": "linear",
@@ -34,8 +34,8 @@
     },
     "f9941": {
       "importer": "sprite-frame",
-      "uuid": "4015cd30-25e8-49c0-9af9-115504c86171@f9941",
-      "displayName": "召唤",
+      "uuid": "10d4dea4-8a97-41ae-9c11-a0b928bb0708@f9941",
+      "displayName": "icon_flee",
       "id": "f9941",
       "name": "spriteFrame",
       "userData": {
@@ -113,7 +113,7 @@
           ]
         },
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "4015cd30-25e8-49c0-9af9-115504c86171@6c48a",
+        "imageUuidOrDatabaseUri": "10d4dea4-8a97-41ae-9c11-a0b928bb0708@6c48a",
         "atlasUuid": "",
         "trimType": "auto"
       },
@@ -129,6 +129,6 @@
     "type": "sprite-frame",
     "fixAlphaTransparencyArtifacts": false,
     "hasAlpha": true,
-    "redirect": "4015cd30-25e8-49c0-9af9-115504c86171@6c48a"
+    "redirect": "10d4dea4-8a97-41ae-9c11-a0b928bb0708@6c48a"
   }
 }

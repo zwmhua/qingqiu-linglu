@@ -2,7 +2,7 @@
   "ver": "1.0.27",
   "importer": "image",
   "imported": true,
-  "uuid": "93766f06-c9b8-4dd5-8a41-11834127f149",
+  "uuid": "626a6017-ea62-46d4-90e4-9a327c8ae47c",
   "files": [
     ".json",
     ".png"
@@ -10,14 +10,14 @@
   "subMetas": {
     "6c48a": {
       "importer": "texture",
-      "uuid": "93766f06-c9b8-4dd5-8a41-11834127f149@6c48a",
-      "displayName": "攻击",
+      "uuid": "626a6017-ea62-46d4-90e4-9a327c8ae47c@6c48a",
+      "displayName": "icon_spell",
       "id": "6c48a",
       "name": "texture",
       "userData": {
         "wrapModeS": "clamp-to-edge",
         "wrapModeT": "clamp-to-edge",
-        "imageUuidOrDatabaseUri": "93766f06-c9b8-4dd5-8a41-11834127f149",
+        "imageUuidOrDatabaseUri": "626a6017-ea62-46d4-90e4-9a327c8ae47c",
         "isUuid": true,
         "visible": false,
         "minfilter": "linear",
@@ -34,8 +34,8 @@
     },
     "f9941": {
       "importer": "sprite-frame",
-      "uuid": "93766f06-c9b8-4dd5-8a41-11834127f149@f9941",
-      "displayName": "攻击",
+      "uuid": "626a6017-ea62-46d4-90e4-9a327c8ae47c@f9941",
+      "displayName": "icon_spell",
       "id": "f9941",
       "name": "spriteFrame",
       "userData": {
@@ -113,7 +113,7 @@
           ]
         },
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "93766f06-c9b8-4dd5-8a41-11834127f149@6c48a",
+        "imageUuidOrDatabaseUri": "626a6017-ea62-46d4-90e4-9a327c8ae47c@6c48a",
         "atlasUuid": "",
         "trimType": "auto"
       },
@@ -129,6 +129,6 @@
     "type": "sprite-frame",
     "fixAlphaTransparencyArtifacts": false,
     "hasAlpha": true,
-    "redirect": "93766f06-c9b8-4dd5-8a41-11834127f149@6c48a"
+    "redirect": "626a6017-ea62-46d4-90e4-9a327c8ae47c@6c48a"
   }
 }

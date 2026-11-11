@@ -28,7 +28,7 @@ scene[5]["_contentSize"] = {"__type__": "cc.Size", "width": 1334, "height": 750}
 scene.append({"__type__": SCRIPT_UUID, "_name": "", "_objFlags": 0,
               "node": {"__id__": 2}, "_enabled": True, "__prefab": None,
               "_id": "5fefb165ebd6489b9624bc21"})
-scene_dir = ROOT / "assets" / "scene"
+scene_dir = ROOT / "assets" / "scenes"
 scene_dir.mkdir(parents=True, exist_ok=True)
 scene_path = scene_dir / "Battle.scene"
 scene_path.write_text(json.dumps(scene, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
