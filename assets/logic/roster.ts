@@ -5,6 +5,7 @@ import type { BaseStats } from './base-stats';
 type PetStats = Pick<Unit, 'id' | 'name' | 'hp' | 'maxHp' | 'level' | 'attack' | 'defense' | 'speed' | 'skill' | 'isBaby' | 'aptitudes' | 'growth' | 'baseStats'>;
 export type CarriedPet = PetStats & {
   isBaby: boolean; aptitudes: Aptitudes; growth: number; baseStats: BaseStats;
+  isMutated: boolean;
   origin: 'initial' | 'captured'; sourceEnemyId?: string;
 };
 
@@ -20,7 +21,8 @@ export class Roster {
       : initial.map(pet => ({ id: pet.id, name: pet.name, hp: pet.hp, maxHp: pet.maxHp,
         level: pet.level, attack: pet.attack, defense: pet.defense, speed: pet.speed,
         skill: pet.skill, isBaby: false, aptitudes: this.requireAptitudes(pet),
-        growth: this.requireGrowth(pet), baseStats: this.requireBaseStats(pet), origin: 'initial' as const }));
+        growth: this.requireGrowth(pet), baseStats: this.requireBaseStats(pet),
+        isMutated: false, origin: 'initial' as const }));
     this.nextCapturedId = previous?.nextCapturedId ?? 1;
   }
 
@@ -50,6 +52,7 @@ export class Roster {
       aptitudes: this.requireAptitudes(enemy),
       growth: this.requireGrowth(enemy),
       baseStats: this.requireBaseStats(enemy),
+      isMutated: false,
       origin: 'captured', sourceEnemyId: enemy.id });
     this.capturedEnemies.add(enemy.id);
     return true;

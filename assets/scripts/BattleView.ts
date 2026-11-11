@@ -6,6 +6,7 @@ import { AutoCommands } from '../logic/auto';
 import { PREVIEW } from 'cc/env';
 import { APTITUDE_KEYS } from '../logic/aptitude';
 import { BASE_STAT_KEYS } from '../logic/base-stats';
+import type { Roster } from '../logic/roster';
 import type { TargetMode } from '../logic/targeting';
 
 const { ccclass, property } = _decorator;
@@ -23,8 +24,7 @@ export class BattleView extends Component {
   @property([SpriteFrame]) commandIcons: SpriteFrame[] = [];
   @property(SpriteFrame) iconAuto: SpriteFrame | null = null;
   @property(SpriteFrame) iconAutoCancel: SpriteFrame | null = null;
-  private battle = PREVIEW && new URLSearchParams(window.location.search).get('babySample') === '1'
-    ? new Battle(() => 0, 1) : new Battle();
+  private battle = this.createBattle();
   private layoutTest = new URLSearchParams(window.location.search).get('layout') === '10v10';
   private choosingTarget: TargetMode | null = null;
   private lastShownSecond = -1;
@@ -48,6 +48,15 @@ export class BattleView extends Component {
   private playing = false;
   private speedMultiplier = 1;
   private auto = new AutoCommands();
+
+  private createBattle(previous?: Roster, rage = 0): Battle {
+    const params = new URLSearchParams(window.location.search);
+    if (PREVIEW && params.get('mutationSample') === '1')
+      return new Battle(() => 0, 1, rage, previous, () => 1,
+        Math.random, Math.random, Math.random, () => 0);
+    if (PREVIEW && params.get('babySample') === '1') return new Battle(() => 0, 1, rage, previous);
+    return new Battle(Math.random, undefined, rage, previous);
+  }
 
   start(): void {
     view.setDesignResolutionSize(CONFIG.width, CONFIG.height, 4);
@@ -648,7 +657,8 @@ export class BattleView extends Component {
     this.rect(439, 133, 455, 500, '#1E3835', '#E5CB8D', 14);
     const selected = roster.entries.find(pet => pet.id === this.selectedPetId);
     if (selected) {
-      this.text(`${selected.name} Lv.${selected.level}`, 475, 156, 30, '#F3DFAD', 385, 1);
+      this.text(`${selected.isMutated ? '变异' : ''}${selected.name} Lv.${selected.level}`,
+        475, 156, 30, '#F3DFAD', 385, 1);
       this.text('资质', 478, 214, 25, '#F3DFAD', 370);
       const labels = ['攻击资质', '防御资质', '体力资质', '法力资质', '躲避资质', '速度资质'];
       APTITUDE_KEYS.forEach((key, index) => this.text(
@@ -672,7 +682,7 @@ export class BattleView extends Component {
       const current = this.battle.pets.find(unit => unit.id === pet.id);
       const open = () => { this.selectedPetId = pet.id; this.render(); };
       this.rect(470, 202 + index * 65, 390, 54, '#294743', '', 6, open);
-      this.text(`${pet.name} Lv.${pet.level} · ${pet.origin === 'initial' ? '初始' : '抓取获得'}`,
+      this.text(`${pet.isMutated ? '变异' : ''}${pet.name} Lv.${pet.level} · ${pet.origin === 'initial' ? '初始' : '抓取获得'}`,
         478, 211 + index * 65, 22, '#F6F0DC', 370, 0, open);
       this.text(`气血 ${current?.hp ?? pet.hp}/${pet.maxHp}`,
         478, 238 + index * 65, 17, '#C6DBC6', 370, 0, open);
@@ -819,7 +829,7 @@ export class BattleView extends Component {
       this.text(this.battle.winner === 'ally' ? '战斗胜利' : '战斗失败', 441, 260, 48, '#f3dfad', 440, 1);
       this.text('汀蛙之战暂告一段落', 470, 325, 22, '#c6dbc6', 380, 1);
       this.button('再来一场', 513, 384, 286, 69, true, () => {
-        this.battle = new Battle(Math.random, undefined, this.battle.heroRage, this.battle.roster);
+        this.battle = this.createBattle(this.battle.roster, this.battle.heroRage);
         this.auto = new AutoCommands();
         this.choosingTarget = null;
         this.displayedHp = null;

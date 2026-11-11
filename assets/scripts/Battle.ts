@@ -7,12 +7,13 @@ import { generateGrowth } from '../logic/growth';
 import { generateBaseStats } from '../logic/base-stats';
 import type { Aptitudes } from '../logic/aptitude';
 import type { BaseStats } from '../logic/base-stats';
+import { MUTATION_CONFIG, isMutation, mutateAptitudes } from '../logic/mutation';
 
 export type Side = 'ally' | 'enemy';
 export type Command = 'attack' | 'defend' | 'protect' | 'retreat' | 'flee' | 'summon' | 'capture';
 export type Unit = {
   id: string; name: string; side: Side; slot: number; level: number;
-  isBaby?: boolean; combatLevel?: number;
+  isBaby?: boolean; isMutated?: boolean; combatLevel?: number;
   aptitudes?: Aptitudes;
   growth?: number;
   baseStats?: BaseStats;
@@ -47,12 +48,14 @@ export class Battle {
   round = 1;
   seconds: number = CONFIG.commandSeconds;
   private random: () => number;
+  private mutationRandom: () => number;
 
   constructor(random: () => number = Math.random, count?: number, initialRage = 0,
     previousRoster?: Roster, babyRandom: () => number = random,
     aptitudeRandom: () => number = Math.random, growthRandom: () => number = Math.random,
-    baseStatsRandom: () => number = Math.random) {
+    baseStatsRandom: () => number = Math.random, mutationRandom: () => number = Math.random) {
     this.random = random;
+    this.mutationRandom = mutationRandom;
     this.heroRage = Math.max(0, Math.min(CONFIG.status.rageMax, initialRage));
     const hero = CONFIG.hero;
     const frog = CONFIG.frog;
@@ -83,6 +86,7 @@ export class Battle {
       aptitudes: pet.aptitudes,
       growth: pet.growth,
       baseStats: pet.baseStats,
+      isMutated: pet.isMutated,
       hp: pet.maxHp, maxHp: pet.maxHp, attack: pet.attack, defense: pet.defense,
       speed: pet.speed, skill: pet.skill, defending: false, left: false, deployed: index === 0,
     }))];
@@ -235,11 +239,18 @@ export class Battle {
         if (success) {
           if (!this.roster.addCaptured(target)) throw new Error('携带记录无法新增');
           const carried = this.roster.entries[this.roster.entries.length - 1];
+          if (isMutation(this.mutationRandom(), MUTATION_CONFIG.rate)) {
+            carried.isMutated = true;
+            carried.aptitudes = mutateAptitudes(carried.aptitudes, MUTATION_CONFIG.multiplier);
+          }
           this.allies.push({ ...target, id: carried.id, name: carried.name, side: 'ally',
-            slot: 0, hp: carried.hp, defending: false, left: false, deployed: false });
+            slot: 0, hp: carried.hp, aptitudes: carried.aptitudes, isMutated: carried.isMutated,
+            defending: false, left: false, deployed: false });
           target.left = true;
         }
-        this.log.push(success ? `${turn.actor.name} 抓取成功，${target.name} 离场。` : `${turn.actor.name} 抓取 ${target.name} 失败。`);
+        this.log.push(success
+          ? `${turn.actor.name} 抓取成功，${target.name} 离场。${this.roster.entries[this.roster.entries.length - 1].isMutated ? ' 获得变异汀蛙！' : ''}`
+          : `${turn.actor.name} 抓取 ${target.name} 失败。`);
         if (this.checkWinner()) break;
         continue;
       }
