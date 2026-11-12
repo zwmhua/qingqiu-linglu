@@ -15,7 +15,11 @@ const { CONFIG } = await import('../assets/scripts/config.ts');
 const { targetCommand, toggleTarget } = await import('../assets/logic/targeting.ts');
 
 const fixed = () => 0.5;
-const make = (count = 1) => new Battle(fixed, count);
+const make = (count = 1) => {
+  const battle = new Battle(fixed, count);
+  Object.assign(battle.pets[0], { hp: 38, maxHp: 38, attack: 11, defense: 10, speed: 10 });
+  return battle;
+};
 
 test('attack button then enemy and direct enemy click submit the same order and continue', () => {
   const direct = make();

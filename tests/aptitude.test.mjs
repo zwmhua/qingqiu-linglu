@@ -9,6 +9,8 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 const { APTITUDE_RANGES, APTITUDE_KEYS, generateAptitudes } =
   await import('../assets/logic/aptitude.ts');
 const { Battle } = await import('../assets/scripts/Battle.ts');
+const { petCombat } = await import('../assets/logic/pet-panel.ts');
+const combat = ({ hp, maxHp, attack, defense, speed }) => ({ hp, maxHp, attack, defense, speed });
 
 test('all six normal and baby ranges use the confirmed inclusive boundaries', () => {
   assert.deepEqual(APTITUDE_RANGES, {
@@ -51,14 +53,14 @@ test('separate wild frogs receive separate six-aptitude samples', () => {
   }
 });
 
-test('initial pets independently double-roll normal aptitudes once without changing combat stats', () => {
+test('initial pets independently double-roll normal aptitudes once and derive their combat stats', () => {
   let rolls = 0;
   const battle = new Battle(() => 0.5, 1, 0, undefined, () => 1, () => rolls++ < 12 ? 0 : 1);
   assert.equal(rolls, 36);
   for (const pet of battle.pets) {
     assert.equal(pet.level, 1);
     assert.equal(pet.isBaby, false);
-    assert.deepEqual([pet.hp, pet.attack, pet.defense, pet.speed], [38, 11, 10, 10]);
+    assert.deepEqual(combat(pet), petCombat(battle.roster.entries.find(entry => entry.id === pet.id)));
   }
   for (const key of APTITUDE_KEYS) {
     assert.equal(battle.pets[0].aptitudes[key], APTITUDE_RANGES[key][0]);
@@ -89,6 +91,5 @@ test('capture, summon and next battle keep each pet aptitude and battle values',
   assert.deepEqual(next.roster.entries[0].aptitudes, battle.roster.entries[0].aptitudes);
   assert.deepEqual(next.roster.entries[2].aptitudes, original);
   assert.deepEqual(next.summonTargets().find(pet => pet.id === caught.id)?.aptitudes, original);
-  assert.deepEqual([next.roster.entries[2].hp, next.roster.entries[2].attack,
-    next.roster.entries[2].defense, next.roster.entries[2].speed], [33, 10, 9, 9]);
+  assert.deepEqual(combat(next.roster.entries[2]), petCombat(caught));
 });

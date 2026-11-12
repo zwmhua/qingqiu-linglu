@@ -65,6 +65,7 @@ test('a dead capture target retargets randomly among other living enemies', () =
     const values = [0, choice, 0];
     let rolls = 0;
     const battle = new Battle(() => values[rolls++] ?? 0, 3, 0, undefined, () => 1);
+    battle.pets[0].speed = 10;
     battle.enemies[0].hp = 1;
     battle.command('hero', 'capture', 'enemy-0');
     battle.command('pet', 'attack', 'enemy-0');
@@ -81,6 +82,7 @@ test('a redirected capture can fail without removing the new target', () => {
   const values = [0, 0.999, 0.99];
   let rolls = 0;
   const battle = new Battle(() => values[rolls++] ?? 0, 3, 0, undefined, () => 1);
+  battle.pets[0].speed = 10;
   battle.enemies[0].hp = 1;
   battle.command('hero', 'capture', 'enemy-0');
   battle.command('pet', 'attack', 'enemy-0');
@@ -93,6 +95,7 @@ test('a redirected capture can fail without removing the new target', () => {
 test('when the last enemy dies before capture, no capture roll occurs', () => {
   let rolls = 0;
   const battle = new Battle(() => { rolls++; return 0; }, 1, 0, undefined, () => 1);
+  battle.pets[0].speed = 10;
   battle.enemies[0].hp = 1;
   battle.command('hero', 'capture', 'enemy-0');
   battle.command('pet', 'attack', 'enemy-0');

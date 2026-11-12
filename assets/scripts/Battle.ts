@@ -1,6 +1,7 @@
 import { CONFIG } from './config';
 import { captureChance, captureTarget } from '../logic/capture';
 import { Roster, petProgress } from '../logic/roster';
+import { petCombat } from '../logic/pet-panel';
 import type { CarriedPet } from '../logic/roster';
 import { effectiveLevel, isBabyEncounter } from '../logic/baby';
 import { generateAptitudes } from '../logic/aptitude';
@@ -77,11 +78,11 @@ export class Battle {
     const petRandom = progression?.petRandom ?? Math.random;
     const initialPets = previousRoster ? [] : ['pet', 'pet-2'].map((id): Unit => {
       const level = progression ? pickWildLevel(petRandom()) : frog.level;
-      const panel = progression ? wildCombat('tingwa', level) : { ...frog.base, maxHp: frog.base.hp };
-      return { id, name: frog.name, side: 'ally', slot: 0, level, species: 'tingwa',
-        isBaby: false, combatLevel: effectiveLevel(level), aptitudes: generateAptitudes(false, aptitudeRandom),
-        growth: generateGrowth(false, growthRandom), baseStats: generateBaseStats(level, baseStatsRandom),
-        ...panel, defending: false, left: false, deployed: id === this.selectedPetId, skill: frog.innateSkill };
+      const traits = { level, aptitudes: generateAptitudes(false, aptitudeRandom),
+        growth: generateGrowth(false, growthRandom), baseStats: generateBaseStats(level, baseStatsRandom) };
+      return { id, name: frog.name, side: 'ally', slot: 0, species: 'tingwa',
+        isBaby: false, combatLevel: effectiveLevel(level), ...traits, ...petCombat(traits),
+        defending: false, left: false, deployed: id === this.selectedPetId, skill: frog.innateSkill };
     });
     this.allies = [
       { id: 'hero', name: hero.name, side: 'ally', slot: 1, level: progression?.hero.level ?? hero.level,
@@ -207,11 +208,12 @@ export class Battle {
     if (!pet) return false;
     const next = confirmPotential(petProgress(pet), preview);
     if (!next) return false;
-    persist({ ...pet, baseStats: next.stats, potential: next.potential });
-    pet.baseStats = next.stats;
-    pet.potential = next.potential;
+    const { hp: _fullHp, ...panel } = petCombat({ ...pet, baseStats: next.stats });
+    const updated = { ...pet, ...panel, baseStats: next.stats, potential: next.potential };
+    persist(updated);
+    Object.assign(pet, updated);
     const unit = this.pets.find(entry => entry.id === id);
-    if (unit) unit.baseStats = next.stats;
+    if (unit) Object.assign(unit, panel, { baseStats: next.stats });
     return true;
   }
 
@@ -235,8 +237,7 @@ export class Battle {
       for (const unit of this.pets) {
         const pet = this.roster.entries.find(entry => entry.id === unit.id);
         if (pet && pet.level !== unit.level)
-          Object.assign(unit, wildCombat(pet.species, pet.level), { level: pet.level,
-            combatLevel: effectiveLevel(pet.level), baseStats: pet.baseStats });
+          Object.assign(unit, pet, { combatLevel: effectiveLevel(pet.level) });
       }
     }
     return this.winner;
@@ -302,8 +303,7 @@ export class Battle {
         if (success) {
           if (!this.roster.addCaptured(target)) throw new Error('携带记录无法新增');
           const carried = this.roster.entries[this.roster.entries.length - 1];
-          this.allies.push({ ...target, id: carried.id, name: carried.name, side: 'ally',
-            slot: 0, hp: carried.hp, aptitudes: carried.aptitudes, isMutated: carried.isMutated,
+          this.allies.push({ ...target, ...carried, side: 'ally', slot: 0,
             defending: false, left: false, deployed: false });
           target.left = true;
         }

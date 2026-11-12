@@ -9,6 +9,7 @@ import { BASE_STAT_KEYS } from '../logic/base-stats';
 import { petTint } from '../logic/pet-visual';
 import type { CarriedPet, Roster } from '../logic/roster';
 import { petProgress } from '../logic/roster';
+import { petPanel } from '../logic/pet-panel';
 import type { HeroProgress, LevelProgress } from '../logic/hero-progress';
 import { HERO_PROGRESSION, adjustPotential, heroPanel, initialHero, levelUpExp } from '../logic/hero-progress';
 import { HoldRepeat } from '../logic/hold-repeat';
@@ -703,8 +704,10 @@ export class BattleView extends Component {
       art.setPosition(kind === 'hero' ? -2 : 0, kind === 'hero' ? -58 : 0, 0);
     }
     const heroProgress = this.battle.heroProgress;
-    const progress = kind === 'hero' ? heroProgress : this.battle.roster.entries.find(pet => pet.id === unit?.id);
+    const pet = this.battle.roster.entries.find(pet => pet.id === unit?.id);
+    const progress = kind === 'hero' ? heroProgress : pet;
     const mana = heroProgress ? heroPanel(heroProgress.stats).maxMana : CONFIG.status.heroManaMax;
+    const petMana = pet ? petPanel(pet).maxMana : 0;
     const bars = kind === 'hero'
       ? [
         { label: '气血', value: unit ? this.displayedHp?.get(unit.id) ?? unit.hp : 0, max: unit?.maxHp ?? 1, color: '#D95757' },
@@ -714,7 +717,7 @@ export class BattleView extends Component {
       ]
       : [
         { label: '气血', value: unit ? this.displayedHp?.get(unit.id) ?? unit.hp : 0, max: unit?.maxHp ?? 1, color: '#D95757' },
-        { label: '法力', value: unit ? CONFIG.status.petManaMax : 0, max: CONFIG.status.petManaMax, color: '#559DD8' },
+        { label: '法力', value: petMana, max: petMana, color: '#559DD8' },
         { label: '经验', value: progress?.exp ?? 0, max: progress ? levelUpExp(progress.level) : 1, color: '#E6C95C' },
       ];
     bars.forEach((bar, index) => {
@@ -800,7 +803,7 @@ export class BattleView extends Component {
       Array.from(label).forEach((char, row) => this.text(char, 1095, y + 20 + row * 37, 26, ink, 56, 1));
     }
     const live = this.battle.pets.find(unit => unit.id === pet.id);
-    const mana = CONFIG.status.petManaMax;
+    const { maxMana: mana, attack, defense, speed, dodge, spirit } = petPanel(pet);
     [['气血', `${live?.hp ?? pet.hp}/${pet.maxHp}`], ['法力', `${mana}/${mana}`]].forEach(([name, value], i) => {
       const y = (points ? 109 : 187) + i * 48;
       this.text(name, 617, y, 21, ink, 54);
@@ -815,7 +818,7 @@ export class BattleView extends Component {
     this.text('高级', 770, 105, 28, this.petPanelPage === 'advanced' ? ink : '#8B8170', 185, 1, () => open('advanced'));
     if (this.petPanelPage === 'advanced') return;
     const xp = pet.level === HERO_PROGRESSION.maxLevel ? '已满级' : `${pet.exp}/${levelUpExp(pet.level)}`;
-    const basic = [['伤害', pet.attack], ['防御', pet.defense], ['速度', pet.speed], ['躲避', '—'], ['灵力', '—'], ['升级经验', xp]];
+    const basic = [['伤害', attack], ['防御', defense], ['速度', speed], ['躲避', dodge], ['灵力', spirit], ['升级经验', xp]];
     const names = ['攻击资质', '防御资质', '体力资质', '法力资质', '躲避资质', '速度资质'];
     const aptitudes = APTITUDE_KEYS.map((key, i) => [names[i], pet.aptitudes[key]]);
     this.text('基础属性', 611, 296, 22, ink, 119, 1);

@@ -11,6 +11,7 @@ const { Battle } = await import('../assets/scripts/Battle.ts');
 const { initialHero, adjustPotential } = await import('../assets/logic/hero-progress.ts');
 const { petProgress } = await import('../assets/logic/roster.ts');
 const { wildCombat } = await import('../assets/logic/wild-encounter.ts');
+const { petPanel } = await import('../assets/logic/pet-panel.ts');
 const { readProgress, saveProgress, resetProgress } = await import('../assets/logic/local-progress.ts');
 const make = ({ count = 1, previous, selectedPetId, babies = [], roll = 0 } = {}) =>
   new Battle(() => 0, count, 0, previous, () => babies.shift() ?? 1,
@@ -22,6 +23,15 @@ function orders(battle, hero, target, petCommand = 'defend') {
   battle.command('hero', hero, target);
   battle.command(battle.selectedPetId, petCommand, target);
 }
+
+test('formal pet panel rounds each stat once and uses effective level for babies', () => {
+  const baby = { level: 0, growth: 1.2, aptitudes: { stamina: 4000, mana: 1500, attack: 1200,
+    defense: 1100, speed: 1300, dodge: 1100 },
+  baseStats: { constitution: 11, mana: 8, strength: 12, endurance: 9, agility: 10 } };
+  const expected = { maxHp: 83, maxMana: 32, attack: 19, defense: 17, speed: 13, dodge: 11, spirit: 16 };
+  assert.deepEqual(petPanel(baby), expected);
+  assert.deepEqual(petPanel({ ...baby, level: 1 }), expected);
+});
 
 test('preview and normal battles share the once-per-victory pet experience path', async () => {
   const source = (await import('node:fs')).readFileSync(new URL('../assets/scripts/BattleView.ts', import.meta.url), 'utf8');
@@ -57,7 +67,9 @@ test('baby growth, confirmed allocation and restored combat keep one individual'
   battle.enemies[0].hp = 1;
   orders(battle, 'defend', 'enemy-0', 'attack');
   const baby = battle.roster.entries[2];
-  assert.deepEqual([state(baby), points(baby), panel(baby)], [[1, 0, 5], 55, panel(before)]);
+  assert.deepEqual([state(baby), points(baby), panel(baby)], [[1, 0, 5], 55, [258, 5, 5, 2]]);
+  const unit = battle.pets.find(pet => pet.id === baby.id);
+  assert.equal(unit.hp, 258);
   assert.equal(battle.pets.find(pet => pet.id === baby.id).combatLevel, 1);
   assert.deepEqual(Object.values(baby.baseStats), Object.values(before.baseStats).map(value => value + 1));
   for (const key of ['id', 'species', 'name', 'isBaby', 'isMutated', 'aptitudes', 'growth'])
@@ -81,8 +93,10 @@ test('baby growth, confirmed allocation and restored combat keep one individual'
     assert.equal(draft.potential, change === 1 ? 0 : progress.potential);
   }
   assert.deepEqual(draft, progress);
-  const preview = adjustPotential(progress, progress, 'strength', 1);
-  assert.deepEqual(adjustPotential(progress, preview, 'strength', -1), progress);
+  const onePoint = adjustPotential(progress, progress, 'strength', 1);
+  assert.deepEqual(adjustPotential(progress, onePoint, 'strength', -1), progress);
+  const preview = adjustPotential(progress, adjustPotential(progress, onePoint, 'strength', 1), 'constitution', 1);
+  assert.deepEqual([panel(baby), panel(unit)], [[258, 5, 5, 2], [258, 5, 5, 2]]);
   assert.deepEqual(readProgress(storage).pets[2], baby);
   const persist = pet => saveProgress(storage, battle, undefined, pet);
   assert.throws(() => battle.confirmPetAllocation(baby.id, preview, () => { throw new Error('写入失败'); }), /写入失败/);
@@ -91,19 +105,21 @@ test('baby growth, confirmed allocation and restored combat keep one individual'
   const saved = readProgress(storage);
   const restored = make({ previous: { entries: saved.pets }, selectedPetId: saved.selectedPetId });
   const same = restored.roster.entries[2];
-  assert.deepEqual([same.baseStats.strength, same.potential, panel(same)], [before.baseStats.strength + 2, 4, panel(before)]);
-  assert.deepEqual(same, battle.roster.entries[2]);
+  assert.deepEqual([same.baseStats.strength, same.potential, panel(same)], [before.baseStats.strength + 3, 2, [263, 7, 5, 2]]);
+  assert.deepEqual(same, { ...battle.roster.entries[2], hp: 263 });
+  assert.deepEqual(panel(unit), panel(same));
+  assert.deepEqual(panel(restored.pets.find(pet => pet.id === same.id)), panel(same));
   assert.equal(adjustPotential(petProgress(same), petProgress(same), 'strength', -1).stats.strength, same.baseStats.strength);
   assert.equal(restored.confirmPetAllocation(same.id, preview, persist), false);
   restored.roster.awardExperience(new Set([same.id]), 10000);
-  assert.deepEqual([state(same), points(same) + same.potential, panel(same)], [[20, 0, 99], 250, [159, 18, 32, 16]]);
+  assert.deepEqual([state(same), points(same) + same.potential, panel(same)], [[20, 0, 97], 250, [440, 85, 67, 19]]);
   restored.roster.awardExperience(new Set([same.id]), 100);
-  assert.deepEqual(state(same), [20, 0, 99]);
+  assert.deepEqual(state(same), [20, 0, 97]);
   assert.equal(resetProgress(storage, false), false);
   assert.deepEqual(readProgress(storage), saved);
   saveProgress(storage, restored);
   const capped = readProgress(storage);
-  assert.deepEqual(state(capped.pets[2]), [20, 0, 99]);
+  assert.deepEqual(state(capped.pets[2]), [20, 0, 97]);
   assert.equal(capped.pets[2].isBaby, true);
   assert.equal(resetProgress(storage, true), true);
   assert.equal(readProgress(storage), null);
@@ -116,6 +132,10 @@ test('legacy pet records restore unchanged with zero experience and potential', 
   const storage = { getItem: () => raw, setItem: (_, value) => { raw = value; } };
   saveProgress(storage, battle);
   const legacy = JSON.parse(raw);
+  legacy.version = 2;
+  for (const pet of legacy.pets) Object.assign(pet, wildCombat(pet.species, pet.level));
+  raw = JSON.stringify(legacy);
+  assert.deepEqual(readProgress(storage).pets, battle.roster.entries);
   legacy.version = 1;
   for (const pet of legacy.pets) { delete pet.exp; delete pet.potential; }
   raw = JSON.stringify(legacy);

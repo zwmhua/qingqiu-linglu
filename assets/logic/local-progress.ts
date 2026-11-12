@@ -2,19 +2,20 @@ import { APTITUDE_KEYS } from './aptitude';
 import { BASE_STAT_KEYS, baseStatTotal } from './base-stats';
 import { HERO_PROGRESSION, levelUpExp } from './hero-progress';
 import { WILD_SPECIES, wildCombat } from './wild-encounter';
+import { petCombat } from './pet-panel';
 import type { HeroProgress } from './hero-progress';
 import type { CarriedPet } from './roster';
 import type { Battle } from '../scripts/Battle';
 
 const KEY = 'qingqiu-linglu:test-progress';
-const VERSION = 2;
+const VERSION = 3;
 type ProgressStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 type Snapshot = { version: number; hero: HeroProgress; pets: CarriedPet[]; selectedPetId: string };
 
 const inRange = (n: number, low: number, high: number) => Number.isInteger(n) && n >= low && n <= high;
 const positive = (n: number) => Number.isFinite(n) && n > 0;
 
-function validPet(pet: CarriedPet): boolean {
+function validPet(pet: CarriedPet, legacy: boolean): boolean {
   if (!pet || !Object.prototype.hasOwnProperty.call(WILD_SPECIES, pet.species)
     || !inRange(pet.level, 0, HERO_PROGRESSION.maxLevel)
     || !inRange(pet.exp, 0, pet.level === HERO_PROGRESSION.maxLevel ? 0 : levelUpExp(pet.level) - 1)
@@ -25,7 +26,7 @@ function validPet(pet: CarriedPet): boolean {
     || !positive(pet.growth) || typeof pet.isMutated !== 'boolean' || typeof pet.isBaby !== 'boolean'
     || (pet.level === 0 && !pet.isBaby)
     || typeof pet.name !== 'string') return false;
-  const panel = wildCombat(pet.species, pet.level);
+  const panel = legacy ? wildCombat(pet.species, pet.level) : petCombat(pet);
   return pet.maxHp === panel.maxHp && pet.attack === panel.attack
     && pet.defense === panel.defense && pet.speed === panel.speed;
 }
@@ -38,7 +39,7 @@ export function readProgress(storage: ProgressStorage, capacity = 5): Snapshot |
   const { maxLevel, initialStat, statPerLevel, potentialPerLevel } = HERO_PROGRESSION;
   const minimum = initialStat + (hero?.level ?? 0) * statPerLevel;
   const budget = (hero?.level ?? 0) * potentialPerLevel;
-  if ((saved?.version !== VERSION && saved?.version !== 1) || !hero || !inRange(hero.level, 0, maxLevel)
+  if (![1, 2, VERSION].includes(saved?.version) || !hero || !inRange(hero.level, 0, maxLevel)
     || !inRange(hero.exp, 0, hero.level === maxLevel ? 0 : levelUpExp(hero.level) - 1)
     || !inRange(hero.potential, 0, budget)
     || !BASE_STAT_KEYS.every(key => inRange(hero.stats?.[key], minimum, minimum + budget))
@@ -48,21 +49,26 @@ export function readProgress(storage: ProgressStorage, capacity = 5): Snapshot |
   if (saved.version === 1 && !saved.pets.every(pet => pet && inRange(pet.level, 0, 5) && pet.isBaby === (pet.level === 0)))
     throw new Error('旧版召唤兽进度损坏');
   const pets = saved.version === 1 ? saved.pets.map(pet => ({ ...pet, exp: 0, potential: 0 })) : saved.pets;
-  if (!pets.every(validPet)) throw new Error('召唤兽进度损坏');
+  const legacy = saved.version !== VERSION;
+  if (!pets.every(pet => validPet(pet, legacy))) throw new Error('召唤兽进度损坏');
   const ids = pets.map(pet => pet.id);
   if (new Set(ids).size !== ids.length || !ids.includes(saved.selectedPetId)
     || !pets.every((pet, index) => index < 2
       ? pet.id === ['pet', 'pet-2'][index] && pet.origin === 'initial' && pet.species === 'tingwa' && !pet.isBaby && !pet.isMutated
       : /^caught-[1-9]\d*$/.test(pet.id) && pet.origin === 'captured'))
     throw new Error('本地携带名单或出战选择无效');
-  return { ...saved, version: VERSION, pets: pets.map(pet => ({ ...pet, skill: pet.skill })) };
+  return { ...saved, version: VERSION,
+    pets: pets.map(pet => ({ ...pet, ...(legacy ? petCombat(pet) : {}), skill: pet.skill })) };
 }
 
 export function saveProgress(storage: ProgressStorage, battle: Battle, hero = battle.heroProgress,
   updatedPet?: CarriedPet): void {
   if (!hero) throw new Error('人物进度尚未初始化');
   const saved: Snapshot = { version: VERSION, hero, selectedPetId: battle.selectedPetId,
-    pets: battle.roster.entries.map(pet => ({ ...(updatedPet?.id === pet.id ? updatedPet : pet), hp: pet.maxHp })) };
+    pets: battle.roster.entries.map(pet => {
+      const entry = updatedPet?.id === pet.id ? updatedPet : pet;
+      return { ...entry, hp: entry.maxHp };
+    }) };
   storage.setItem(KEY, JSON.stringify(saved));
 }
 

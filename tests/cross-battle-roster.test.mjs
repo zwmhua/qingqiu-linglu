@@ -39,7 +39,7 @@ test('a captured pet keeps its real stats and identity, then returns at full hea
   assert.deepEqual(next.pets.map(pet => pet.hp), next.pets.map(pet => pet.maxHp));
   assert.deepEqual(next.roster.entries[2], { ...caught, hp: caught.maxHp });
   assert.deepEqual([next.pets[2].level, next.pets[2].attack, next.pets[2].defense,
-    next.pets[2].speed, next.pets[2].skill], [3, 19, 14, 12, 'dew_shot']);
+    next.pets[2].speed, next.pets[2].skill], [3, caught.attack, caught.defense, caught.speed, 'dew_shot']);
   assert.deepEqual(next.pets.filter(pet => pet.deployed).map(pet => pet.id), ['pet']);
   assert.deepEqual(next.summonTargets().map(pet => pet.id), ['pet-2', caught.id]);
   assert.equal(next.summonsUsed, 0);

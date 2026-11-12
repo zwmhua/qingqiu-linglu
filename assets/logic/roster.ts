@@ -2,7 +2,8 @@ import type { Unit } from '../scripts/Battle';
 import type { Aptitudes } from './aptitude';
 import type { BaseStats } from './base-stats';
 import { awardExperience } from './hero-progress';
-import { WILD_SPECIES, wildCombat } from './wild-encounter';
+import { WILD_SPECIES } from './wild-encounter';
+import { petCombat } from './pet-panel';
 import type { WildSpecies } from './wild-encounter';
 
 type PetStats = Pick<Unit, 'id' | 'name' | 'species' | 'hp' | 'maxHp' | 'level' | 'attack' | 'defense' | 'speed' | 'skill' | 'isBaby' | 'isMutated' | 'aptitudes' | 'growth' | 'baseStats'>;
@@ -38,8 +39,9 @@ export class Roster {
     for (const pet of this.entries) {
       if (!participants.has(pet.id)) continue;
       const next = awardExperience(petProgress(pet), earned);
-      if (next.level !== pet.level) Object.assign(pet, wildCombat(pet.species, next.level));
+      const leveled = next.level !== pet.level;
       Object.assign(pet, { level: next.level, exp: next.exp, potential: next.potential, baseStats: next.stats });
+      if (leveled) Object.assign(pet, petCombat(pet));
     }
   }
 
@@ -64,7 +66,7 @@ export class Roster {
     if (this.full || this.capturedEnemies.has(enemy.id)) return false;
     const species = enemy.species;
     if (!species) throw new Error(`${enemy.name}缺少物种`);
-    this.entries.push({ id: `caught-${this.nextCapturedId++}`, species,
+    const pet: CarriedPet = { id: `caught-${this.nextCapturedId++}`, species,
       name: enemy.isBaby ? enemy.name : WILD_SPECIES[species].name, hp: enemy.hp,
       maxHp: enemy.maxHp, level: enemy.level, attack: enemy.attack, defense: enemy.defense,
       speed: enemy.speed, skill: enemy.skill, isBaby: !!enemy.isBaby,
@@ -72,7 +74,9 @@ export class Roster {
       growth: this.requireGrowth(enemy),
       baseStats: this.requireBaseStats(enemy),
       isMutated: !!enemy.isMutated,
-      origin: 'captured', sourceEnemyId: enemy.id, exp: 0, potential: 0 });
+      origin: 'captured', sourceEnemyId: enemy.id, exp: 0, potential: 0 };
+    const panel = petCombat(pet);
+    this.entries.push({ ...pet, ...panel, hp: Math.min(enemy.hp, panel.maxHp) });
     this.capturedEnemies.add(enemy.id);
     return true;
   }

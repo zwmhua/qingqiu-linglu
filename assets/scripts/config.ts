@@ -38,7 +38,14 @@ export const CONFIG = {
   protection: { protectorShare: 0.5 },
   summon: { maxPerBattle: 3, carriedPets: 2 },
   maxCarriedPets: 5,
-  status: { heroManaMax: 40, petManaMax: 30, rageMax: 150, ragePerDamage: 1 },
+  status: { heroManaMax: 40, rageMax: 150, ragePerDamage: 1 },
+  petPanel: {
+    hp: { divisor: 1000, constitution: 6 }, mana: { divisor: 500, points: 3 },
+    attack: { divisor: 7500, base: 14, growth: 10 },
+    defense: { divisor: 7500, base: 9.4, growth: 19 / 3, endurance: 4 / 3 },
+    speedDivisor: 1000, dodgeDivisor: 1000,
+    spirit: { divisor: 7500, aptitudeBonus: 1662, constitution: 0.3, endurance: 0.2, strength: 0.4, mana: 0.7 },
+  },
   visual: {
     petTint: { normal: '#FFFFFF', mutated: '#D49CFF' },
     unitScale: 0.5, heroHeight: 240, frogHeight: 170, enemyFlipX: true,

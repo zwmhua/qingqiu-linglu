@@ -8,6 +8,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 } });
 const { TINGWA_GROWTH, generateGrowth } = await import('../assets/logic/growth.ts');
 const { Battle } = await import('../assets/scripts/Battle.ts');
+const { petCombat } = await import('../assets/logic/pet-panel.ts');
 
 test('normal and baby growth include their configured endpoints and use thousandths', () => {
   assert.deepEqual(TINGWA_GROWTH, { min: 0.882, max: 0.918, decimals: 3 });
@@ -28,7 +29,8 @@ test('each initial pet rolls once and next battle keeps its own growth and comba
   const battle = new Battle(() => 0.5, 1, 0, undefined, () => 1, () => 0, () => calls++ === 0 ? 0 : 1);
   assert.equal(calls, 3);
   assert.deepEqual(battle.roster.entries.map(pet => pet.growth), [0.882, 0.918]);
-  assert.deepEqual(battle.pets.map(pet => [pet.hp, pet.attack, pet.defense, pet.speed]), [[38, 11, 10, 10], [38, 11, 10, 10]]);
+  assert.deepEqual(battle.pets.map(({ hp, maxHp, attack, defense, speed }) => ({ hp, maxHp, attack, defense, speed })),
+    battle.roster.entries.map(petCombat));
   const next = new Battle(() => 0.5, 1, 0, battle.roster, () => 1, () => 1, () => { calls++; return 0; });
   assert.equal(calls, 4);
   assert.deepEqual(next.roster.entries.map(pet => pet.growth), [0.882, 0.918]);

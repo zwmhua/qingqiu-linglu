@@ -9,6 +9,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 const { Battle } = await import('../assets/scripts/Battle.ts');
 const { captureChance } = await import('../assets/logic/capture.ts');
 const { wildCombat } = await import('../assets/logic/wild-encounter.ts');
+const { petPanel } = await import('../assets/logic/pet-panel.ts');
 
 const sequence = (...values) => () => {
   assert.ok(values.length, 'unexpected extra random roll');
@@ -65,7 +66,7 @@ test('all three enemy panels use the confirmed level 0, 1 and 5 values', () => {
       assert.deepEqual(panel(unit), expected);
       assert.equal(captureChance(unit.hp, unit.maxHp), 0.20);
       for (const pet of battle.roster.entries) {
-        assert.deepEqual([pet.species, pet.level, ...panel(pet)], ['tingwa', 1, 38, 11, 10, 10]);
+        assert.deepEqual([pet.species, pet.level, ...panel(pet)], ['tingwa', 1, ...panel(petPanel(pet))]);
       }
     }
   }
@@ -126,6 +127,7 @@ test('redirected capture uses the living target identity and failures never rero
     const [fallen, turtle] = battle.enemies;
     assert.deepEqual([fallen.species, turtle.species], ['tingwa', 'pangui']);
     fallen.hp = 1;
+    battle.pets[0].speed = 10;
     const original = structuredClone(identity(turtle));
     battle.command('hero', 'capture', fallen.id);
     battle.command('pet', 'attack', fallen.id);
@@ -140,7 +142,7 @@ test('redirected capture uses the living target identity and failures never rero
 
 for (const [species, , speciesRoll, low, high] of speciesCases) {
   for (const level of [0, 1, 5]) {
-    test(`${species} Lv.${level} keeps its wild combat panel through capture, swaps and recovery`, () => {
+    test(`${species} Lv.${level} uses its formal panel after capture, swaps and recovery`, () => {
       const isBaby = level === 0;
       const expectedPanel = level === 5 ? high : low;
       for (const isMutated of [false, true]) {
@@ -155,22 +157,23 @@ for (const [species, , speciesRoll, low, high] of speciesCases) {
 
         first.command('hero', 'defend');
         first.command('pet', 'attack', wild.id);
-        const injuredHp = wild.hp;
-        assert.ok(injuredHp > 0 && injuredHp < wild.maxHp);
+        assert.ok(wild.hp > 0 && wild.hp < wild.maxHp);
+        const formal = panel(petPanel(wild));
+        const injuredHp = Math.min(wild.hp, formal[0]);
         const originalIdentity = structuredClone(identity(wild));
         first.command('hero', 'capture', wild.id);
         first.command('pet', 'defend');
         const caught = first.roster.entries[2];
         assert.equal(caught.origin, 'captured');
         assert.deepEqual(identity(caught), originalIdentity);
-        assert.deepEqual(panel(caught), expectedPanel);
+        assert.deepEqual(panel(caught), formal);
         assert.equal(caught.hp, injuredHp);
         if (isBaby) assert.equal(Object.values(caught.baseStats).reduce((sum, value) => sum + value, 0), 50);
 
         function assertCombatPet(unit, expectedHp) {
           assert.equal(unit.name, caught.name);
           assert.deepEqual(identity(unit), originalIdentity);
-          assert.deepEqual(panel(unit), expectedPanel);
+          assert.deepEqual(panel(unit), formal);
           assert.equal(unit.combatLevel, Math.max(1, level));
           assert.equal(unit.hp, expectedHp);
         }
@@ -195,19 +198,19 @@ for (const [species, , speciesRoll, low, high] of speciesCases) {
         const next = make(1, sequence(...encounter), () => isBaby ? 0 : 1, () => 1,
           () => 1, () => 1, () => 0, first.roster);
         assert.deepEqual(panel(next.enemies[0]), expectedPanel);
-        assert.deepEqual(next.roster.entries[2], { ...caught, hp: expectedPanel[0] });
+        assert.deepEqual(next.roster.entries[2], { ...caught, hp: formal[0] });
         assert.deepEqual(next.pets.filter(pet => pet.deployed).map(pet => pet.id), ['pet']);
         const recovered = next.summonTargets().find(pet => pet.id === caught.id);
-        assertCombatPet(recovered, expectedPanel[0]);
+        assertCombatPet(recovered, formal[0]);
         swap(next, 'pet', caught.id);
-        assertCombatPet(recovered, expectedPanel[0]);
+        assertCombatPet(recovered, formal[0]);
         assert.equal(sameBattlePet.hp, injuredHp);
       }
     });
   }
 }
 
-test('only the two initial Tingwa keep the original panel after swapping and restarting', () => {
+test('initial and captured Tingwa keep their formal panels after swapping and restarting', () => {
   const first = make(2, sequence(0, 0, 0, 0));
   first.command('hero', 'capture', 'enemy-0');
   first.command('pet', 'defend');
@@ -226,7 +229,7 @@ test('only the two initial Tingwa keep the original panel after swapping and res
       ['汀蛙', 'initial', 1], ['汀蛙', 'initial', 1], ['汀蛙', 'captured', 1],
     ]);
     for (const pets of [battle.pets, battle.roster.entries]) {
-      assert.deepEqual(pets.map(panel), [[38, 11, 10, 10], [38, 11, 10, 10], [33, 10, 9, 9]]);
+      assert.deepEqual(pets.map(panel), first.roster.entries.map(pet => panel(petPanel(pet))));
     }
   }
 });

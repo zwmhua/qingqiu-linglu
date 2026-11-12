@@ -11,6 +11,7 @@ test('04a character progression and browser progress', async t => {
   const { Battle } = await import('../assets/scripts/Battle.ts');
   const { awardExperience, heroPanel, initialHero, levelUpExp } = await import('../assets/logic/hero-progress.ts');
   const { readProgress, saveProgress, resetProgress } = await import('../assets/logic/local-progress.ts');
+  const { petPanel } = await import('../assets/logic/pet-panel.ts');
   const make = ({ hero = initialHero(), pets, selectedPetId, petRandom, enemy = () => 0 } = {}) =>
     new Battle(() => 0, 1, 0, pets && { entries: pets }, () => 1,
       undefined, undefined, undefined, () => 1, enemy, { hero, selectedPetId, petRandom });
@@ -60,7 +61,8 @@ test('04a character progression and browser progress', async t => {
       setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
     const rolls = [0, 0.99].values();
     const battle = make({ petRandom: () => rolls.next().value });
-    assert.deepEqual(battle.pets.map(p => [p.level, p.maxHp, points(p.baseStats)]), [[1, 33, 60], [5, 49, 100]]);
+    const [first, second] = battle.roster.entries.map(petPanel);
+    assert.deepEqual(battle.pets.map(p => [p.level, p.maxHp, points(p.baseStats)]), [[1, first.maxHp, 60], [5, second.maxHp, 100]]);
     battle.command('hero', 'summon', 'pet-2');
     battle.command('pet', 'defend');
     battle.command('hero', 'capture', 'enemy-0');

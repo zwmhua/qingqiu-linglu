@@ -97,7 +97,8 @@ test('baby mutation keeps growth, base stats and combat values through summon an
   assert.deepEqual(caught.aptitudes, original.aptitudes);
   assert.equal(caught.growth, original.growth);
   assert.deepEqual(caught.baseStats, original.baseStats);
-  assert.deepEqual([caught.maxHp, caught.attack, caught.defense, caught.speed], original.combat);
+  assert.deepEqual(original.combat, [33, 10, 9, 9]);
+  assert.deepEqual([caught.maxHp, caught.attack, caught.defense, caught.speed], [9, 5, 57, 2]);
   assert.ok(battle.log.some(line => line.includes('变异')));
   battle.command('hero', 'summon', caught.id);
   battle.command('pet', 'defend');

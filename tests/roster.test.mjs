@@ -8,6 +8,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 } });
 const { Battle } = await import('../assets/scripts/Battle.ts');
 const { CONFIG } = await import('../assets/scripts/config.ts');
+const { petPanel } = await import('../assets/logic/pet-panel.ts');
 
 const winCapture = (battle, enemyId) => {
   battle.command('hero', 'capture', enemyId);
@@ -31,7 +32,7 @@ test('successful capture adds one independent wild pet with summon eligibility',
   const caught = battle.roster.entries[2];
   assert.equal(caught.name, '汀蛙');
   assert.equal(caught.origin, 'captured');
-  assert.equal(caught.hp, 33);
+  assert.equal(caught.hp, Math.min(33, caught.maxHp));
   assert.notEqual(caught.id, 'enemy-0');
   assert.equal(battle.allies.filter(unit => unit.id === caught.id).length, 1);
   assert.deepEqual(battle.summonTargets().map(pet => pet.id), ['pet-2', caught.id]);
@@ -52,9 +53,8 @@ test('a captured pet can be summoned from the next hero command with its capture
   const incoming = battle.summonTargets().find(pet => pet.id === caught.id);
   assert.ok(incoming);
   assert.equal(incoming.hp, 8);
-  assert.equal(incoming.maxHp, 33);
-  assert.equal(incoming.attack, battle.enemies[0].attack);
-  assert.equal(incoming.speed, battle.enemies[0].speed);
+  const { maxHp, attack, speed } = petPanel(caught);
+  assert.deepEqual([incoming.maxHp, incoming.attack, incoming.speed], [maxHp, attack, speed]);
   battle.command('hero', 'summon', caught.id);
   battle.command('pet', 'defend');
   assert.equal(battle.pets.find(pet => pet.id === 'pet').deployed, false);
