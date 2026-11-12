@@ -10,10 +10,12 @@ import { petTint } from '../logic/pet-visual';
 import type { Roster } from '../logic/roster';
 import type { HeroProgress } from '../logic/hero-progress';
 import { HERO_PROGRESSION, adjustPotential, heroPanel, initialHero, levelUpExp } from '../logic/hero-progress';
+import { HoldRepeat } from '../logic/hold-repeat';
 import { readProgress, resetProgress, saveProgress } from '../logic/local-progress';
 import type { TargetMode } from '../logic/targeting';
 
 const { ccclass, property } = _decorator;
+const POTENTIAL_RELEASE_EVENTS = ['pointerup', 'pointercancel', 'pointerout', 'mouseup', 'touchend', 'touchcancel', 'blur'] as const;
 const C = (hex: string) => new Color(hex);
 const COMMAND_NAMES = ['攻击', '防御', '保护', '召唤', '抓取', '道具', '逃跑', '灵术', '撤退'] as const;
 
@@ -54,6 +56,11 @@ export class BattleView extends Component {
   private selectedPetId: string | null = null;
   private detailsOpen: 'pet' | 'hero' | null = null;
   private heroPreview?: HeroProgress;
+  private readonly potentialRepeat = new HoldRepeat();
+  private stopPotentialRepeat = (event?: Event): void => {
+    if (event?.type === 'pointerout' && (event as PointerEvent).relatedTarget) return;
+    this.potentialRepeat.stop();
+  };
   private playing = false;
   private speedMultiplier = 1;
   private auto = new AutoCommands();
@@ -72,6 +79,16 @@ export class BattleView extends Component {
     if (PREVIEW && params.get('babySample') === '1') return new Battle(() => 0, 1, rage, previous);
     return new Battle(Math.random, undefined, rage, previous, undefined,
       undefined, undefined, undefined, undefined, undefined, { hero, selectedPetId });
+  }
+
+  onEnable(): void {
+    // The canvas survives the redraw that replaces the pressed button.
+    for (const event of POTENTIAL_RELEASE_EVENTS) window.addEventListener(event, this.stopPotentialRepeat, true);
+  }
+
+  onDisable(): void {
+    for (const event of POTENTIAL_RELEASE_EVENTS) window.removeEventListener(event, this.stopPotentialRepeat, true);
+    this.stopPotentialRepeat();
   }
 
   start(): void {
@@ -771,6 +788,7 @@ export class BattleView extends Component {
   }
 
   private restartBattle(battle: Battle): void {
+    this.stopPotentialRepeat();
     this.battle = battle;
     this.auto = new AutoCommands();
     this.choosingTarget = null;
@@ -791,12 +809,18 @@ export class BattleView extends Component {
     this.render();
   }
 
+  private potentialButton(label: string, x: number, y: number, enabled: boolean, step: () => boolean): void {
+    const node = this.button(label, x, y, 58, 39, enabled);
+    if (enabled) node.on(Node.EventType.TOUCH_START, () => this.potentialRepeat.start(step));
+  }
+
   private renderHeroPanel(confirmed: HeroProgress): void {
     const { level, exp, stats, potential } = this.heroPreview ?? confirmed;
     const panel = heroPanel(stats);
     const hero = this.battle.allies[0];
     const editable = this.battle.phase === 'ended' && !this.progressReadFailed;
     const close = () => {
+      this.stopPotentialRepeat();
       this.heroPreview = undefined;
       this.detailsOpen = null;
       this.render();
@@ -814,18 +838,25 @@ export class BattleView extends Component {
     BASE_STAT_KEYS.forEach((key, index) => {
       const y = 197 + index * 51;
       this.text(`${names[index]}  ${stats[key]}`, 685, y + 7, 21, '#F6F0DC', 108);
-      const adjust = (change: 1 | -1) => {
-        this.heroPreview = adjustPotential(confirmed, this.heroPreview ?? confirmed, key, change);
+      const adjust = (change: 1 | -1): boolean => {
+        if (this.detailsOpen !== 'hero' || this.battle.heroProgress !== confirmed
+          || this.battle.phase !== 'ended' || this.progressReadFailed) return false;
+        const previous = this.heroPreview ?? confirmed;
+        const next = adjustPotential(confirmed, previous, key, change);
+        if (next === previous) return false;
+        this.heroPreview = next;
         this.render();
+        return change === 1 ? next.potential > 0 : next.stats[key] > confirmed.stats[key];
       };
-      this.button('－', 796, y, 58, 39, editable && stats[key] > confirmed.stats[key], () => adjust(-1));
-      this.button('＋', 866, y, 58, 39, editable && potential > 0, () => adjust(1));
+      this.potentialButton('－', 796, y, editable && stats[key] > confirmed.stats[key], () => adjust(-1));
+      this.potentialButton('＋', 866, y, editable && potential > 0, () => adjust(1));
     });
     this.text(`剩余潜能  ${potential}`, 685, 457, 22, '#F4DC9C', 240);
     this.text(this.progressError || (editable ? '' : '战斗结束后可分配潜能'), 400, 511, 17, '#F4DC9C', 524);
     this.button('关闭', 405, 550, 110, 43, true, close);
     this.button('取消', 675, 550, 113, 43, true, close);
     this.button('确认', 809, 550, 113, 43, editable && potential < confirmed.potential, () => {
+      this.stopPotentialRepeat();
       if (!this.heroPreview) return;
       try {
         if (this.battle.confirmHeroAllocation(this.heroPreview, next => saveProgress(window.localStorage, this.battle, next))) {
