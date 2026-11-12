@@ -58,3 +58,50 @@ test('04b commits partial allocation after battle, restores it and keeps 04a pro
   assert.deepEqual(makeBattle(initialHero()).heroProgress, initialHero());
   assert.deepEqual([...values], [['other', 'keep']]);
 });
+test('potential press applies once on tap and repeats at shortening intervals while held', async t => {
+  const { HoldRepeat } = await import('../assets/logic/hold-repeat.ts');
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const repeat = new HoldRepeat();
+  let steps = 0;
+  const step = () => { steps++; return true; };
+  repeat.start(step);
+  t.mock.timers.tick(100);
+  repeat.stop();
+  t.mock.timers.tick(1000);
+  assert.equal(steps, 1);
+
+  repeat.start(step);
+  assert.equal(steps, 2);
+  for (const delay of [350, 228, 148]) {
+    const before = steps;
+    t.mock.timers.tick(delay - 1);
+    assert.equal(steps, before);
+    t.mock.timers.tick(1);
+    assert.equal(steps, before + 1);
+  }
+  repeat.stop();
+  t.mock.timers.tick(1000);
+  assert.equal(steps, 5);
+});
+
+test('holding plus or minus stops at the existing preview boundaries', async t => {
+  const { HoldRepeat } = await import('../assets/logic/hold-repeat.ts');
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const hero = awardExperience(initialHero(), 10);
+  const repeat = new HoldRepeat();
+  let preview = hero;
+  let steps = 0;
+  const hold = change => repeat.start(() => {
+    steps++;
+    preview = adjustPotential(hero, preview, 'strength', change);
+    return change === 1 ? preview.potential > 0 : preview.stats.strength > hero.stats.strength;
+  });
+  const exhaust = () => { for (let i = 0; i < 8; i++) t.mock.timers.tick(350); };
+  hold(1);
+  exhaust();
+  assert.deepEqual([steps, preview.stats.strength, preview.potential], [5, 16, 0]);
+  hold(-1);
+  exhaust();
+  assert.deepEqual([steps, preview.stats.strength, preview.potential], [10, 11, 5]);
+  assert.deepEqual(preview, hero);
+});
