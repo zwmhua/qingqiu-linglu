@@ -251,6 +251,14 @@
       "__uuid__": "a7adabdb-e2f2-458b-867a-1e5a1192c4e6@f9941",
       "__expectedType__": "cc.SpriteFrame"
     },
+    "characterBasicArt": {
+      "__uuid__": "692f87d8-3a50-4506-8af0-5c2aa62c4298@f9941",
+      "__expectedType__": "cc.SpriteFrame"
+    },
+    "characterPointsArt": {
+      "__uuid__": "8800f755-ed24-416c-849d-2d96f153b0ef@f9941",
+      "__expectedType__": "cc.SpriteFrame"
+    },
     "frogArt": {
       "__uuid__": "640b8c8a-de57-4cd0-a7cf-6c2bde59081a@f9941",
       "__expectedType__": "cc.SpriteFrame"

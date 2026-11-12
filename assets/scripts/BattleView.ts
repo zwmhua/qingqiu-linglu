@@ -24,6 +24,8 @@ const COMMAND_NAMES = ['攻击', '防御', '保护', '召唤', '抓取', '道具
 export class BattleView extends Component {
   @property(SpriteFrame) battleBackground: SpriteFrame | null = null;
   @property(SpriteFrame) heroArt: SpriteFrame | null = null;
+  @property(SpriteFrame) characterBasicArt: SpriteFrame | null = null;
+  @property(SpriteFrame) characterPointsArt: SpriteFrame | null = null;
   @property(SpriteFrame) frogArt: SpriteFrame | null = null;
   @property(SpriteFrame) panguiArt: SpriteFrame | null = null;
   @property(SpriteFrame) maomaochongArt: SpriteFrame | null = null;
@@ -56,6 +58,7 @@ export class BattleView extends Component {
   private rosterOpen = false;
   private selectedPetId: string | null = null;
   private detailsOpen: 'hero' | null = null;
+  private heroPanelPage: 'basic' | 'advanced' | 'points' = 'basic';
   private allocationPreview?: LevelProgress;
   private readonly potentialRepeat = new HoldRepeat();
   private stopPotentialRepeat = (event?: Event): void => {
@@ -810,11 +813,14 @@ export class BattleView extends Component {
   private openHeroPanel(): void {
     if (this.playing || this.rosterOpen || this.summonOpen || this.confirmingTarget) return;
     this.detailsOpen = 'hero';
+    this.heroPanelPage = 'basic';
     this.render();
   }
 
-  private potentialButton(label: string, x: number, y: number, enabled: boolean, step: () => boolean): void {
-    const node = this.button(label, x, y, 58, 39, enabled);
+  private potentialButton(label: string, x: number, y: number, enabled: boolean,
+    step: () => boolean, skinned = false): void {
+    const node = skinned ? this.text(label, x, y, 29, enabled ? '#4A2C1D' : '#8B8170', 40, 1)
+      : this.button(label, x, y, 58, 39, enabled);
     if (enabled) node.on(Node.EventType.TOUCH_START, () => this.potentialRepeat.start(step));
   }
 
@@ -828,28 +834,67 @@ export class BattleView extends Component {
       this.detailsOpen = null;
       this.render();
     };
-    this.rect(0, 0, CONFIG.width, CONFIG.height, '#101E1C', '', 0, undefined, 125).addComponent(BlockInputEvents);
-    this.rect(361, 120, 612, 489, '#1E3835', '#E5CB8D', 14);
-    this.text('人物面板', 399, 138, 31, '#F3DFAD', 530, 1);
-    this.rect(655, 197, 1, 313, '#829183');
+    this.rect(0, 0, CONFIG.width, CONFIG.height, '#101E1C', '', 0, undefined, 200).addComponent(BlockInputEvents);
+    this.image(0, 0, CONFIG.width, CONFIG.height,
+      this.heroPanelPage === 'points' ? this.characterPointsArt : this.characterBasicArt);
+    const ink = '#4A2C1D';
+    this.text('人物属性', 460, 1, 38, '#F7E8C1', 415, 1);
+    this.text(hero.name, 160, 81, 26, ink, 160);
+    this.text(`${level}级`, 160, 117, 24, ink, 160);
+    this.rect(1240, 0, 64, 64, '#000000', '', 0, close, 0);
+    this.text('属性', 1240, 160, 28, ink, 60, 1, () => {
+      this.stopPotentialRepeat(); this.allocationPreview = undefined;
+      this.heroPanelPage = 'basic'; this.render();
+    });
+    this.text('加点', 1240, 322, 28, ink, 60, 1, () => {
+      this.heroPanelPage = 'points'; this.render();
+    });
+    const bars = [
+      ['气血', `${hero.hp}/${panel.maxHp}`], ['法力', `${panel.maxMana}/${panel.maxMana}`],
+      ['愤怒', '0/150'], ['体力', '100/100'], ['活力', '50/50'],
+    ];
+    bars.forEach(([name, value], index) => {
+      this.text(name, 612, 82 + index * 40, 25, ink, 85);
+      this.text(value, index === 4 ? 797 : 839, 86 + index * 40, 24, '#F7E8CF', 210, 1);
+    });
+    this.text('使用', 1123, 245, 23, ink, 80, 1);
+    if (this.heroPanelPage === 'points') {
+      this.renderAllocation(confirmed, close, draft => this.battle.confirmHeroAllocation(draft,
+        next => saveProgress(window.localStorage, this.battle, next)), true);
+      return;
+    }
+    this.text('基础', 637, 292, 27, this.heroPanelPage === 'basic' ? ink : '#8B8170', 145, 1, () => {
+      this.heroPanelPage = 'basic'; this.render();
+    });
+    this.text('高级', 831, 292, 27, this.heroPanelPage === 'advanced' ? ink : '#8B8170', 145, 1, () => {
+      this.heroPanelPage = 'advanced'; this.render();
+    });
+    if (this.heroPanelPage === 'advanced') return;
     const xp = level === HERO_PROGRESSION.maxLevel ? '已满级' : `${exp}/${levelUpExp(level)}`;
-    const rows = [`等级  ${level}`, `名称  ${hero.name}`, `气血  ${hero.hp}/${panel.maxHp}`,
-      `法力  ${panel.maxMana}/${panel.maxMana}`, `伤害  ${panel.attack}`, `防御  ${panel.defense}`,
-      `速度  ${panel.speed}`, `躲避  ${panel.dodge}`, `灵力  ${panel.spirit}`, `升级经验  ${xp}`];
-    rows.forEach((row, index) => this.text(row, 400, 195 + index * 30, 21, '#F6F0DC', 233));
-    this.button('关闭', 405, 550, 110, 43, true, close);
-    this.renderAllocation(confirmed, close, draft => this.battle.confirmHeroAllocation(draft,
-      next => saveProgress(window.localStorage, this.battle, next)));
+    const basics = [
+      ['伤害', panel.attack, 636, 373], ['防御', panel.defense, 938, 373],
+      ['速度', panel.speed, 636, 429], ['躲避', panel.dodge, 938, 429],
+      ['灵力', panel.spirit, 636, 487],
+    ] as const;
+    basics.forEach(([name, value, x, y]) => {
+      this.text(name, x, y, 25, ink, 90);
+      this.text(String(value), x + 181, y, 25, ink, 80, 1);
+    });
+    this.text('升级经验', 610, 620, 21, ink, 90);
+    this.text(xp, 845, 619, 24, '#F7E8CF', 210, 1);
   }
 
   private renderAllocation(confirmed: LevelProgress, close: () => void,
-    confirm: (draft: LevelProgress) => boolean): void {
+    confirm: (draft: LevelProgress) => boolean, skinned = false): void {
     const { stats, potential } = this.allocationPreview ?? confirmed;
     const editable = this.battle.phase === 'ended' && this.usesTestProgress && !this.progressReadFailed;
     const names = ['体质', '法力', '力量', '耐力', '敏捷'];
     BASE_STAT_KEYS.forEach((key, index) => {
-      const y = 197 + index * 51;
-      this.text(`${names[index]}  ${stats[key]}`, 685, y + 7, 21, '#F6F0DC', 108);
+      const y = skinned ? 356 + index * 41 : 197 + index * 51;
+      if (skinned) {
+        this.text(names[index], 680, y + 6, 21, '#4A2C1D', 105, 1);
+        this.text(String(stats[key]), 857, y + 6, 21, '#4A2C1D', 85, 1);
+      } else this.text(`${names[index]}  ${stats[key]}`, 685, y + 7, 21, '#F6F0DC', 108);
       const adjust = (change: 1 | -1): boolean => {
         if (this.battle.phase !== 'ended' || this.progressReadFailed) return false;
         const previous = this.allocationPreview ?? confirmed;
@@ -861,13 +906,18 @@ export class BattleView extends Component {
       };
       const canRemove = editable && stats[key] > confirmed.stats[key];
       const canAdd = editable && potential > 0;
-      this.potentialButton('－', 796, y, canRemove, () => adjust(-1));
-      this.potentialButton('＋', 866, y, canAdd, () => adjust(1));
+      this.potentialButton('－', skinned ? 1024 : 796, y, canRemove, () => adjust(-1), skinned);
+      this.potentialButton('＋', skinned ? 1091 : 866, y, canAdd, () => adjust(1), skinned);
     });
-    this.text(`剩余潜能  ${potential}`, 685, 457, 22, '#F4DC9C', 240);
-    this.text(this.progressError || (editable ? '' : '战斗结束后可分配潜能'), 400, 511, 17, '#F4DC9C', 524);
-    this.button('取消', 675, 550, 113, 43, true, close);
-    this.button('确认', 809, 550, 113, 43, editable && potential < confirmed.potential, () => {
+    if (skinned) {
+      this.text('剩余潜能', 666, 582, 22, '#F7E8CF', 240, 1);
+      this.text(String(potential), 1010, 582, 22, '#4A2C1D', 100, 1);
+    } else this.text(`剩余潜能  ${potential}`, 685, 457, 22, '#F4DC9C', 240);
+    this.text(this.progressError || (editable ? '' : '战斗结束后可分配潜能'),
+      skinned ? 640 : 400, skinned ? 678 : 511, 17, skinned ? '#4A2C1D' : '#F4DC9C', 524, skinned ? 1 : 0);
+    if (skinned) this.text('取消', 722, 627, 28, '#F7E8CF', 120, 1, close);
+    else this.button('取消', 675, 550, 113, 43, true, close);
+    const commit = () => {
       this.stopPotentialRepeat();
       if (!this.allocationPreview) return;
       try {
@@ -879,7 +929,11 @@ export class BattleView extends Component {
         this.progressError = '本地进度保存失败。';
       }
       this.render();
-    });
+    };
+    const canConfirm = editable && potential < confirmed.potential;
+    if (skinned) this.text('确认', 952, 627, 28, canConfirm ? '#4A2C1D' : '#8B8170',
+      120, 1, canConfirm ? commit : undefined);
+    else this.button('确认', 809, 550, 113, 43, canConfirm, commit);
   }
 
   private renderHeroProgress(): void {
