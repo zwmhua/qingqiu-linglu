@@ -11,7 +11,7 @@ import type { CarriedPet, Roster } from '../logic/roster';
 import { petProgress } from '../logic/roster';
 import { petPanel, petPanelPreview } from '../logic/pet-panel';
 import type { HeroProgress, LevelProgress } from '../logic/hero-progress';
-import { HERO_PROGRESSION, adjustPotential, heroPanel, initialHero, levelUpExp } from '../logic/hero-progress';
+import { HERO_PROGRESSION, adjustPotential, heroPanel, heroPanelPreview, initialHero, levelUpExp } from '../logic/hero-progress';
 import { HoldRepeat } from '../logic/hold-repeat';
 import { readProgress, resetProgress, saveProgress } from '../logic/local-progress';
 import type { TargetMode } from '../logic/targeting';
@@ -904,27 +904,28 @@ export class BattleView extends Component {
   }
 
   private renderHeroPanel(confirmed: HeroProgress): void {
-    const { level, exp, stats } = this.allocationPreview ?? confirmed;
-    const panel = heroPanel(stats);
-    const hero = this.battle.allies[0];
     const close = () => {
       this.stopPotentialRepeat();
       this.allocationPreview = undefined;
       this.detailsOpen = null;
       this.render();
     };
+    const showBasic = () => {
+      this.stopPotentialRepeat(); this.allocationPreview = undefined;
+      this.heroPanelPage = 'basic'; this.render();
+    };
     this.rect(0, 0, CONFIG.width, CONFIG.height, '#101E1C', '', 0, undefined, 200).addComponent(BlockInputEvents);
-    this.image(0, 0, CONFIG.width, CONFIG.height,
-      this.heroPanelPage === 'points' ? this.characterPointsArt : this.characterBasicArt);
+    if (this.heroPanelPage === 'points') return this.renderHeroPoints(confirmed, showBasic, close);
+    this.image(0, 0, CONFIG.width, CONFIG.height, this.characterBasicArt);
+    const { level, exp, stats } = confirmed;
+    const panel = heroPanel(stats);
+    const hero = this.battle.allies[0];
     const ink = '#4A2C1D';
     this.text('人物属性', 460, 1, 38, '#F7E8C1', 415, 1);
     this.text(hero.name, 160, 81, 26, ink, 160);
     this.text(`${level}级`, 160, 117, 24, ink, 160);
     this.rect(1240, 0, 64, 64, '#000000', '', 0, close, 0);
-    this.text('属性', 1240, 160, 28, ink, 60, 1, () => {
-      this.stopPotentialRepeat(); this.allocationPreview = undefined;
-      this.heroPanelPage = 'basic'; this.render();
-    });
+    this.text('属性', 1240, 160, 28, ink, 60, 1, showBasic);
     this.text('加点', 1240, 322, 28, ink, 60, 1, () => {
       this.heroPanelPage = 'points'; this.render();
     });
@@ -937,11 +938,6 @@ export class BattleView extends Component {
       this.text(value, index === 4 ? 797 : 839, 86 + index * 40, 24, '#F7E8CF', 210, 1);
     });
     this.text('使用', 1123, 245, 23, ink, 80, 1);
-    if (this.heroPanelPage === 'points') {
-      this.renderAllocation(confirmed, close, draft => this.battle.confirmHeroAllocation(draft,
-        next => saveProgress(window.localStorage, this.battle, next)));
-      return;
-    }
     this.text('基础', 637, 292, 27, this.heroPanelPage === 'basic' ? ink : '#8B8170', 145, 1, () => {
       this.heroPanelPage = 'basic'; this.render();
     });
@@ -963,6 +959,42 @@ export class BattleView extends Component {
     this.text(xp, 845, 619, 24, '#F7E8CF', 210, 1);
   }
 
+  private renderHeroPoints(confirmed: HeroProgress, showBasic: () => void, close: () => void): void {
+    const ink = '#4A2C1D';
+    const hero = this.battle.allies[0];
+    this.image(0, 0, CONFIG.width, CONFIG.height, this.characterPointsArt);
+    this.text('人物属性', 460, 27, 38, '#F7E8C1', 415, 1);
+    this.text(hero.name, 209, 112, 26, ink, 165);
+    this.text(`${confirmed.level}级`, 209, 153, 24, ink, 165);
+    this.rect(1215, 31, 62, 62, '#000000', '', 0, close, 0);
+    this.rect(1215, 126, 62, 149, '#000000', '', 0, showBasic, 0);
+    ['属', '性', '加', '点'].forEach((char, i) =>
+      this.text(char, 1215, [168, 203, 318, 353][i], 26, ink, 62, 1));
+
+    const portrait = new Node('hero-points-portrait');
+    this.layer.addChild(portrait);
+    this.pos(portrait, 145, 154);
+    portrait.addComponent(UITransform).setContentSize(88, 86);
+    portrait.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
+    this.image(-5, 92, 300, 300, this.heroArt).node.setParent(portrait, true);
+
+    const { panel, delta } = heroPanelPreview(confirmed, this.allocationPreview);
+    const rows = [
+      ['气血', 'maxHp', `${hero.hp}/${panel.maxHp}`], ['法力', 'maxMana', `${panel.maxMana}/${panel.maxMana}`],
+      ['伤害', 'attack', panel.attack], ['防御', 'defense', panel.defense], ['速度', 'speed', panel.speed],
+      ['躲避', 'dodge', panel.dodge], ['灵力', 'spirit', panel.spirit],
+    ] as const;
+    this.text('属性实时预览', 215, 216, 26, ink, 224, 1);
+    rows.forEach(([name, key, value], index) => {
+      const y = 284 + index * 54.3;
+      this.text(name, 115, y, 24, ink, 100);
+      this.text(String(value), 269, y, 24, ink, 132, 1);
+      this.text(delta(key), 450, y, 24, '#38652A', 102, 1);
+    });
+    this.renderAllocation(confirmed, close, draft => this.battle.confirmHeroAllocation(draft,
+      next => saveProgress(window.localStorage, this.battle, next)));
+  }
+
   private renderAllocation(confirmed: LevelProgress, close: () => void,
     confirm: (draft: LevelProgress) => boolean, kind: 'hero' | 'pet' = 'hero'): void {
     const pet = kind === 'pet';
@@ -970,9 +1002,14 @@ export class BattleView extends Component {
     const editable = this.battle.phase === 'ended' && this.usesTestProgress && !this.progressReadFailed;
     const names = ['体质', '法力', '力量', '耐力', '敏捷'];
     BASE_STAT_KEYS.forEach((key, index) => {
-      const y = pet ? 224 + index * 50 : 356 + index * 41;
-      this.text(names[index], pet ? 608 : 680, y + 6, 21, '#4A2C1D', 105, 1);
-      this.text(String(stats[key]), pet ? 854 : 857, y + 6, 21, '#4A2C1D', 85, 1);
+      const y = pet ? 224 + index * 50 : 131 + index * 69.8;
+      if (pet) {
+        this.text(names[index], 608, y + 6, 21, '#4A2C1D', 105, 1);
+        this.text(String(stats[key]), 854, y + 6, 21, '#4A2C1D', 85, 1);
+      } else {
+        this.text(names[index], 630, y + 3, 25, '#4A2C1D', 110, 1);
+        this.text(String(stats[key]), 833, y + 5, 23, '#4A2C1D', 96, 1);
+      }
       const adjust = (change: 1 | -1): boolean => {
         if (this.battle.phase !== 'ended' || this.progressReadFailed) return false;
         const previous = this.allocationPreview ?? confirmed;
@@ -984,14 +1021,19 @@ export class BattleView extends Component {
       };
       const canRemove = editable && stats[key] > confirmed.stats[key];
       const canAdd = editable && potential > 0;
-      this.potentialButton('－', pet ? 790 : 1024, y, canRemove, () => adjust(-1));
-      this.potentialButton('＋', pet ? 957 : 1091, y, canAdd, () => adjust(1));
+      this.potentialButton('－', pet ? 790 : 1012, y, canRemove, () => adjust(-1));
+      this.potentialButton('＋', pet ? 957 : 1098, y, canAdd, () => adjust(1));
     });
-    this.text('剩余潜能', pet ? 630 : 666, pet ? 495 : 582, 22, pet ? '#4A2C1D' : '#F7E8CF', 240, 1);
-    this.text(String(potential), pet ? 824 : 1010, pet ? 495 : 582, 22, '#4A2C1D', 100, 1);
+    if (pet) {
+      this.text('剩余潜能', 630, 495, 22, '#4A2C1D', 240, 1);
+      this.text(String(potential), 824, 495, 22, '#4A2C1D', 100, 1);
+    } else {
+      this.text('剩余潜能', 645, 510, 24, '#4A2C1D', 135);
+      this.text(String(potential), 826, 510, 24, '#F7E8CF', 280, 1);
+    }
     this.text(this.progressError || (editable ? '' : '战斗结束后可分配潜能'),
-      pet ? 535 : 640, pet ? 624 : 678, 17, '#4A2C1D', 524, 1);
-    this.text('取消', pet ? 585 : 722, pet ? 568 : 627, 28, pet ? '#4A2C1D' : '#F7E8CF', pet ? 185 : 120, 1, close);
+      pet ? 535 : 635, pet ? 624 : 672, 17, '#4A2C1D', 524, 1);
+    this.text('取消', pet ? 585 : 650, pet ? 568 : 606, 28, '#4A2C1D', pet ? 185 : 210, 1, close);
     const commit = () => {
       this.stopPotentialRepeat();
       if (!this.allocationPreview) return;
@@ -1006,8 +1048,8 @@ export class BattleView extends Component {
       this.render();
     };
     const canConfirm = editable && potential < confirmed.potential;
-    this.text('确认', pet ? 828 : 952, pet ? 568 : 627, 28, canConfirm ? '#4A2C1D' : '#8B8170',
-      pet ? 185 : 120, 1, canConfirm ? commit : undefined);
+    this.text('确认', pet ? 828 : 932, pet ? 568 : 606, 28, canConfirm ? '#4A2C1D' : '#8B8170',
+      pet ? 185 : 212, 1, canConfirm ? commit : undefined);
   }
 
   private renderHeroProgress(): void {

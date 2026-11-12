@@ -8,10 +8,22 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 } });
 
 const { Battle } = await import('../assets/scripts/Battle.ts');
-const { adjustPotential, awardExperience, heroPanel, initialHero } = await import('../assets/logic/hero-progress.ts');
+const { adjustPotential, awardExperience, heroPanel, heroPanelPreview, initialHero } = await import('../assets/logic/hero-progress.ts');
 const { readProgress, saveProgress, resetProgress } = await import('../assets/logic/local-progress.ts');
 const makeBattle = (hero, pets) => new Battle(() => 0, 1, 0, pets && { entries: pets },
   undefined, undefined, undefined, undefined, undefined, undefined, { hero });
+
+test('character points preview compares rounded stats and clears on cancel', () => {
+  const hero = { ...initialHero(), potential: 5 };
+  let draft = hero;
+  for (let i = 0; i < 5; i++) draft = adjustPotential(hero, draft, 'constitution', 1);
+  const { panel, delta } = heroPanelPreview(hero, draft);
+  assert.deepEqual(panel, { maxHp: 75, maxMana: 30, attack: 7, defense: 15, speed: 11, dodge: 10, spirit: 18 });
+  assert.deepEqual([delta('maxHp'), delta('spirit'), delta('attack')], ['+25', '+2', '+0']);
+  const cancelled = heroPanelPreview(hero);
+  assert.deepEqual([cancelled.panel.maxHp, cancelled.panel.spirit], [50, 16]);
+  assert.deepEqual([cancelled.delta('maxHp'), cancelled.delta('spirit')], ['', '']);
+});
 
 test('04b previews the rounded panel without changing confirmed points', () => {
   const hero = awardExperience(initialHero(), 10);

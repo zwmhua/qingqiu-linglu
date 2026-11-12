@@ -60,3 +60,11 @@ export function heroPanel(stats: BaseStats) {
     attack: round(strength * c.attack), defense: round(endurance * c.defense),
     speed: sum(c.speed), dodge: round(agility * c.dodge), spirit: sum(c.spirit) };
 }
+
+export function heroPanelPreview(confirmed: LevelProgress, draft = confirmed) {
+  const current = heroPanel(confirmed.stats);
+  const pending = draft.potential < confirmed.potential;
+  const panel = pending ? heroPanel(draft.stats) : current;
+  const delta = (key: keyof typeof current) => pending ? `+${panel[key] - current[key]}` : '';
+  return { panel, delta };
+}
