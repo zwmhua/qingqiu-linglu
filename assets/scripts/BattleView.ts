@@ -368,7 +368,8 @@ export class BattleView extends Component {
     };
     bar(healthY, v.barWidth * (this.displayedHp?.get(unit.id) ?? unit.hp) / unit.maxHp, '#D95757');
     if (unit.side === 'ally') bar(healthY + v.barHeight + v.barGap, v.barWidth, '#559DD8');
-    const nameWidth = unit.isMutated ? 178 : this.isPet(unit) && !unit.isBaby ? v.petNameWidth : v.nameWidth;
+    const compactPetName = this.isPet(unit) && unit.name.length <= 2;
+    const nameWidth = unit.isMutated ? 178 : compactPetName ? v.petNameWidth : v.nameWidth;
     const nameX = point.x + (this.isPet(unit) ? v.petNameOffsetX : 0) - nameWidth / 2;
     const name = this.text(`${unit.isMutated ? '变异' : ''}${unit.name} Lv.${unit.level}`, nameX,
       point.y + 19 + v.nameGap, v.nameSize, '#FFFFFF', nameWidth, 1, targetClick);

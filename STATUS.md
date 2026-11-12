@@ -36,7 +36,7 @@
 - 2026-11-11：单位脚底对齐与底部按钮间距修复；提交 `b5f98dc`。
 - 2026-11-12：**卡 03（03a、03b）已完成并经华周试玩通过。**
   - **03a 三物种随机遭遇与抓取。** 实现三物种随机遭遇、敌方临时面板、抓取资料和召唤配图。实现提交 `fba031d`，已合入 `origin/main`。
-  - **03b 己方新宠上阵与临时面板一致性。** 实现提交 `3202545`，已合入本地 `main`（`1ee10c1`），待同步远端。
+  - **03b 己方新宠上阵与临时面板一致性。** 补齐三物种在 0／1／5 级的上阵、残血与换场恢复回归，修复上阵毛毛虫等级裁切。实现提交 `3202545`。
 
 ## 进行中
 
@@ -88,6 +88,7 @@
 - `docs/cards/card-02b-mutation-encounter-adjustment.md`：变异改为野怪出场时判定；核对现行判定时机时阅读。
 - `docs/cards/card-03-three-wild-species.md`：卡 03 总卡，记录三物种配置及敌我临时面板。
 - `docs/cards/card-03a-random-wild-encounter.md`：03a 定稿、开发范围和试玩步骤。
+- `docs/cards/card-03b-ally-pet-combat.md`：03b 定稿、己方临时面板验收和试玩步骤。
 - [卡 04 总规则 v1.0](docs/cards/card-04-leveling.md)
 - [卡 04a 经验结算与人物升级 v1.1](docs/cards/card-04a-character-experience.md)
 - [卡 04b 人物完整面板与潜能加点 v1.0](docs/cards/card-04b-character-panel.md)
