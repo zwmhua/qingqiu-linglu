@@ -4,7 +4,8 @@ import { COMMAND_ICON_SIZE, COMMAND_LAYOUT, CONFIG } from './config';
 import { targetCommand, toggleTarget } from '../logic/targeting';
 import { AutoCommands } from '../logic/auto';
 import { PREVIEW } from 'cc/env';
-import { APTITUDE_KEYS } from '../logic/aptitude';
+import { APTITUDE_KEYS, aptitudeBarRatio } from '../logic/aptitude';
+import { WILD_SPECIES } from '../logic/wild-encounter';
 import { BASE_STAT_KEYS } from '../logic/base-stats';
 import { petTint } from '../logic/pet-visual';
 import type { CarriedPet, Roster } from '../logic/roster';
@@ -28,6 +29,7 @@ export class BattleView extends Component {
   @property(SpriteFrame) characterBasicArt: SpriteFrame | null = null;
   @property(SpriteFrame) characterPointsArt: SpriteFrame | null = null;
   @property(SpriteFrame) petBasicArt: SpriteFrame | null = null;
+  @property(SpriteFrame) petAptitudeArt: SpriteFrame | null = null;
   @property(SpriteFrame) petPointsArt: SpriteFrame | null = null;
   @property(SpriteFrame) frogArt: SpriteFrame | null = null;
   @property(SpriteFrame) panguiArt: SpriteFrame | null = null;
@@ -62,7 +64,8 @@ export class BattleView extends Component {
   private selectedPetId: string | null = null;
   private detailsOpen: 'hero' | null = null;
   private heroPanelPage: 'basic' | 'advanced' | 'points' = 'basic';
-  private petPanelPage: 'basic' | 'advanced' | 'points' = 'basic';
+  private petPanelPage: 'basic' | 'aptitude' | 'points' = 'basic';
+  private petReturnPage: 'basic' | 'aptitude' = 'basic';
   private allocationPreview?: LevelProgress;
   private readonly potentialRepeat = new HoldRepeat();
   private stopPotentialRepeat = (event?: Event): void => {
@@ -766,73 +769,128 @@ export class BattleView extends Component {
 
   private renderPetPanel(pet: CarriedPet): void {
     const points = this.petPanelPage === 'points';
+    const aptitude = this.petPanelPage === 'aptitude';
     const ink = '#4A2C1D';
     const open = (page: typeof this.petPanelPage) => {
       this.stopPotentialRepeat();
+      if (page === 'points' && this.petPanelPage !== 'points') this.petReturnPage = this.petPanelPage;
       if (page !== 'points') this.allocationPreview = undefined;
       this.petPanelPage = page;
       this.render();
     };
     const close = () => {
       this.stopPotentialRepeat();
+      this.rosterOpen = false;
       this.selectedPetId = null;
       this.allocationPreview = undefined;
       this.render();
     };
     this.rect(0, 0, CONFIG.width, CONFIG.height, '#101E1C', '', 0, undefined, 200).addComponent(BlockInputEvents);
-    this.image(167, 0, 1000, 750, points ? this.petPointsArt : this.petBasicArt);
+    this.image(167, 0, 1000, 750, points ? this.petPointsArt : aptitude ? this.petAptitudeArt : this.petBasicArt);
     this.text('召唤兽属性', 502, 13, 34, '#F7E8C1', 330, 1);
     this.rect(1070, 28, 56, 54, '#000000', '', 0, close, 0);
-    this.text(pet.name, 331, 109, 26, ink, 154);
+    this.text(pet.name, 331, points ? 109 : 113, points ? 26 : 23, ink, 154);
     this.text(`${pet.level}级`, 333, 152, 20, ink, 82, 1);
     const identity = `${pet.isBaby ? '宝宝' : '野生'}${pet.isMutated ? ' · 变异' : ''}`;
-    this.text(identity, 422, 151, 19, '#356456', 100);
-    const frame = this.petArt(pet);
-    const portraits = points ? [[282, 148, 65]] : [[282, 148, 65], [373, 374, 274]];
-    for (const [x, y, size] of portraits) {
-      if (!frame) {
-        this.text(size === 65 ? '?' : '暂无立绘', x - size / 2, y - 18, 22, ink, size, 1);
-        continue;
-      }
-      const scale = size / Math.max(frame.rect.width, frame.rect.height);
-      const w = frame.rect.width * scale, h = frame.rect.height * scale;
-      this.image(x - w / 2, y - h / 2, w, h, frame).sprite.color = this.unitColor(pet);
+    this.drawPetPortrait(pet, 282, 148, 65);
+    if (!points) {
+      const tagX = 338 + pet.name.length * 23;
+      this.rect(tagX, 116, 76, 26, '#4A7764', '', 10);
+      this.text(identity.replaceAll(' ', ''), tagX, 116, 15, '#F7E8C1', 76, 1);
+      this.drawPetPortrait(pet, 373, 337, 244);
+      this.text('放生', 443, 455, 22, ink, 80, 1);
+      this.renderPetSlots(pet.id);
+      this.text('属性', 606, 101, 25, ink, 182, 1, () => open('basic'));
+      this.text('资质技能', 793, 101, 25, ink, 195, 1, () => open('aptitude'));
+      this.rect(1094, 126, 60, 126, '#000000', '', 0, () => open('points'), 0);
+      this.text('加', 1095, 152, 27, ink, 56, 1);
+      this.text('点', 1095, 186, 27, ink, 56, 1);
+      if (aptitude) this.renderPetAptitudes(pet);
+      else this.renderPetAttributes(pet);
+      return;
     }
+    this.text(identity, 422, 151, 19, '#356456', 100);
     for (const [index, label] of ['属性', '加点'].entries()) {
       const y = 125 + index * 153;
-      this.rect(1094, y, 58, 116, '#000000', '', 0, () => open(index ? 'points' : 'basic'), 0);
+      this.rect(1094, y, 58, 116, '#000000', '', 0, () => open(index ? 'points' : this.petReturnPage), 0);
       Array.from(label).forEach((char, row) => this.text(char, 1095, y + 20 + row * 37, 26, ink, 56, 1));
     }
     const live = this.battle.pets.find(unit => unit.id === pet.id);
-    const preview = points ? petPanelPreview(pet, this.allocationPreview) : undefined;
-    const { maxHp, maxMana, attack, defense, speed, dodge, spirit } = preview?.panel ?? petPanel(pet);
+    const preview = petPanelPreview(pet, this.allocationPreview);
+    const { maxHp, maxMana } = preview.panel;
     const hp = `${live?.hp ?? pet.hp}/${maxHp}`;
     const mana = `${maxMana}/${maxMana}`;
     [['气血', hp], ['法力', mana]].forEach(([name, value], i) => {
-      const y = (points ? 109 : 187) + i * 48;
+      const y = 109 + i * 48;
       this.text(name, 617, y, 21, ink, 54);
       this.text(value, 758, y - 2, 23, '#F7E8CF', 216, 1);
     });
-    if (preview) {
-      this.renderPetPointsPreview(preview, hp, mana);
-      this.renderAllocation(petProgress(pet), close, draft => this.battle.confirmPetAllocation(pet.id, draft,
-        next => saveProgress(window.localStorage, this.battle, undefined, next)), 'pet');
+    this.renderPetPointsPreview(preview, hp, mana);
+    this.renderAllocation(petProgress(pet), () => open(this.petReturnPage), draft => this.battle.confirmPetAllocation(pet.id, draft,
+      next => saveProgress(window.localStorage, this.battle, undefined, next)), 'pet');
+  }
+
+  private drawPetPortrait(pet: CarriedPet, x: number, y: number, size: number): void {
+    const frame = this.petArt(pet);
+    if (!frame) {
+      this.text(size < 100 ? '?' : '暂无立绘', x - size / 2, y - 18, 22, '#4A2C1D', size, 1);
       return;
     }
-    this.text('基础', 555, 105, 28, this.petPanelPage === 'basic' ? ink : '#8B8170', 202, 1, () => open('basic'));
-    this.text('高级', 770, 105, 28, this.petPanelPage === 'advanced' ? ink : '#8B8170', 185, 1, () => open('advanced'));
-    if (this.petPanelPage === 'advanced') return;
-    const xp = pet.level === HERO_PROGRESSION.maxLevel ? '已满级' : `${pet.exp}/${levelUpExp(pet.level)}`;
-    const basic = [['伤害', attack], ['防御', defense], ['速度', speed], ['躲避', dodge], ['灵力', spirit], ['升级经验', xp]];
+    const scale = size / Math.max(frame.rect.width, frame.rect.height);
+    const w = frame.rect.width * scale, h = frame.rect.height * scale;
+    this.image(x - w / 2, y - h / 2, w, h, frame).sprite.color = this.unitColor(pet);
+  }
+
+  private renderPetSlots(selectedId: string): void {
+    const deployed = this.battle.pets.find(pet => pet.deployed && !pet.left);
+    this.battle.roster.entries.forEach((pet, i) => {
+      const x = 236 + (i % 5) * 61, y = 514 + Math.floor(i / 5) * 77;
+      this.rect(x, y, 52, 66, '#729586', pet.id === selectedId ? '#FFD45C' : '#9C8156', 6, () => {
+        this.selectedPetId = pet.id;
+        this.render();
+      });
+      this.drawPetPortrait(pet, x + 26, y + 34, 47);
+      if (pet.id === deployed?.id) {
+        this.rect(x, y, 22, 21, '#B74638', '', 4);
+        this.text('战', x, y - 2, 15, '#FFF0C4', 22, 1);
+      }
+    });
+  }
+
+  private petInfoBar(name: string, value: string, y: number, ratio: number, color: string): void {
+    this.text(name, 594, y - 17, 22, '#4A2C1D', 134);
+    this.text(value, 686, y - 17, 22, '#4A2C1D', 100, 2);
+    if (ratio > 0) this.rect(809, y - 7, 228 * ratio, 14, color, '', Math.min(7, 114 * ratio));
+  }
+
+  private renderPetAttributes(pet: CarriedPet): void {
+    const { maxHp, maxMana, attack, defense, speed, dodge, spirit } = petPanel(pet);
+    const hp = this.battle.pets.find(unit => unit.id === pet.id)?.hp ?? pet.hp;
+    const xpMax = levelUpExp(pet.level);
+    const capped = pet.level === HERO_PROGRESSION.maxLevel;
+    this.petInfoBar('气血', `${hp}/${maxHp}`, 202, aptitudeBarRatio(hp, 0, maxHp), '#D35657');
+    this.petInfoBar('法力', `${maxMana}/${maxMana}`, 257, 1, '#559DD8');
+    this.petInfoBar('经验', capped ? '已满级' : `${pet.exp}/${xpMax}`, 311,
+      capped ? 1 : aptitudeBarRatio(pet.exp, 0, xpMax), '#DBAA4F');
+    [['伤害', attack], ['防御', defense], ['速度', speed], ['躲避', dodge], ['灵力', spirit]].forEach(([name, value], i) => {
+      const x = i < 3 ? 581 : 834, y = 366 + (i % 3) * 62;
+      this.text(String(name), x, y, 24, '#4A2C1D', 105);
+      this.text(String(value), x + 92, y, 24, '#4A2C1D', 94, 1);
+    });
+  }
+
+  private renderPetAptitudes(pet: CarriedPet): void {
+    const { aptitudes, growth } = WILD_SPECIES[pet.species];
     const names = ['攻击资质', '防御资质', '体力资质', '法力资质', '躲避资质', '速度资质'];
-    const aptitudes = APTITUDE_KEYS.map((key, i) => [names[i], pet.aptitudes[key]]);
-    this.text('基础属性', 611, 296, 22, ink, 119, 1);
-    this.text('资质与成长', 879, 296, 22, ink, 119, 1);
-    [basic, [...aptitudes, ['成长', pet.growth.toFixed(3)]]].forEach((rows, column) => rows.forEach(([name, value], row) => {
-      const x = 563 + column * 266, y = 339 + row * 38.5;
-      this.text(String(name), x, y, 21, ink, 107);
-      this.text(String(value), x + 120, y, 21, ink, 90, 2);
-    }));
+    const colors = ['#659B53', '#559DD8', '#D35657', '#A07DCB', '#D49C49', '#55A69C'];
+    const overflow = '#FFC34A';
+    APTITUDE_KEYS.forEach((key, i) => {
+      const value = pet.aptitudes[key], [min, max] = aptitudes[key];
+      this.petInfoBar(names[i], String(value), 184 + i * 37.5, aptitudeBarRatio(value, min, max),
+        pet.isMutated && value > max ? overflow : colors[i]);
+    });
+    this.petInfoBar('成长', pet.growth.toFixed(3), 409, aptitudeBarRatio(pet.growth, growth.min, growth.max),
+      pet.isMutated && pet.growth > growth.max ? overflow : '#A07DCB');
   }
 
   private renderPetPointsPreview({ panel, delta }: ReturnType<typeof petPanelPreview>, hp: string, mana: string): void {
@@ -856,23 +914,9 @@ export class BattleView extends Component {
   }
 
   private renderRosterList(): void {
-    const roster = this.battle.roster;
-    const selected = roster.entries.find(pet => pet.id === this.selectedPetId);
-    if (selected) return this.renderPetPanel(selected);
-    this.rect(439, 133, 455, 500, '#1E3835', '#E5CB8D', 14);
-    this.text(`携带 ${roster.entries.length}/${roster.capacity}`, 475, 153, 30, '#F3DFAD', 385, 1);
-    roster.entries.forEach((pet, index) => {
-      const current = this.battle.pets.find(unit => unit.id === pet.id);
-      const open = () => this.openPetPanel(pet.id);
-      this.rect(470, 202 + index * 65, 390, 54, '#294743', '', 6, open);
-      this.text(`${pet.isMutated ? '变异' : ''}${pet.name} Lv.${pet.level} · ${pet.origin === 'initial' ? '初始' : '抓取获得'}`,
-        478, 211 + index * 65, 22, '#F6F0DC', 370, 0, open);
-      this.text(`气血 ${current?.hp ?? pet.hp}/${pet.maxHp}`,
-        478, 238 + index * 65, 17, '#C6DBC6', 370, 0, open);
-    });
-    this.button('返回战斗', 539, 562, 255, 55, true, () => {
-      this.rosterOpen = false; this.selectedPetId = null; this.render();
-    });
+    const { entries } = this.battle.roster;
+    const selected = entries.find(pet => pet.id === (this.selectedPetId ?? this.battle.selectedPetId)) ?? entries[0];
+    if (selected) this.renderPetPanel(selected);
   }
 
   private restartBattle(battle: Battle): void {
@@ -1146,6 +1190,7 @@ export class BattleView extends Component {
         this.stopPotentialRepeat();
         this.rosterOpen = !this.rosterOpen;
         this.selectedPetId = null;
+        this.petPanelPage = 'basic';
         this.allocationPreview = undefined;
         this.render();
       });

@@ -5,6 +5,9 @@ export const APTITUDE_RANGES = {
 export const APTITUDE_KEYS = ['attack', 'defense', 'stamina', 'mana', 'dodge', 'speed'] as const;
 export type Aptitudes = Record<(typeof APTITUDE_KEYS)[number], number>;
 
+export const aptitudeBarRatio = (value: number, min: number, max: number): number =>
+  Math.max(0, Math.min(1, (value - min) / (max - min)));
+
 type AptitudeRanges = Record<keyof Aptitudes, readonly [number, number]>;
 
 export function generateAptitudes(isBaby: boolean, random: () => number,

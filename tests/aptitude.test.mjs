@@ -6,11 +6,17 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier.startsWith('.') && !specifier.endsWith('.ts')) return nextResolve(`${specifier}.ts`, context);
   return nextResolve(specifier, context);
 } });
-const { APTITUDE_RANGES, APTITUDE_KEYS, generateAptitudes } =
+const { APTITUDE_RANGES, APTITUDE_KEYS, aptitudeBarRatio, generateAptitudes } =
   await import('../assets/logic/aptitude.ts');
 const { Battle } = await import('../assets/scripts/Battle.ts');
 const { petCombat } = await import('../assets/logic/pet-panel.ts');
 const combat = ({ hp, maxHp, attack, defense, speed }) => ({ hp, maxHp, attack, defense, speed });
+
+test('aptitude bar maps the species range and clamps mutated values to full', () => {
+  const [min, max] = APTITUDE_RANGES.attack;
+  assert.deepEqual([min, max, (min + max) / 2, Math.round(max * 1.18)].map(value =>
+    aptitudeBarRatio(value, min, max)), [0, 1, 0.5, 1]);
+});
 
 test('all six normal and baby ranges use the confirmed inclusive boundaries', () => {
   assert.deepEqual(APTITUDE_RANGES, {
