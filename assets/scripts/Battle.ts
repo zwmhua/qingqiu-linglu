@@ -10,6 +10,8 @@ import type { BaseStats } from '../logic/base-stats';
 import { MUTATION_CONFIG, isMutation, mutateAptitudes } from '../logic/mutation';
 import { WILD_SPECIES, pickWildLevel, pickWildSpecies, wildCombat } from '../logic/wild-encounter';
 import type { WildSpecies } from '../logic/wild-encounter';
+import { HERO_PROGRESSION, awardExperience, heroPanel } from '../logic/hero-progress';
+import type { HeroProgress } from '../logic/hero-progress';
 
 export type Side = 'ally' | 'enemy';
 export type Command = 'attack' | 'defend' | 'protect' | 'retreat' | 'flee' | 'summon' | 'capture';
@@ -50,39 +52,45 @@ export class Battle {
   round = 1;
   seconds: number = CONFIG.commandSeconds;
   private random: () => number;
+  heroProgress?: HeroProgress;
+  selectedPetId: string;
+  earnedExp = 0;
+  levelsGained = 0;
+  readonly participatedPets = new Set<string>();
+  private victoryExp = 0;
 
   constructor(random: () => number = Math.random, count?: number, initialRage = 0,
-    previousRoster?: Roster, babyRandom: () => number = random,
+    previousRoster?: Pick<Roster, 'entries'>, babyRandom: () => number = random,
     aptitudeRandom: () => number = Math.random, growthRandom: () => number = Math.random,
     baseStatsRandom: () => number = Math.random, mutationRandom: () => number = Math.random,
     // Fixed-count previews and legacy fixtures retain level-one Tingwa unless given an encounter source.
-    encounterRandom: () => number = count === undefined ? random : () => 0) {
+    encounterRandom: () => number = count === undefined ? random : () => 0,
+    progression?: { hero: HeroProgress; selectedPetId?: string; petRandom?: () => number }) {
     this.random = random;
     this.heroRage = Math.max(0, Math.min(CONFIG.status.rageMax, initialRage));
+    this.heroProgress = progression?.hero;
+    this.selectedPetId = progression?.selectedPetId ?? 'pet';
+    const stats = progression ? heroPanel(progression.hero.stats) : undefined;
     const hero = CONFIG.hero;
     const frog = CONFIG.frog;
-    const pet = frog.base;
+    const petRandom = progression?.petRandom ?? Math.random;
+    const initialPets = previousRoster ? [] : ['pet', 'pet-2'].map((id): Unit => {
+      const level = progression ? pickWildLevel(petRandom()) : frog.level;
+      const panel = progression ? wildCombat('tingwa', level) : { ...frog.base, maxHp: frog.base.hp };
+      return { id, name: frog.name, side: 'ally', slot: 0, level, species: 'tingwa',
+        isBaby: false, combatLevel: effectiveLevel(level), aptitudes: generateAptitudes(false, aptitudeRandom),
+        growth: generateGrowth(false, growthRandom), baseStats: generateBaseStats(level, baseStatsRandom),
+        ...panel, defending: false, left: false, deployed: id === this.selectedPetId, skill: frog.innateSkill };
+    });
     this.allies = [
-      { id: 'hero', name: hero.name, side: 'ally', slot: 1, level: hero.level,
-        hp: hero.hp, maxHp: hero.hp, attack: hero.attack, defense: hero.defense,
-        speed: hero.speed, defending: false, left: false, deployed: true },
-      { id: 'pet', name: frog.name, side: 'ally', slot: 0, level: frog.level,
-        species: 'tingwa', isBaby: false, combatLevel: effectiveLevel(frog.level),
-        aptitudes: previousRoster ? undefined : generateAptitudes(false, aptitudeRandom),
-        growth: previousRoster ? undefined : generateGrowth(false, growthRandom),
-        baseStats: previousRoster ? undefined : generateBaseStats(frog.level, baseStatsRandom),
-        hp: pet.hp, maxHp: pet.hp, attack: pet.attack, defense: pet.defense,
-        speed: pet.speed, defending: false, left: false, deployed: true, skill: frog.innateSkill },
-      { id: 'pet-2', name: frog.name, side: 'ally', slot: 0, level: frog.level,
-        species: 'tingwa', isBaby: false, combatLevel: effectiveLevel(frog.level),
-        aptitudes: previousRoster ? undefined : generateAptitudes(false, aptitudeRandom),
-        growth: previousRoster ? undefined : generateGrowth(false, growthRandom),
-        baseStats: previousRoster ? undefined : generateBaseStats(frog.level, baseStatsRandom),
-        hp: pet.hp, maxHp: pet.hp, attack: pet.attack, defense: pet.defense,
-        speed: pet.speed, defending: false, left: false, deployed: false, skill: frog.innateSkill },
+      { id: 'hero', name: hero.name, side: 'ally', slot: 1, level: progression?.hero.level ?? hero.level,
+        hp: stats?.maxHp ?? hero.hp, maxHp: stats?.maxHp ?? hero.hp, attack: stats?.attack ?? hero.attack,
+        defense: stats?.defense ?? hero.defense, speed: stats?.speed ?? hero.speed,
+        combatLevel: effectiveLevel(progression?.hero.level ?? hero.level), defending: false, left: false, deployed: true },
+      ...initialPets,
     ];
     this.roster = new Roster(CONFIG.maxCarriedPets, this.pets, previousRoster);
-    if (previousRoster) this.allies = [this.allies[0], ...this.roster.entries.map((pet, index) => ({
+    if (previousRoster) this.allies = [this.allies[0], ...this.roster.entries.map(pet => ({
       id: pet.id, name: pet.name, side: 'ally' as const, slot: 0, level: pet.level,
       species: pet.species, isBaby: pet.isBaby, combatLevel: effectiveLevel(pet.level),
       aptitudes: pet.aptitudes,
@@ -90,8 +98,9 @@ export class Battle {
       baseStats: pet.baseStats,
       isMutated: pet.isMutated,
       hp: pet.maxHp, maxHp: pet.maxHp, attack: pet.attack, defense: pet.defense,
-      speed: pet.speed, skill: pet.skill, defending: false, left: false, deployed: index === 0,
+      speed: pet.speed, skill: pet.skill, defending: false, left: false, deployed: pet.id === this.selectedPetId,
     }))];
+    this.participatedPets.add(this.selectedPetId);
     const quantity = count ?? this.pickCount();
     if (quantity < 1 || quantity > 3) throw new Error('遭遇数量超出配置范围');
     for (let i = 0; i < quantity; i++) {
@@ -108,6 +117,8 @@ export class Battle {
         baseStats: generateBaseStats(level, baseStatsRandom),
         ...wildCombat(species, level), defending: false, left: false, deployed: true });
     }
+    const { enemyBaseExp, enemyLevelExp } = HERO_PROGRESSION;
+    this.victoryExp = this.enemies.reduce((sum, unit) => sum + enemyBaseExp + enemyLevelExp * effectiveLevel(unit.level), 0);
     this.log.push(`遭遇：${this.enemies.map(enemy => enemy.name).join('、')}。`);
   }
 
@@ -179,9 +190,22 @@ export class Battle {
   }
 
   checkWinner(): Side | null {
+    if (this.phase === 'ended') return this.winner;
     if (this.enemies.every(u => u.hp === 0 || u.left)) this.winner = 'ally';
     else if (this.allies.every(u => !u.deployed || u.hp === 0 || u.left)) this.winner = 'enemy';
     if (this.winner) this.phase = 'ended';
+    if (this.winner === 'ally' && this.heroProgress) {
+      const before = this.heroProgress.level;
+      this.earnedExp = this.victoryExp;
+      this.heroProgress = awardExperience(this.heroProgress, this.earnedExp);
+      this.levelsGained = this.heroProgress.level - before;
+      if (this.levelsGained > 0) {
+        const hero = this.allies[0];
+        const stats = heroPanel(this.heroProgress.stats);
+        Object.assign(hero, stats, { hp: stats.maxHp, level: this.heroProgress.level,
+          combatLevel: effectiveLevel(this.heroProgress.level) });
+      }
+    }
     return this.winner;
   }
 
@@ -228,6 +252,8 @@ export class Battle {
         const outgoing = this.pets.find(u => u.deployed);
         if (outgoing) outgoing.deployed = false;
         incoming.deployed = true;
+        this.selectedPetId = incoming.id;
+        this.participatedPets.add(incoming.id);
         this.summonsUsed++;
         this.events.push({ kind: 'summon', actorId: turn.actor.id, fromId: outgoing?.id, toId: incoming.id });
         this.log.push(`${turn.actor.name} 召唤 ${incoming.name} 上场。`);

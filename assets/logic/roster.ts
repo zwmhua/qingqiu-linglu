@@ -18,7 +18,7 @@ export class Roster {
   private nextCapturedId: number;
   private capturedEnemies = new Set<string>();
 
-  constructor(capacity: number, initial: ReadonlyArray<PetStats>, previous?: Roster) {
+  constructor(capacity: number, initial: ReadonlyArray<PetStats>, previous?: Pick<Roster, 'entries'>) {
     this.capacity = capacity;
     this.entries = previous ? previous.entries.map(pet => ({ ...pet, aptitudes: { ...pet.aptitudes }, baseStats: { ...pet.baseStats }, hp: pet.maxHp }))
       : initial.map(pet => ({ id: pet.id, name: pet.name, species: pet.species ?? 'tingwa', hp: pet.hp, maxHp: pet.maxHp,
@@ -26,7 +26,8 @@ export class Roster {
         skill: pet.skill, isBaby: false, aptitudes: this.requireAptitudes(pet),
         growth: this.requireGrowth(pet), baseStats: this.requireBaseStats(pet),
         isMutated: false, origin: 'initial' as const }));
-    this.nextCapturedId = previous?.nextCapturedId ?? 1;
+    this.nextCapturedId = 1 + this.entries.reduce((highest, pet) =>
+      pet.origin === 'captured' ? Math.max(highest, Number(pet.id.slice('caught-'.length))) : highest, 0);
   }
 
   get full(): boolean { return this.entries.length >= this.capacity; }
