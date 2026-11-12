@@ -796,6 +796,17 @@ export class BattleView extends Component {
     const identity = `${pet.isBaby ? '宝宝' : '野生'}${pet.isMutated ? ' · 变异' : ''}`;
     this.drawPetPortrait(pet, 282, 148, 65);
     if (!points) {
+      const plaque = this.rect(1093, 269, 70, 140, '#000000', '', 0, undefined, 0);
+      plaque.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
+      this.image(167, 153, 1000, 750, this.petPointsArt).node.setParent(plaque, true);
+    }
+    for (const [index, label] of ['属性', '加点'].entries()) {
+      const y = 125 + index * 153;
+      const select = index === Number(points) ? undefined : () => open(index ? 'points' : this.petReturnPage);
+      this.rect(1094, y, 58, 116, '#000000', '', 0, select, 0);
+      Array.from(label).forEach((char, row) => this.text(char, 1095, y + 20 + row * 37, 26, ink, 56, 1));
+    }
+    if (!points) {
       const tagX = 338 + pet.name.length * 23;
       this.rect(tagX, 116, 76, 26, '#4A7764', '', 10);
       this.text(identity.replaceAll(' ', ''), tagX, 116, 15, '#F7E8C1', 76, 1);
@@ -804,19 +815,11 @@ export class BattleView extends Component {
       this.renderPetSlots(pet.id);
       this.text('属性', 606, 101, 25, ink, 182, 1, () => open('basic'));
       this.text('资质技能', 793, 101, 25, ink, 195, 1, () => open('aptitude'));
-      this.rect(1094, 126, 60, 126, '#000000', '', 0, () => open('points'), 0);
-      this.text('加', 1095, 152, 27, ink, 56, 1);
-      this.text('点', 1095, 186, 27, ink, 56, 1);
       if (aptitude) this.renderPetAptitudes(pet);
       else this.renderPetAttributes(pet);
       return;
     }
     this.text(identity, 422, 151, 19, '#356456', 100);
-    for (const [index, label] of ['属性', '加点'].entries()) {
-      const y = 125 + index * 153;
-      this.rect(1094, y, 58, 116, '#000000', '', 0, () => open(index ? 'points' : this.petReturnPage), 0);
-      Array.from(label).forEach((char, row) => this.text(char, 1095, y + 20 + row * 37, 26, ink, 56, 1));
-    }
     const live = this.battle.pets.find(unit => unit.id === pet.id);
     const preview = petPanelPreview(pet, this.allocationPreview);
     const { maxHp, maxMana } = preview.panel;
