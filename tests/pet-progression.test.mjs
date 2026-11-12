@@ -33,6 +33,22 @@ test('formal pet panel rounds each stat once and uses effective level for babies
   assert.deepEqual(petPanel({ ...baby, level: 1 }), expected);
 });
 
+test('level 13 Tingwa uses all seven formal stats after loading an old panel', () => {
+  const pets = make().roster.entries.map(pet => ({ ...pet, ...wildCombat(pet.species, pet.level) }));
+  const frog = { ...wildCombat('tingwa', 13), id: 'caught-1', name: '汀蛙', species: 'tingwa', level: 13,
+    aptitudes: { attack: 1033, defense: 815, stamina: 2375, mana: 1124, dodge: 967, speed: 1259 },
+    growth: 0.903, baseStats: { constitution: 22, mana: 29, strength: 83, endurance: 20, agility: 26 },
+    isBaby: false, isMutated: false, origin: 'captured', exp: 0, potential: 0 };
+  const snapshot = { version: 2, hero: initialHero(), pets: [...pets, frog], selectedPetId: frog.id };
+  const saved = readProgress({ getItem: () => JSON.stringify(snapshot) });
+  const expected = { maxHp: 150, maxMana: 108, attack: 116, defense: 45, speed: 33, dodge: 25, spirit: 73 };
+  assert.deepEqual(petPanel(frog), expected);
+  assert.deepEqual(petPanel(saved.pets[2]), expected);
+  const battle = make({ previous: { entries: saved.pets }, selectedPetId: saved.selectedPetId });
+  const deployed = battle.pets.find(pet => pet.deployed);
+  assert.deepEqual([deployed.id, deployed.hp, ...panel(deployed)], ['caught-1', 150, 150, 116, 45, 33]);
+});
+
 test('preview and normal battles share the once-per-victory pet experience path', async () => {
   const source = (await import('node:fs')).readFileSync(new URL('../assets/scripts/BattleView.ts', import.meta.url), 'utf8');
   assert.equal([...source.matchAll(/if \(PREVIEW && params\.get\('(?:mutation|baby)Sample'\)[^;]+\{ hero, selectedPetId \}\);/g)].length, 2);
