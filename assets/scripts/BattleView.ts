@@ -8,6 +8,8 @@ import { APTITUDE_KEYS } from '../logic/aptitude';
 import { BASE_STAT_KEYS } from '../logic/base-stats';
 import { petTint } from '../logic/pet-visual';
 import type { Roster } from '../logic/roster';
+import { HERO_PROGRESSION, heroPanel, initialHero, levelUpExp } from '../logic/hero-progress';
+import { readProgress, resetProgress, saveProgress } from '../logic/local-progress';
 import type { TargetMode } from '../logic/targeting';
 
 const { ccclass, property } = _decorator;
@@ -27,7 +29,9 @@ export class BattleView extends Component {
   @property([SpriteFrame]) commandIcons: SpriteFrame[] = [];
   @property(SpriteFrame) iconAuto: SpriteFrame | null = null;
   @property(SpriteFrame) iconAutoCancel: SpriteFrame | null = null;
-  private battle = this.createBattle();
+  private battle!: Battle;
+  private progressError = '';
+  private progressReadFailed = false;
   private layoutTest = new URLSearchParams(window.location.search).get('layout') === '10v10';
   private choosingTarget: TargetMode | null = null;
   private lastShownSecond = -1;
@@ -52,17 +56,58 @@ export class BattleView extends Component {
   private speedMultiplier = 1;
   private auto = new AutoCommands();
 
-  private createBattle(previous?: Roster, rage = 0): Battle {
+  private get usesTestProgress(): boolean {
+    const params = new URLSearchParams(window.location.search);
+    return !this.layoutTest && !(PREVIEW && (params.get('mutationSample') === '1' || params.get('babySample') === '1'));
+  }
+
+  private createBattle(previous?: Pick<Roster, 'entries'>, rage = 0,
+    hero = initialHero(), selectedPetId?: string): Battle {
     const params = new URLSearchParams(window.location.search);
     if (PREVIEW && params.get('mutationSample') === '1')
       return new Battle(previous ? () => 0.9 : () => 0, 1, rage, previous, () => 1,
         Math.random, Math.random, Math.random, () => 0);
     if (PREVIEW && params.get('babySample') === '1') return new Battle(() => 0, 1, rage, previous);
-    return new Battle(Math.random, undefined, rage, previous);
+    return new Battle(Math.random, undefined, rage, previous, undefined,
+      undefined, undefined, undefined, undefined, undefined, { hero, selectedPetId });
   }
 
   start(): void {
+    let saved: ReturnType<typeof readProgress> = null;
+    if (this.usesTestProgress) {
+      try { saved = readProgress(window.localStorage, CONFIG.maxCarriedPets); }
+      catch {
+        this.progressReadFailed = true;
+        this.progressError = '本地进度读取失败，可使用测试重置。';
+      }
+    }
+    this.battle = this.createBattle(saved ? { entries: saved.pets } : undefined, 0, saved?.hero, saved?.selectedPetId);
+    if (!saved) this.persistProgress();
     view.setDesignResolutionSize(CONFIG.width, CONFIG.height, 4);
+    this.render();
+  }
+
+  private persistProgress(): void {
+    if (!this.usesTestProgress || this.progressReadFailed) return;
+    try {
+      saveProgress(window.localStorage, this.battle);
+      this.progressError = '';
+    } catch {
+      this.progressError = '本地进度保存失败。';
+    }
+  }
+
+  private resetTestProgress(): void {
+    if (this.confirmingTarget || !window.confirm('清除本游戏的测试进度并重新开始？')) return;
+    try { resetProgress(window.localStorage, true); }
+    catch {
+      this.progressError = '本地进度重置失败。';
+      this.render();
+      return;
+    }
+    this.progressReadFailed = false;
+    this.restartBattle(this.createBattle());
+    this.persistProgress();
     this.render();
   }
 
@@ -463,6 +508,8 @@ export class BattleView extends Component {
 
   private startPlayback(round: number, phase: string, hp: Map<string, number>, deployment: Map<string, boolean>): boolean {
     if (round === this.battle.round && phase === this.battle.phase) return false;
+    if (this.battle.phase === 'ended' || this.battle.events.some(event =>
+      event.kind === 'summon' || event.kind === 'captureSuccess')) this.persistProgress();
     if (this.battle.events.length === 0) return false;
     this.displayedHp = hp;
     this.displayedDeployment = deployment;
@@ -624,12 +671,14 @@ export class BattleView extends Component {
       art.setScale(kind === 'hero' ? 0.75 : 0.22, kind === 'hero' ? 0.75 : 0.22, 1);
       art.setPosition(kind === 'hero' ? -2 : 0, kind === 'hero' ? -58 : 0, 0);
     }
+    const progress = this.battle.heroProgress;
+    const mana = progress ? heroPanel(progress.stats).maxMana : CONFIG.status.heroManaMax;
     const bars = kind === 'hero'
       ? [
         { label: '气血', value: unit ? this.displayedHp?.get(unit.id) ?? unit.hp : 0, max: unit?.maxHp ?? 1, color: '#D95757' },
-        { label: '法力', value: CONFIG.status.heroManaMax, max: CONFIG.status.heroManaMax, color: '#559DD8' },
+        { label: '法力', value: mana, max: mana, color: '#559DD8' },
         { label: '愤怒', value: this.battle.heroRage, max: CONFIG.status.rageMax, color: '#EBA14F' },
-        { label: '经验', value: 0, max: 1, color: '#E6C95C' },
+        { label: '经验', value: progress?.exp ?? 0, max: progress ? levelUpExp(progress.level) : 1, color: '#E6C95C' },
       ]
       : [
         { label: '气血', value: unit ? this.displayedHp?.get(unit.id) ?? unit.hp : 0, max: unit?.maxHp ?? 1, color: '#D95757' },
@@ -641,7 +690,9 @@ export class BattleView extends Component {
       this.rect(x + 69, by, 112, 10, '#10201F', '#526562', 2);
       if (bar.value > 0) this.rect(x + 70, by + 1, 110 * bar.value / bar.max, 8, bar.color, '', 1);
       if (this.detailsOpen === kind) {
-        const value = bar.label === '经验' ? '待定' : `${bar.value}/${bar.max}`;
+        const value = bar.label !== '经验' ? `${bar.value}/${bar.max}`
+          : kind === 'pet' || !progress ? '待定'
+            : progress.level === HERO_PROGRESSION.maxLevel ? '已满级' : `${bar.value}/${bar.max}`;
         this.text(`${bar.label} ${value}`, x + 69, by - 8, 13, '#FFFFFF', 114);
       }
     });
@@ -714,6 +765,34 @@ export class BattleView extends Component {
     });
   }
 
+  private restartBattle(battle: Battle): void {
+    this.battle = battle;
+    this.auto = new AutoCommands();
+    this.choosingTarget = null;
+    this.displayedHp = null;
+    this.displayedDeployment = null;
+    this.displayedLeft = null;
+    this.detailsOpen = null;
+    this.summonOpen = false;
+    this.rosterOpen = false;
+    this.selectedPetId = null;
+    this.animationQueue = [];
+  }
+
+  private renderHeroProgress(): void {
+    const progress = this.battle.heroProgress;
+    if (!progress || this.playing) return;
+    const { level, exp, stats, potential } = progress;
+    const { maxHp, maxMana, attack, defense, speed, dodge, spirit } = heroPanel(stats);
+    const xp = level === HERO_PROGRESSION.maxLevel ? '已满级' : `${exp}/${levelUpExp(level)}`;
+    this.rect(24, 167, 367, this.progressError ? 133 : 109, '#18312F', '', 9, undefined, 230);
+    this.text(`人物进度 · 等级 ${level} · 经验 ${xp} · 潜能 ${potential}`, 36, 176, 19, '#F4DC9C', 345);
+    this.text(`体质 ${stats.constitution}  法力 ${stats.mana}  力量 ${stats.strength}  耐力 ${stats.endurance}  敏捷 ${stats.agility}`, 36, 204, 16, '#FFFFFF', 345);
+    this.text(`气血 ${this.battle.allies[0].hp}/${maxHp}    法力 ${maxMana}/${maxMana}`, 36, 227, 16, '#FFFFFF', 345);
+    this.text(`伤害 ${attack}   防御 ${defense}   速度 ${speed}   躲避 ${dodge}   灵力 ${spirit}`, 36, 249, 16, '#FFFFFF', 345);
+    if (this.progressError) this.text(this.progressError, 36, 274, 16, '#F4DC9C', 345);
+  }
+
   private render(): void {
     this.auto.sync(this.battle);
     this.lastShownSecond = Math.ceil(this.battle.seconds);
@@ -784,6 +863,9 @@ export class BattleView extends Component {
     if (!this.playing && !this.rosterOpen) this.renderHitAreas(units);
     this.layer = interfaceLayer;
     this.renderLog();
+    this.renderHeroProgress();
+    if (this.usesTestProgress && !this.playing && !this.rosterOpen)
+      this.button('测试重置', 200, 104, 136, 54, true, () => this.resetTestProgress());
     if (this.battle.phase !== 'ended') this.autoButton();
     if (!this.playing) this.button(`携带 ${this.battle.roster.entries.length}/${this.battle.roster.capacity}`,
       25, 104, 165, 54, true, () => {
@@ -849,19 +931,13 @@ export class BattleView extends Component {
       this.layer = resultLayer;
       this.rect(391, 233, 540, 249, '#1e3835', '#e5cb8d', 15);
       this.text(this.battle.winner === 'ally' ? '战斗胜利' : '战斗失败', 441, 260, 48, '#f3dfad', 440, 1);
-      this.text('林间遭遇暂告一段落', 470, 325, 22, '#c6dbc6', 380, 1);
+      const { earnedExp, levelsGained } = this.battle;
+      this.text(this.battle.heroProgress && this.battle.winner === 'ally'
+        ? `本场获得经验 ${earnedExp}` : '林间遭遇暂告一段落', 470, 322, 22, '#c6dbc6', 380, 1);
+      if (levelsGained) this.text(`升 ${levelsGained} 级 · 每级五项各 +1、潜能 +5`, 425, 352, 20, '#F4DC9C', 466, 1);
       this.button('再来一场', 513, 384, 286, 69, true, () => {
-        this.battle = this.createBattle(this.battle.roster, this.battle.heroRage);
-        this.auto = new AutoCommands();
-        this.choosingTarget = null;
-        this.displayedHp = null;
-        this.displayedDeployment = null;
-        this.displayedLeft = null;
-        this.detailsOpen = null;
-        this.summonOpen = false;
-        this.rosterOpen = false;
-        this.selectedPetId = null;
-        this.animationQueue = [];
+        const { roster, heroRage, heroProgress, selectedPetId } = this.battle;
+        this.restartBattle(this.createBattle(roster, heroRage, heroProgress, selectedPetId));
         this.render();
       });
     }
