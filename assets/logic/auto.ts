@@ -16,14 +16,11 @@ export class AutoCommands {
   private readonly random: () => number;
   constructor(random: () => number = Math.random) { this.random = random; }
   toggle(): boolean { return this.enabled = !this.enabled; }
-  sync(battle: Battle): void { if (battle.phase === 'ended') this.enabled = false; }
   issue(battle: Battle): void {
-    this.sync(battle);
-    if (!this.enabled) return;
+    if (!this.enabled || battle.phase === 'ended') return;
     for (const actor of [...battle.pending]) {
       const order = nextAutoOrder(battle.lastCommands.get(actor.id)?.command, battle.enemies, this.random);
       battle.command(actor.id, order.command, order.target);
     }
-    this.sync(battle);
   }
 }

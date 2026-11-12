@@ -47,7 +47,7 @@ test('auto repeats each actor attack or defense; other prior commands fall back 
   assert.equal(nextAutoOrder('attack', battle.enemies, () => 0).target, 'enemy-2');
 });
 
-test('cancel waits for the next round to restore manual commands; battle end resets auto', () => {
+test('cancel restores manual commands; enabled auto carries into the next battle', () => {
   const battle = new Battle(() => 0.5, 3);
   const auto = new AutoCommands(() => 0);
   auto.toggle();
@@ -59,7 +59,10 @@ test('cancel waits for the next round to restore manual commands; battle end res
   auto.toggle();
   battle.enemies.forEach(enemy => { enemy.hp = 0; });
   battle.checkWinner();
-  auto.sync(battle);
-  assert.equal(auto.enabled, false);
+  auto.issue(battle);
+  assert.equal(auto.enabled, true);
+  const next = new Battle(() => 0.5, 3);
+  auto.issue(next);
+  assert.equal(next.round, 2);
   assert.equal(new AutoCommands(() => 0).enabled, false);
 });
