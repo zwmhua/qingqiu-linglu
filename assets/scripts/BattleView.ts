@@ -69,8 +69,9 @@ export class BattleView extends Component {
     const params = new URLSearchParams(window.location.search);
     if (PREVIEW && params.get('mutationSample') === '1')
       return new Battle(previous ? () => 0.9 : () => 0, 1, rage, previous, () => 1,
-        Math.random, Math.random, Math.random, () => 0);
-    if (PREVIEW && params.get('babySample') === '1') return new Battle(() => 0, 1, rage, previous);
+        Math.random, Math.random, Math.random, () => 0, undefined, { hero, selectedPetId });
+    if (PREVIEW && params.get('babySample') === '1') return new Battle(() => 0, 1, rage, previous,
+      undefined, undefined, undefined, undefined, undefined, undefined, { hero, selectedPetId });
     return new Battle(Math.random, undefined, rage, previous, undefined,
       undefined, undefined, undefined, undefined, undefined, { hero, selectedPetId });
   }

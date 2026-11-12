@@ -23,7 +23,9 @@ function orders(battle, hero, target, petCommand = 'defend') {
   battle.command(battle.selectedPetId, petCommand, target);
 }
 
-test('victory awards full experience once to each deployed pet, even after swapping or falling', () => {
+test('preview and normal battles share the once-per-victory pet experience path', async () => {
+  const source = (await import('node:fs')).readFileSync(new URL('../assets/scripts/BattleView.ts', import.meta.url), 'utf8');
+  assert.equal([...source.matchAll(/if \(PREVIEW && params\.get\('(?:mutation|baby)Sample'\)[^;]+\{ hero, selectedPetId \}\);/g)].length, 2);
   const battle = make({ count: 3, babies: [0], roll: 0.4 });
   battle.allies[0].hp = 500;
   orders(battle, 'capture', 'enemy-0');
