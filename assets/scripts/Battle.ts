@@ -4,7 +4,7 @@ import { Roster } from '../logic/roster';
 import { effectiveLevel, isBabyEncounter } from '../logic/baby';
 import { generateAptitudes } from '../logic/aptitude';
 import { generateGrowth } from '../logic/growth';
-import { generateBaseStats } from '../logic/base-stats';
+import { BASE_STAT_KEYS, generateBaseStats } from '../logic/base-stats';
 import type { Aptitudes } from '../logic/aptitude';
 import type { BaseStats } from '../logic/base-stats';
 import { MUTATION_CONFIG, isMutation, mutateAptitudes } from '../logic/mutation';
@@ -187,6 +187,20 @@ export class Battle {
     if (this.phase !== 'command') return;
     this.seconds = Math.max(0, this.seconds - seconds);
     if (this.seconds === 0) this.timeout();
+  }
+
+  confirmHeroAllocation(preview: HeroProgress, persist: (hero: HeroProgress) => void): boolean {
+    const confirmed = this.heroProgress;
+    if (!confirmed || this.phase !== 'ended' || preview.potential < 0
+      || !BASE_STAT_KEYS.every(key => Number.isInteger(preview.stats[key]) && preview.stats[key] >= confirmed.stats[key]))
+      return false;
+    const spent = BASE_STAT_KEYS.reduce((sum, key) => sum + preview.stats[key] - confirmed.stats[key], 0);
+    if (spent <= 0 || confirmed.potential - spent !== preview.potential) return false;
+    const next = { ...confirmed, stats: { ...preview.stats }, potential: preview.potential };
+    persist(next);
+    this.heroProgress = next;
+    Object.assign(this.allies[0], heroPanel(next.stats));
+    return true;
   }
 
   checkWinner(): Side | null {
