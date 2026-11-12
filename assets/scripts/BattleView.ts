@@ -7,7 +7,7 @@ import { PREVIEW } from 'cc/env';
 import { APTITUDE_KEYS } from '../logic/aptitude';
 import { BASE_STAT_KEYS } from '../logic/base-stats';
 import { petTint } from '../logic/pet-visual';
-import type { Roster } from '../logic/roster';
+import type { CarriedPet, Roster } from '../logic/roster';
 import { petProgress } from '../logic/roster';
 import type { HeroProgress, LevelProgress } from '../logic/hero-progress';
 import { HERO_PROGRESSION, adjustPotential, heroPanel, initialHero, levelUpExp } from '../logic/hero-progress';
@@ -26,6 +26,8 @@ export class BattleView extends Component {
   @property(SpriteFrame) heroArt: SpriteFrame | null = null;
   @property(SpriteFrame) characterBasicArt: SpriteFrame | null = null;
   @property(SpriteFrame) characterPointsArt: SpriteFrame | null = null;
+  @property(SpriteFrame) petBasicArt: SpriteFrame | null = null;
+  @property(SpriteFrame) petPointsArt: SpriteFrame | null = null;
   @property(SpriteFrame) frogArt: SpriteFrame | null = null;
   @property(SpriteFrame) panguiArt: SpriteFrame | null = null;
   @property(SpriteFrame) maomaochongArt: SpriteFrame | null = null;
@@ -59,6 +61,7 @@ export class BattleView extends Component {
   private selectedPetId: string | null = null;
   private detailsOpen: 'hero' | null = null;
   private heroPanelPage: 'basic' | 'advanced' | 'points' = 'basic';
+  private petPanelPage: 'basic' | 'advanced' | 'points' = 'basic';
   private allocationPreview?: LevelProgress;
   private readonly potentialRepeat = new HoldRepeat();
   private stopPotentialRepeat = (event?: Event): void => {
@@ -685,8 +688,7 @@ export class BattleView extends Component {
         if (kind === 'hero') return this.openHeroPanel();
         if (this.playing || this.rosterOpen || this.summonOpen || this.confirmingTarget) return;
         this.rosterOpen = true;
-        this.selectedPetId = unit.id;
-        this.render();
+        this.openPetPanel(unit.id);
       });
       const mask = portrait.addComponent(Mask);
       mask.type = Mask.Type.ELLIPSE;
@@ -753,37 +755,87 @@ export class BattleView extends Component {
     this.button('返回', 568, 631, 192, 58, true, () => { this.summonOpen = false; this.render(); });
   }
 
+  private openPetPanel(id: string): void {
+    this.selectedPetId = id;
+    this.petPanelPage = 'basic';
+    this.render();
+  }
+
+  private renderPetPanel(pet: CarriedPet): void {
+    const points = this.petPanelPage === 'points';
+    const ink = '#4A2C1D';
+    const open = (page: typeof this.petPanelPage) => {
+      this.stopPotentialRepeat();
+      if (page !== 'points') this.allocationPreview = undefined;
+      this.petPanelPage = page;
+      this.render();
+    };
+    const close = () => {
+      this.stopPotentialRepeat();
+      this.selectedPetId = null;
+      this.allocationPreview = undefined;
+      this.render();
+    };
+    this.rect(0, 0, CONFIG.width, CONFIG.height, '#101E1C', '', 0, undefined, 200).addComponent(BlockInputEvents);
+    this.image(167, 0, 1000, 750, points ? this.petPointsArt : this.petBasicArt);
+    this.text('召唤兽属性', 502, 13, 34, '#F7E8C1', 330, 1);
+    this.rect(1070, 28, 56, 54, '#000000', '', 0, close, 0);
+    this.text(pet.name, 331, 109, 26, ink, 154);
+    this.text(`${pet.level}级`, 333, 152, 20, ink, 82, 1);
+    const identity = `${pet.isBaby ? '宝宝' : '野生'}${pet.isMutated ? ' · 变异' : ''}`;
+    this.text(identity, 422, 151, 19, '#356456', 100);
+    const frame = this.petArt(pet);
+    for (const [x, y, size] of [[282, 148, 65], [373, 374, 274]]) {
+      if (!frame) {
+        this.text(size === 65 ? '?' : '暂无立绘', x - size / 2, y - 18, 22, ink, size, 1);
+        continue;
+      }
+      const scale = size / Math.max(frame.rect.width, frame.rect.height);
+      const w = frame.rect.width * scale, h = frame.rect.height * scale;
+      this.image(x - w / 2, y - h / 2, w, h, frame).sprite.color = this.unitColor(pet);
+    }
+    for (const [index, label] of ['属性', '加点'].entries()) {
+      const y = 125 + index * 153;
+      this.rect(1094, y, 58, 116, '#000000', '', 0, () => open(index ? 'points' : 'basic'), 0);
+      Array.from(label).forEach((char, row) => this.text(char, 1095, y + 20 + row * 37, 26, ink, 56, 1));
+    }
+    const live = this.battle.pets.find(unit => unit.id === pet.id);
+    const mana = CONFIG.status.petManaMax;
+    [['气血', `${live?.hp ?? pet.hp}/${pet.maxHp}`], ['法力', `${mana}/${mana}`]].forEach(([name, value], i) => {
+      const y = (points ? 109 : 187) + i * 48;
+      this.text(name, 617, y, 21, ink, 54);
+      this.text(value, 758, y - 2, 23, '#F7E8CF', 216, 1);
+    });
+    if (points) {
+      this.renderAllocation(petProgress(pet), close, draft => this.battle.confirmPetAllocation(pet.id, draft,
+        next => saveProgress(window.localStorage, this.battle, undefined, next)), 'pet');
+      return;
+    }
+    this.text('基础', 555, 105, 28, this.petPanelPage === 'basic' ? ink : '#8B8170', 202, 1, () => open('basic'));
+    this.text('高级', 770, 105, 28, this.petPanelPage === 'advanced' ? ink : '#8B8170', 185, 1, () => open('advanced'));
+    if (this.petPanelPage === 'advanced') return;
+    const xp = pet.level === HERO_PROGRESSION.maxLevel ? '已满级' : `${pet.exp}/${levelUpExp(pet.level)}`;
+    const basic = [['伤害', pet.attack], ['防御', pet.defense], ['速度', pet.speed], ['躲避', '—'], ['灵力', '—'], ['升级经验', xp]];
+    const names = ['攻击资质', '防御资质', '体力资质', '法力资质', '躲避资质', '速度资质'];
+    const aptitudes = APTITUDE_KEYS.map((key, i) => [names[i], pet.aptitudes[key]]);
+    this.text('基础属性', 611, 296, 22, ink, 119, 1);
+    this.text('资质与成长', 879, 296, 22, ink, 119, 1);
+    [basic, [...aptitudes, ['成长', pet.growth.toFixed(3)]]].forEach((rows, column) => rows.forEach(([name, value], row) => {
+      const x = 563 + column * 266, y = 339 + row * 38.5;
+      this.text(String(name), x, y, 21, ink, 107);
+      this.text(String(value), x + 120, y, 21, ink, 90, 2);
+    }));
+  }
+
   private renderRosterList(): void {
     const roster = this.battle.roster;
     const selected = roster.entries.find(pet => pet.id === this.selectedPetId);
-    if (selected) {
-      const confirmed = petProgress(selected);
-      const stats = this.allocationPreview?.stats ?? confirmed.stats;
-      const xp = selected.level === HERO_PROGRESSION.maxLevel ? '已满级' : `${selected.exp}/${levelUpExp(selected.level)}`;
-      this.rect(361, 120, 612, 489, '#1E3835', '#E5CB8D', 14).addComponent(BlockInputEvents);
-      this.text(`${selected.isMutated ? '变异' : ''}${selected.name} Lv.${selected.level}`, 399, 138, 30, '#F3DFAD', 530, 1);
-      this.image(885, 132, 58, 58, this.petArt(selected)).sprite.color = this.unitColor(selected);
-      this.rect(655, 197, 1, 313, '#829183');
-      this.text(`身份  ${selected.isBaby ? '宝宝' : '普通'}`, 400, 195, 21);
-      this.text(`升级经验  ${xp}`, 400, 226, 21);
-      const labels = ['攻击资质', '防御资质', '体力资质', '法力资质', '躲避资质', '速度资质'];
-      APTITUDE_KEYS.forEach((key, index) => this.text(`${labels[index]}  ${selected.aptitudes[key]}`, 400, 258 + index * 29, 19));
-      this.text(`成长  ${selected.growth.toFixed(3)}`, 400, 434, 21);
-      this.text(`总点数  ${BASE_STAT_KEYS.reduce((sum, key) => sum + stats[key], 0)}`, 400, 465, 20);
-      const close = () => {
-        this.stopPotentialRepeat();
-        this.selectedPetId = null; this.allocationPreview = undefined; this.render();
-      };
-      this.button('返回携带', 405, 550, 140, 43, true, close);
-      this.renderAllocation(confirmed, close, draft => this.battle.confirmPetAllocation(selected.id, draft,
-        next => saveProgress(window.localStorage, this.battle, undefined, next)));
-      return;
-    }
+    if (selected) return this.renderPetPanel(selected);
     this.rect(439, 133, 455, 500, '#1E3835', '#E5CB8D', 14);
     this.text(`携带 ${roster.entries.length}/${roster.capacity}`, 475, 153, 30, '#F3DFAD', 385, 1);
     roster.entries.forEach((pet, index) => {
       const current = this.battle.pets.find(unit => unit.id === pet.id);
-      const open = () => { this.selectedPetId = pet.id; this.render(); };
+      const open = () => this.openPetPanel(pet.id);
       this.rect(470, 202 + index * 65, 390, 54, '#294743', '', 6, open);
       this.text(`${pet.isMutated ? '变异' : ''}${pet.name} Lv.${pet.level} · ${pet.origin === 'initial' ? '初始' : '抓取获得'}`,
         478, 211 + index * 65, 22, '#F6F0DC', 370, 0, open);
@@ -818,9 +870,8 @@ export class BattleView extends Component {
   }
 
   private potentialButton(label: string, x: number, y: number, enabled: boolean,
-    step: () => boolean, skinned = false): void {
-    const node = skinned ? this.text(label, x, y, 29, enabled ? '#4A2C1D' : '#8B8170', 40, 1)
-      : this.button(label, x, y, 58, 39, enabled);
+    step: () => boolean): void {
+    const node = this.text(label, x, y, 29, enabled ? '#4A2C1D' : '#8B8170', 40, 1);
     if (enabled) node.on(Node.EventType.TOUCH_START, () => this.potentialRepeat.start(step));
   }
 
@@ -860,7 +911,7 @@ export class BattleView extends Component {
     this.text('使用', 1123, 245, 23, ink, 80, 1);
     if (this.heroPanelPage === 'points') {
       this.renderAllocation(confirmed, close, draft => this.battle.confirmHeroAllocation(draft,
-        next => saveProgress(window.localStorage, this.battle, next)), true);
+        next => saveProgress(window.localStorage, this.battle, next)));
       return;
     }
     this.text('基础', 637, 292, 27, this.heroPanelPage === 'basic' ? ink : '#8B8170', 145, 1, () => {
@@ -885,16 +936,15 @@ export class BattleView extends Component {
   }
 
   private renderAllocation(confirmed: LevelProgress, close: () => void,
-    confirm: (draft: LevelProgress) => boolean, skinned = false): void {
+    confirm: (draft: LevelProgress) => boolean, kind: 'hero' | 'pet' = 'hero'): void {
+    const pet = kind === 'pet';
     const { stats, potential } = this.allocationPreview ?? confirmed;
     const editable = this.battle.phase === 'ended' && this.usesTestProgress && !this.progressReadFailed;
     const names = ['体质', '法力', '力量', '耐力', '敏捷'];
     BASE_STAT_KEYS.forEach((key, index) => {
-      const y = skinned ? 356 + index * 41 : 197 + index * 51;
-      if (skinned) {
-        this.text(names[index], 680, y + 6, 21, '#4A2C1D', 105, 1);
-        this.text(String(stats[key]), 857, y + 6, 21, '#4A2C1D', 85, 1);
-      } else this.text(`${names[index]}  ${stats[key]}`, 685, y + 7, 21, '#F6F0DC', 108);
+      const y = pet ? 224 + index * 50 : 356 + index * 41;
+      this.text(names[index], pet ? 608 : 680, y + 6, 21, '#4A2C1D', 105, 1);
+      this.text(String(stats[key]), pet ? 854 : 857, y + 6, 21, '#4A2C1D', 85, 1);
       const adjust = (change: 1 | -1): boolean => {
         if (this.battle.phase !== 'ended' || this.progressReadFailed) return false;
         const previous = this.allocationPreview ?? confirmed;
@@ -906,17 +956,14 @@ export class BattleView extends Component {
       };
       const canRemove = editable && stats[key] > confirmed.stats[key];
       const canAdd = editable && potential > 0;
-      this.potentialButton('－', skinned ? 1024 : 796, y, canRemove, () => adjust(-1), skinned);
-      this.potentialButton('＋', skinned ? 1091 : 866, y, canAdd, () => adjust(1), skinned);
+      this.potentialButton('－', pet ? 790 : 1024, y, canRemove, () => adjust(-1));
+      this.potentialButton('＋', pet ? 957 : 1091, y, canAdd, () => adjust(1));
     });
-    if (skinned) {
-      this.text('剩余潜能', 666, 582, 22, '#F7E8CF', 240, 1);
-      this.text(String(potential), 1010, 582, 22, '#4A2C1D', 100, 1);
-    } else this.text(`剩余潜能  ${potential}`, 685, 457, 22, '#F4DC9C', 240);
+    this.text('剩余潜能', pet ? 630 : 666, pet ? 495 : 582, 22, pet ? '#4A2C1D' : '#F7E8CF', 240, 1);
+    this.text(String(potential), pet ? 824 : 1010, pet ? 495 : 582, 22, '#4A2C1D', 100, 1);
     this.text(this.progressError || (editable ? '' : '战斗结束后可分配潜能'),
-      skinned ? 640 : 400, skinned ? 678 : 511, 17, skinned ? '#4A2C1D' : '#F4DC9C', 524, skinned ? 1 : 0);
-    if (skinned) this.text('取消', 722, 627, 28, '#F7E8CF', 120, 1, close);
-    else this.button('取消', 675, 550, 113, 43, true, close);
+      pet ? 535 : 640, pet ? 624 : 678, 17, '#4A2C1D', 524, 1);
+    this.text('取消', pet ? 585 : 722, pet ? 568 : 627, 28, pet ? '#4A2C1D' : '#F7E8CF', pet ? 185 : 120, 1, close);
     const commit = () => {
       this.stopPotentialRepeat();
       if (!this.allocationPreview) return;
@@ -931,9 +978,8 @@ export class BattleView extends Component {
       this.render();
     };
     const canConfirm = editable && potential < confirmed.potential;
-    if (skinned) this.text('确认', 952, 627, 28, canConfirm ? '#4A2C1D' : '#8B8170',
-      120, 1, canConfirm ? commit : undefined);
-    else this.button('确认', 809, 550, 113, 43, canConfirm, commit);
+    this.text('确认', pet ? 828 : 952, pet ? 568 : 627, 28, canConfirm ? '#4A2C1D' : '#8B8170',
+      pet ? 185 : 120, 1, canConfirm ? commit : undefined);
   }
 
   private renderHeroProgress(): void {

@@ -259,6 +259,14 @@
       "__uuid__": "8800f755-ed24-416c-849d-2d96f153b0ef@f9941",
       "__expectedType__": "cc.SpriteFrame"
     },
+    "petBasicArt": {
+      "__uuid__": "6a29a506-884f-4719-a5a0-6b3229c513f0@f9941",
+      "__expectedType__": "cc.SpriteFrame"
+    },
+    "petPointsArt": {
+      "__uuid__": "af01c157-ac6d-4a4d-a6d1-1eaf0b005df4@f9941",
+      "__expectedType__": "cc.SpriteFrame"
+    },
     "frogArt": {
       "__uuid__": "640b8c8a-de57-4cd0-a7cf-6c2bde59081a@f9941",
       "__expectedType__": "cc.SpriteFrame"
