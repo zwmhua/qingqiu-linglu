@@ -2,7 +2,7 @@ import { CONFIG } from './config';
 import { captureChance, captureTarget } from '../logic/capture';
 import { Roster, petProgress } from '../logic/roster';
 import { petCombat } from '../logic/pet-panel';
-import type { CarriedPet } from '../logic/roster';
+import type { CarriedPet, RosterState } from '../logic/roster';
 import { effectiveLevel, isBabyEncounter } from '../logic/baby';
 import { generateAptitudes } from '../logic/aptitude';
 import { generateGrowth } from '../logic/growth';
@@ -62,7 +62,7 @@ export class Battle {
   private victoryExp = 0;
 
   constructor(random: () => number = Math.random, count?: number, initialRage = 0,
-    previousRoster?: Pick<Roster, 'entries'>, babyRandom: () => number = random,
+    previousRoster?: RosterState, babyRandom: () => number = random,
     aptitudeRandom: () => number = Math.random, growthRandom: () => number = Math.random,
     baseStatsRandom: () => number = Math.random, mutationRandom: () => number = Math.random,
     // Fixed-count previews and legacy fixtures retain level-one Tingwa unless given an encounter source.
@@ -71,7 +71,7 @@ export class Battle {
     this.random = random;
     this.heroRage = Math.max(0, Math.min(CONFIG.status.rageMax, initialRage));
     this.heroProgress = progression?.hero;
-    this.selectedPetId = progression?.selectedPetId ?? 'pet';
+    this.selectedPetId = progression?.selectedPetId ?? previousRoster?.entries[0]?.id ?? 'pet';
     const stats = progression ? heroPanel(progression.hero.stats) : undefined;
     const hero = CONFIG.hero;
     const frog = CONFIG.frog;
@@ -214,6 +214,16 @@ export class Battle {
     Object.assign(pet, updated);
     const unit = this.pets.find(entry => entry.id === id);
     if (unit) Object.assign(unit, panel, { baseStats: next.stats });
+    return true;
+  }
+
+  petReleaseBlock(id: string): string | undefined {
+    return this.roster.releaseBlock(id, this.selectedPetId, this.phase !== 'ended');
+  }
+
+  releasePet(id: string, persist: (pets: CarriedPet[]) => void): boolean {
+    if (!this.roster.release(id, this.selectedPetId, this.phase !== 'ended', persist)) return false;
+    this.allies = this.allies.filter(unit => unit.id !== id);
     return true;
   }
 

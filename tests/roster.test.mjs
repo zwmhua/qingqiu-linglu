@@ -9,10 +9,12 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 const { Battle } = await import('../assets/scripts/Battle.ts');
 const { CONFIG } = await import('../assets/scripts/config.ts');
 const { petPanel } = await import('../assets/logic/pet-panel.ts');
+const { initialHero } = await import('../assets/logic/hero-progress.ts');
+const { readProgress, resetProgress, saveProgress } = await import('../assets/logic/local-progress.ts');
 
 const winCapture = (battle, enemyId) => {
   battle.command('hero', 'capture', enemyId);
-  battle.command('pet', 'defend');
+  battle.command(battle.selectedPetId, 'defend');
 };
 
 test('roster starts with two distinct initial pets and one usable summon', () => {
@@ -93,4 +95,55 @@ test('failed capture adds nothing and a new battle starts with two', () => {
   assert.equal(battle.roster.entries.length, 2);
   assert.equal(battle.enemies[0].left, false);
   assert.equal(new Battle(() => 0, 1).roster.entries.length, 2);
+});
+
+test('release rejects an active battle, the deployed pet and the last pet', () => {
+  const battle = new Battle(() => 0, 1);
+  const unexpectedSave = () => assert.fail('blocked release must not save');
+  assert.equal(battle.petReleaseBlock('pet-2'), '战斗中不能放生');
+  assert.equal(battle.releasePet('pet-2', unexpectedSave), false);
+  winCapture(battle, 'enemy-0');
+  assert.equal(battle.petReleaseBlock('pet'), '出战中的召唤兽不能放生');
+  assert.equal(battle.releasePet('pet', unexpectedSave), false);
+  assert.equal(battle.releasePet('caught-1', () => {}), true);
+  assert.equal(battle.releasePet('pet-2', () => {}), true);
+  assert.deepEqual(battle.roster.entries.map(pet => pet.id), ['pet']);
+  assert.equal(battle.petReleaseBlock('pet'), '出战中的召唤兽不能放生');
+  assert.equal(battle.releasePet('pet', unexpectedSave), false);
+});
+
+test('release saves before removal, restores one carried pet and frees a capture slot', () => {
+  const make = (count, previous, selectedPetId) => new Battle(() => 0, count, 0, previous, () => 1,
+    undefined, undefined, undefined, () => 1, undefined, { hero: initialHero(), selectedPetId });
+  let value = null;
+  const storage = { getItem: () => value, setItem: (_key, next) => { value = next; },
+    removeItem: () => { value = null; } };
+  const battle = make(3, undefined, 'pet-2');
+  for (let i = 0; i < 3; i++) winCapture(battle, `enemy-${i}`);
+  assert.equal(battle.roster.full, true);
+  const heroBefore = structuredClone(battle.heroProgress);
+  assert.throws(() => battle.releasePet('caught-3', () => { throw new Error('写入失败'); }), /写入失败/);
+  assert.equal(battle.roster.entries.length, 5);
+  const persist = entries => saveProgress(storage, battle, undefined, undefined, entries);
+  assert.equal(battle.releasePet('caught-3', persist), true);
+  assert.equal(battle.roster.full, false);
+  assert.equal(battle.roster.entries.length, 4);
+  assert.equal(battle.pets.some(pet => pet.id === 'caught-3'), false);
+  assert.deepEqual(battle.heroProgress, heroBefore);
+  let saved = readProgress(storage);
+  let next = make(1, { entries: saved.pets, nextCapturedId: saved.nextCapturedId }, saved.selectedPetId);
+  winCapture(next, 'enemy-0');
+  assert.equal(next.roster.full, true);
+  assert.deepEqual(next.roster.entries.map(pet => pet.id), ['pet', 'pet-2', 'caught-1', 'caught-2', 'caught-4']);
+
+  for (const id of ['pet', 'caught-1', 'caught-2', 'caught-4']) {
+    assert.equal(next.releasePet(id, entries => saveProgress(storage, next, undefined, undefined, entries)), true);
+  }
+  saved = readProgress(storage);
+  next = make(1, { entries: saved.pets, nextCapturedId: saved.nextCapturedId }, saved.selectedPetId);
+  assert.deepEqual(next.pets.map(pet => [pet.id, pet.deployed]), [['pet-2', true]]);
+  assert.equal(make(1, { entries: saved.pets }).selectedPetId, 'pet-2');
+  assert.equal(resetProgress(storage, true), true);
+  assert.equal(readProgress(storage), null);
+  assert.equal(make(1).roster.entries.length, 2);
 });

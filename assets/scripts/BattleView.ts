@@ -8,7 +8,7 @@ import { APTITUDE_KEYS, aptitudeBarRatio } from '../logic/aptitude';
 import { WILD_SPECIES } from '../logic/wild-encounter';
 import { BASE_STAT_KEYS } from '../logic/base-stats';
 import { petTint } from '../logic/pet-visual';
-import type { CarriedPet, Roster } from '../logic/roster';
+import type { CarriedPet, RosterState } from '../logic/roster';
 import { petProgress } from '../logic/roster';
 import { petPanel, petPanelPreview } from '../logic/pet-panel';
 import type { HeroProgress, LevelProgress } from '../logic/hero-progress';
@@ -62,6 +62,7 @@ export class BattleView extends Component {
   private summonOpen = false;
   private rosterOpen = false;
   private selectedPetId: string | null = null;
+  private releasePrompt?: CarriedPet;
   private detailsOpen: 'hero' | null = null;
   private heroPanelPage: 'basic' | 'advanced' | 'points' = 'basic';
   private petPanelPage: 'basic' | 'aptitude' | 'points' = 'basic';
@@ -81,7 +82,7 @@ export class BattleView extends Component {
     return !this.layoutTest && !(PREVIEW && (params.get('mutationSample') === '1' || params.get('babySample') === '1'));
   }
 
-  private createBattle(previous?: Pick<Roster, 'entries'>, rage = 0,
+  private createBattle(previous?: RosterState, rage = 0,
     hero = initialHero(), selectedPetId?: string): Battle {
     const params = new URLSearchParams(window.location.search);
     if (PREVIEW && params.get('mutationSample') === '1')
@@ -112,7 +113,8 @@ export class BattleView extends Component {
         this.progressError = '本地进度读取失败，可使用测试重置。';
       }
     }
-    this.battle = this.createBattle(saved ? { entries: saved.pets } : undefined, 0, saved?.hero, saved?.selectedPetId);
+    this.battle = this.createBattle(saved ? { entries: saved.pets, nextCapturedId: saved.nextCapturedId } : undefined,
+      0, saved?.hero, saved?.selectedPetId);
     if (!saved) this.persistProgress();
     view.setDesignResolutionSize(CONFIG.width, CONFIG.height, 4);
     this.render();
@@ -798,7 +800,7 @@ export class BattleView extends Component {
       this.rect(tagX, 116, 76, 26, '#4A7764', '', 10);
       this.text(identity.replaceAll(' ', ''), tagX, 116, 15, '#F7E8C1', 76, 1);
       this.drawPetPortrait(pet, 373, 337, 244);
-      this.text('放生', 443, 455, 22, ink, 80, 1);
+      this.renderReleaseButton(pet);
       this.renderPetSlots(pet.id);
       this.text('属性', 606, 101, 25, ink, 182, 1, () => open('basic'));
       this.text('资质技能', 793, 101, 25, ink, 195, 1, () => open('aptitude'));
@@ -828,6 +830,37 @@ export class BattleView extends Component {
     this.renderPetPointsPreview(preview, hp, mana);
     this.renderAllocation(petProgress(pet), () => open(this.petReturnPage), draft => this.battle.confirmPetAllocation(pet.id, draft,
       next => saveProgress(window.localStorage, this.battle, undefined, next)), 'pet');
+  }
+
+  private renderReleaseButton(pet: CarriedPet): void {
+    const blocked = this.battle.petReleaseBlock(pet.id)
+      ?? (!this.usesTestProgress || this.progressReadFailed ? '当前无法保存放生结果。' : undefined);
+    this.rect(442, 455, 80, 36, '#82796D', '', 12, () => {
+      if (blocked) { window.alert(blocked); return; }
+      this.releasePrompt = pet;
+      this.render();
+    }, blocked ? 220 : 0);
+    this.text('放生', 443, 455, 22, blocked ? '#F2EBDB' : '#4A2C1D', 80, 1);
+  }
+
+  private renderReleasePrompt(pet: CarriedPet): void {
+    const close = () => { this.releasePrompt = undefined; this.render(); };
+    this.rect(0, 0, CONFIG.width, CONFIG.height, '#101E1C', '', 0, undefined, 190).addComponent(BlockInputEvents);
+    this.rect(397, 266, 540, 204, '#203D36', '#E5CB8D', 16);
+    this.text(`确定放生 ${pet.name}（${pet.level}级）？`, 417, 286, 27, '#F7E8C1', 500, 1);
+    this.text('放生后无法找回。', 417, 328, 23, '#F7E8C1', 500, 1);
+    this.button('取消', 477, 384, 170, 56, true, close);
+    this.button('确认', 687, 384, 170, 56, true, () => {
+      try {
+        if (this.battle.releasePet(pet.id, pets => saveProgress(window.localStorage, this.battle, undefined, undefined, pets))) {
+          this.progressError = '';
+          this.selectedPetId = this.battle.roster.entries[0].id;
+        }
+      } catch {
+        window.alert('本地进度保存失败。');
+      }
+      close();
+    });
   }
 
   private drawPetPortrait(pet: CarriedPet, x: number, y: number, size: number): void {
@@ -931,6 +964,7 @@ export class BattleView extends Component {
     this.summonOpen = false;
     this.rosterOpen = false;
     this.selectedPetId = null;
+    this.releasePrompt = undefined;
     this.animationQueue = [];
   }
 
@@ -1263,6 +1297,7 @@ export class BattleView extends Component {
     if (this.rosterOpen && !this.playing) {
       this.layer = resultLayer;
       this.renderRosterList();
+      if (this.releasePrompt) this.renderReleasePrompt(this.releasePrompt);
     }
     if (this.detailsOpen === 'hero' && this.battle.heroProgress && !this.playing) {
       this.layer = resultLayer;
