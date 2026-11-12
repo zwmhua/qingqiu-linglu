@@ -32,10 +32,13 @@ export function readProgress(storage: ProgressStorage, capacity = 5): Snapshot |
   const saved: Snapshot = JSON.parse(raw);
   const hero = saved?.hero;
   const { maxLevel, initialStat, statPerLevel, potentialPerLevel } = HERO_PROGRESSION;
+  const minimum = initialStat + (hero?.level ?? 0) * statPerLevel;
+  const budget = (hero?.level ?? 0) * potentialPerLevel;
   if (saved?.version !== VERSION || !hero || !inRange(hero.level, 0, maxLevel)
     || !inRange(hero.exp, 0, hero.level === maxLevel ? 0 : levelUpExp(hero.level) - 1)
-    || hero.potential !== hero.level * potentialPerLevel
-    || !BASE_STAT_KEYS.every(key => hero.stats?.[key] === initialStat + hero.level * statPerLevel)
+    || !inRange(hero.potential, 0, budget)
+    || !BASE_STAT_KEYS.every(key => inRange(hero.stats?.[key], minimum, minimum + budget))
+    || BASE_STAT_KEYS.reduce((spent, key) => spent + hero.stats[key] - minimum, hero.potential) !== budget
     || !Array.isArray(saved.pets) || saved.pets.length < 2 || saved.pets.length > capacity
     || !saved.pets.every(validPet)) throw new Error('本地测试进度损坏或版本不兼容');
   const ids = saved.pets.map(pet => pet.id);
@@ -47,9 +50,9 @@ export function readProgress(storage: ProgressStorage, capacity = 5): Snapshot |
   return saved;
 }
 
-export function saveProgress(storage: ProgressStorage, battle: Battle): void {
-  if (!battle.heroProgress) throw new Error('人物进度尚未初始化');
-  const saved: Snapshot = { version: VERSION, hero: battle.heroProgress, selectedPetId: battle.selectedPetId,
+export function saveProgress(storage: ProgressStorage, battle: Battle, hero = battle.heroProgress): void {
+  if (!hero) throw new Error('人物进度尚未初始化');
+  const saved: Snapshot = { version: VERSION, hero, selectedPetId: battle.selectedPetId,
     pets: battle.roster.entries.map(pet => ({ ...pet, hp: pet.maxHp })) };
   storage.setItem(KEY, JSON.stringify(saved));
 }

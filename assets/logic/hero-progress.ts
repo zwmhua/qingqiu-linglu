@@ -33,6 +33,13 @@ export function awardExperience(hero: HeroProgress, earned: number): HeroProgres
     potential: hero.potential + levels * potentialPerLevel };
 }
 
+export function adjustPotential(confirmed: HeroProgress, preview: HeroProgress,
+  key: keyof BaseStats, change: 1 | -1): HeroProgress {
+  if (change === 1 ? preview.potential === 0 : preview.stats[key] <= confirmed.stats[key]) return preview;
+  return { ...preview, stats: { ...preview.stats, [key]: preview.stats[key] + change },
+    potential: preview.potential - change };
+}
+
 export function heroPanel(stats: BaseStats) {
   const { constitution, mana, strength, endurance, agility } = stats;
   const c = HERO_PROGRESSION.coefficients;

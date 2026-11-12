@@ -1,4 +1,4 @@
-import { _decorator, Color, Component, EventTouch, Graphics, Label, Mask, Node, RichText, Sprite, SpriteFrame, tween, Tween, UIOpacity, UITransform, Vec3, view } from 'cc';
+import { _decorator, BlockInputEvents, Color, Component, EventTouch, Graphics, Label, Mask, Node, RichText, Sprite, SpriteFrame, tween, Tween, UIOpacity, UITransform, Vec3, view } from 'cc';
 import { Battle, BattleEvent, Unit } from './Battle';
 import { COMMAND_ICON_SIZE, COMMAND_LAYOUT, CONFIG } from './config';
 import { targetCommand, toggleTarget } from '../logic/targeting';
@@ -8,7 +8,8 @@ import { APTITUDE_KEYS } from '../logic/aptitude';
 import { BASE_STAT_KEYS } from '../logic/base-stats';
 import { petTint } from '../logic/pet-visual';
 import type { Roster } from '../logic/roster';
-import { HERO_PROGRESSION, heroPanel, initialHero, levelUpExp } from '../logic/hero-progress';
+import type { HeroProgress } from '../logic/hero-progress';
+import { HERO_PROGRESSION, adjustPotential, heroPanel, initialHero, levelUpExp } from '../logic/hero-progress';
 import { readProgress, resetProgress, saveProgress } from '../logic/local-progress';
 import type { TargetMode } from '../logic/targeting';
 
@@ -52,6 +53,7 @@ export class BattleView extends Component {
   private rosterOpen = false;
   private selectedPetId: string | null = null;
   private detailsOpen: 'pet' | 'hero' | null = null;
+  private heroPreview?: HeroProgress;
   private playing = false;
   private speedMultiplier = 1;
   private auto = new AutoCommands();
@@ -651,8 +653,11 @@ export class BattleView extends Component {
   private statusCard(kind: 'pet' | 'hero', x: number, unit: Unit | undefined): void {
     const y = 18;
     this.rect(x, y, 192, 104, '#203A37', '#829183', 9, () => {
-      this.detailsOpen = this.detailsOpen === kind ? null : kind;
-      this.render();
+      if (kind === 'hero' && this.battle.heroProgress) this.openHeroPanel();
+      else {
+        this.detailsOpen = this.detailsOpen === kind ? null : kind;
+        this.render();
+      }
     }, 215);
     if (unit) {
       const portrait = new Node(`portrait-${kind}`);
@@ -689,7 +694,7 @@ export class BattleView extends Component {
       const by = y + 17 + index * 22;
       this.rect(x + 69, by, 112, 10, '#10201F', '#526562', 2);
       if (bar.value > 0) this.rect(x + 70, by + 1, 110 * bar.value / bar.max, 8, bar.color, '', 1);
-      if (this.detailsOpen === kind) {
+      if (this.detailsOpen === kind && (kind === 'pet' || !progress)) {
         const value = bar.label !== '经验' ? `${bar.value}/${bar.max}`
           : kind === 'pet' || !progress ? '待定'
             : progress.level === HERO_PROGRESSION.maxLevel ? '已满级' : `${bar.value}/${bar.max}`;
@@ -773,10 +778,65 @@ export class BattleView extends Component {
     this.displayedDeployment = null;
     this.displayedLeft = null;
     this.detailsOpen = null;
+    this.heroPreview = undefined;
     this.summonOpen = false;
     this.rosterOpen = false;
     this.selectedPetId = null;
     this.animationQueue = [];
+  }
+
+  private openHeroPanel(): void {
+    if (this.playing || this.rosterOpen || this.summonOpen || this.confirmingTarget) return;
+    this.detailsOpen = 'hero';
+    this.render();
+  }
+
+  private renderHeroPanel(confirmed: HeroProgress): void {
+    const { level, exp, stats, potential } = this.heroPreview ?? confirmed;
+    const panel = heroPanel(stats);
+    const hero = this.battle.allies[0];
+    const editable = this.battle.phase === 'ended' && !this.progressReadFailed;
+    const close = () => {
+      this.heroPreview = undefined;
+      this.detailsOpen = null;
+      this.render();
+    };
+    this.rect(0, 0, CONFIG.width, CONFIG.height, '#101E1C', '', 0, undefined, 125).addComponent(BlockInputEvents);
+    this.rect(361, 120, 612, 489, '#1E3835', '#E5CB8D', 14);
+    this.text('人物面板', 399, 138, 31, '#F3DFAD', 530, 1);
+    this.rect(655, 197, 1, 313, '#829183');
+    const xp = level === HERO_PROGRESSION.maxLevel ? '已满级' : `${exp}/${levelUpExp(level)}`;
+    const rows = [`等级  ${level}`, `名称  ${hero.name}`, `气血  ${hero.hp}/${panel.maxHp}`,
+      `法力  ${panel.maxMana}/${panel.maxMana}`, `伤害  ${panel.attack}`, `防御  ${panel.defense}`,
+      `速度  ${panel.speed}`, `躲避  ${panel.dodge}`, `灵力  ${panel.spirit}`, `升级经验  ${xp}`];
+    rows.forEach((row, index) => this.text(row, 400, 195 + index * 30, 21, '#F6F0DC', 233));
+    const names = ['体质', '法力', '力量', '耐力', '敏捷'];
+    BASE_STAT_KEYS.forEach((key, index) => {
+      const y = 197 + index * 51;
+      this.text(`${names[index]}  ${stats[key]}`, 685, y + 7, 21, '#F6F0DC', 108);
+      const adjust = (change: 1 | -1) => {
+        this.heroPreview = adjustPotential(confirmed, this.heroPreview ?? confirmed, key, change);
+        this.render();
+      };
+      this.button('－', 796, y, 58, 39, editable && stats[key] > confirmed.stats[key], () => adjust(-1));
+      this.button('＋', 866, y, 58, 39, editable && potential > 0, () => adjust(1));
+    });
+    this.text(`剩余潜能  ${potential}`, 685, 457, 22, '#F4DC9C', 240);
+    this.text(this.progressError || (editable ? '' : '战斗结束后可分配潜能'), 400, 511, 17, '#F4DC9C', 524);
+    this.button('关闭', 405, 550, 110, 43, true, close);
+    this.button('取消', 675, 550, 113, 43, true, close);
+    this.button('确认', 809, 550, 113, 43, editable && potential < confirmed.potential, () => {
+      if (!this.heroPreview) return;
+      try {
+        if (this.battle.confirmHeroAllocation(this.heroPreview, next => saveProgress(window.localStorage, this.battle, next))) {
+          this.heroPreview = undefined;
+          this.progressError = '';
+        }
+      } catch {
+        this.progressError = '本地进度保存失败。';
+      }
+      this.render();
+    });
   }
 
   private renderHeroProgress(): void {
@@ -866,6 +926,8 @@ export class BattleView extends Component {
     this.renderHeroProgress();
     if (this.usesTestProgress && !this.playing && !this.rosterOpen)
       this.button('测试重置', 200, 104, 136, 54, true, () => this.resetTestProgress());
+    if (this.battle.heroProgress && !this.playing && !this.rosterOpen)
+      this.button('人物面板', 343, 104, 124, 54, true, () => this.openHeroPanel());
     if (this.battle.phase !== 'ended') this.autoButton();
     if (!this.playing) this.button(`携带 ${this.battle.roster.entries.length}/${this.battle.roster.capacity}`,
       25, 104, 165, 54, true, () => {
@@ -944,6 +1006,10 @@ export class BattleView extends Component {
     if (this.rosterOpen && !this.playing) {
       this.layer = resultLayer;
       this.renderRosterList();
+    }
+    if (this.detailsOpen === 'hero' && this.battle.heroProgress && !this.playing) {
+      this.layer = resultLayer;
+      this.renderHeroPanel(this.battle.heroProgress);
     }
   }
 }
