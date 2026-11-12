@@ -11,7 +11,8 @@ export const HERO_PROGRESSION = {
   },
 } as const;
 
-export type HeroProgress = { level: number; exp: number; potential: number; stats: BaseStats };
+export type LevelProgress = { level: number; exp: number; potential: number; stats: BaseStats };
+export type HeroProgress = LevelProgress;
 
 export const levelUpExp = (level: number) => HERO_PROGRESSION.expPerLevel * (level + 1);
 
@@ -21,23 +22,32 @@ export function initialHero(): HeroProgress {
   ) as BaseStats };
 }
 
-export function awardExperience(hero: HeroProgress, earned: number): HeroProgress {
+export function awardExperience(progress: LevelProgress, earned: number): LevelProgress {
   const { maxLevel, statPerLevel, potentialPerLevel } = HERO_PROGRESSION;
-  let level = hero.level;
-  let exp = hero.exp + earned;
+  let level = progress.level;
+  let exp = progress.exp + earned;
   while (level < maxLevel && exp >= levelUpExp(level)) exp -= levelUpExp(level++);
-  const levels = level - hero.level;
-  const stats = { ...hero.stats };
+  const levels = level - progress.level;
+  const stats = { ...progress.stats };
   for (const key of BASE_STAT_KEYS) stats[key] += levels * statPerLevel;
   return { level, exp: level === maxLevel ? 0 : exp, stats,
-    potential: hero.potential + levels * potentialPerLevel };
+    potential: progress.potential + levels * potentialPerLevel };
 }
 
-export function adjustPotential(confirmed: HeroProgress, preview: HeroProgress,
-  key: keyof BaseStats, change: 1 | -1): HeroProgress {
+export function adjustPotential(confirmed: LevelProgress, preview: LevelProgress,
+  key: keyof BaseStats, change: 1 | -1): LevelProgress {
   if (change === 1 ? preview.potential === 0 : preview.stats[key] <= confirmed.stats[key]) return preview;
   return { ...preview, stats: { ...preview.stats, [key]: preview.stats[key] + change },
     potential: preview.potential - change };
+}
+
+export function confirmPotential(confirmed: LevelProgress, preview: LevelProgress): LevelProgress | null {
+  if (preview.potential < 0
+    || !BASE_STAT_KEYS.every(key => Number.isInteger(preview.stats[key]) && preview.stats[key] >= confirmed.stats[key]))
+    return null;
+  const spent = BASE_STAT_KEYS.reduce((sum, key) => sum + preview.stats[key] - confirmed.stats[key], 0);
+  if (spent <= 0 || confirmed.potential - spent !== preview.potential) return null;
+  return { ...confirmed, stats: { ...preview.stats }, potential: preview.potential };
 }
 
 export function heroPanel(stats: BaseStats) {

@@ -1,17 +1,18 @@
 import { CONFIG } from './config';
 import { captureChance, captureTarget } from '../logic/capture';
-import { Roster } from '../logic/roster';
+import { Roster, petProgress } from '../logic/roster';
+import type { CarriedPet } from '../logic/roster';
 import { effectiveLevel, isBabyEncounter } from '../logic/baby';
 import { generateAptitudes } from '../logic/aptitude';
 import { generateGrowth } from '../logic/growth';
-import { BASE_STAT_KEYS, generateBaseStats } from '../logic/base-stats';
+import { generateBaseStats } from '../logic/base-stats';
 import type { Aptitudes } from '../logic/aptitude';
 import type { BaseStats } from '../logic/base-stats';
 import { MUTATION_CONFIG, isMutation, mutateAptitudes } from '../logic/mutation';
 import { WILD_SPECIES, pickWildLevel, pickWildSpecies, wildCombat } from '../logic/wild-encounter';
 import type { WildSpecies } from '../logic/wild-encounter';
-import { HERO_PROGRESSION, awardExperience, heroPanel } from '../logic/hero-progress';
-import type { HeroProgress } from '../logic/hero-progress';
+import { HERO_PROGRESSION, awardExperience, confirmPotential, heroPanel } from '../logic/hero-progress';
+import type { HeroProgress, LevelProgress } from '../logic/hero-progress';
 
 export type Side = 'ally' | 'enemy';
 export type Command = 'attack' | 'defend' | 'protect' | 'retreat' | 'flee' | 'summon' | 'capture';
@@ -191,15 +192,26 @@ export class Battle {
 
   confirmHeroAllocation(preview: HeroProgress, persist: (hero: HeroProgress) => void): boolean {
     const confirmed = this.heroProgress;
-    if (!confirmed || this.phase !== 'ended' || preview.potential < 0
-      || !BASE_STAT_KEYS.every(key => Number.isInteger(preview.stats[key]) && preview.stats[key] >= confirmed.stats[key]))
-      return false;
-    const spent = BASE_STAT_KEYS.reduce((sum, key) => sum + preview.stats[key] - confirmed.stats[key], 0);
-    if (spent <= 0 || confirmed.potential - spent !== preview.potential) return false;
-    const next = { ...confirmed, stats: { ...preview.stats }, potential: preview.potential };
+    if (!confirmed || this.phase !== 'ended') return false;
+    const next = confirmPotential(confirmed, preview);
+    if (!next) return false;
     persist(next);
     this.heroProgress = next;
     Object.assign(this.allies[0], heroPanel(next.stats));
+    return true;
+  }
+
+  confirmPetAllocation(id: string, preview: LevelProgress, persist: (pet: CarriedPet) => void): boolean {
+    if (!this.heroProgress || this.phase !== 'ended') return false;
+    const pet = this.roster.entries.find(entry => entry.id === id);
+    if (!pet) return false;
+    const next = confirmPotential(petProgress(pet), preview);
+    if (!next) return false;
+    persist({ ...pet, baseStats: next.stats, potential: next.potential });
+    pet.baseStats = next.stats;
+    pet.potential = next.potential;
+    const unit = this.pets.find(entry => entry.id === id);
+    if (unit) unit.baseStats = next.stats;
     return true;
   }
 
@@ -218,6 +230,13 @@ export class Battle {
         const stats = heroPanel(this.heroProgress.stats);
         Object.assign(hero, stats, { hp: stats.maxHp, level: this.heroProgress.level,
           combatLevel: effectiveLevel(this.heroProgress.level) });
+      }
+      this.roster.awardExperience(this.participatedPets, this.earnedExp);
+      for (const unit of this.pets) {
+        const pet = this.roster.entries.find(entry => entry.id === unit.id);
+        if (pet && pet.level !== unit.level)
+          Object.assign(unit, wildCombat(pet.species, pet.level), { level: pet.level,
+            combatLevel: effectiveLevel(pet.level), baseStats: pet.baseStats });
       }
     }
     return this.winner;

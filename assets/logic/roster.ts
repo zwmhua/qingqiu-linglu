@@ -1,16 +1,20 @@
 import type { Unit } from '../scripts/Battle';
 import type { Aptitudes } from './aptitude';
 import type { BaseStats } from './base-stats';
-import { WILD_SPECIES } from './wild-encounter';
+import { awardExperience } from './hero-progress';
+import { WILD_SPECIES, wildCombat } from './wild-encounter';
 import type { WildSpecies } from './wild-encounter';
 
 type PetStats = Pick<Unit, 'id' | 'name' | 'species' | 'hp' | 'maxHp' | 'level' | 'attack' | 'defense' | 'speed' | 'skill' | 'isBaby' | 'isMutated' | 'aptitudes' | 'growth' | 'baseStats'>;
 export type CarriedPet = PetStats & {
   species: WildSpecies;
   isBaby: boolean; aptitudes: Aptitudes; growth: number; baseStats: BaseStats;
-  isMutated: boolean;
+  isMutated: boolean; exp: number; potential: number;
   origin: 'initial' | 'captured'; sourceEnemyId?: string;
 };
+
+export const petProgress = ({ level, exp, potential, baseStats }: CarriedPet) =>
+  ({ level, exp, potential, stats: baseStats });
 
 export class Roster {
   readonly entries: CarriedPet[];
@@ -25,9 +29,18 @@ export class Roster {
         level: pet.level, attack: pet.attack, defense: pet.defense, speed: pet.speed,
         skill: pet.skill, isBaby: false, aptitudes: this.requireAptitudes(pet),
         growth: this.requireGrowth(pet), baseStats: this.requireBaseStats(pet),
-        isMutated: false, origin: 'initial' as const }));
+        isMutated: false, origin: 'initial' as const, exp: 0, potential: 0 }));
     this.nextCapturedId = 1 + this.entries.reduce((highest, pet) =>
       pet.origin === 'captured' ? Math.max(highest, Number(pet.id.slice('caught-'.length))) : highest, 0);
+  }
+
+  awardExperience(participants: ReadonlySet<string>, earned: number): void {
+    for (const pet of this.entries) {
+      if (!participants.has(pet.id)) continue;
+      const next = awardExperience(petProgress(pet), earned);
+      if (next.level !== pet.level) Object.assign(pet, wildCombat(pet.species, next.level));
+      Object.assign(pet, { level: next.level, exp: next.exp, potential: next.potential, baseStats: next.stats });
+    }
   }
 
   get full(): boolean { return this.entries.length >= this.capacity; }
@@ -59,7 +72,7 @@ export class Roster {
       growth: this.requireGrowth(enemy),
       baseStats: this.requireBaseStats(enemy),
       isMutated: !!enemy.isMutated,
-      origin: 'captured', sourceEnemyId: enemy.id });
+      origin: 'captured', sourceEnemyId: enemy.id, exp: 0, potential: 0 });
     this.capturedEnemies.add(enemy.id);
     return true;
   }
