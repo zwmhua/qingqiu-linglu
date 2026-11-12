@@ -55,7 +55,7 @@ export class BattleView extends Component {
   private summonOpen = false;
   private rosterOpen = false;
   private selectedPetId: string | null = null;
-  private detailsOpen: 'pet' | 'hero' | null = null;
+  private detailsOpen: 'hero' | null = null;
   private allocationPreview?: LevelProgress;
   private readonly potentialRepeat = new HoldRepeat();
   private stopPotentialRepeat = (event?: Event): void => {
@@ -672,18 +672,19 @@ export class BattleView extends Component {
 
   private statusCard(kind: 'pet' | 'hero', x: number, unit: Unit | undefined): void {
     const y = 18;
-    this.rect(x, y, 192, 104, '#203A37', '#829183', 9, () => {
-      if (kind === 'hero' && this.battle.heroProgress) this.openHeroPanel();
-      else {
-        this.detailsOpen = this.detailsOpen === kind ? null : kind;
-        this.render();
-      }
-    }, 215);
+    this.rect(x, y, 192, 104, '#203A37', '#829183', 9, undefined, 215);
     if (unit) {
       const portrait = new Node(`portrait-${kind}`);
       this.layer.addChild(portrait);
       this.pos(portrait, x + 32, y + 36);
       portrait.addComponent(UITransform).setContentSize(48, 48);
+      portrait.on(Node.EventType.TOUCH_END, () => {
+        if (kind === 'hero') return this.openHeroPanel();
+        if (this.playing || this.rosterOpen || this.summonOpen || this.confirmingTarget) return;
+        this.rosterOpen = true;
+        this.selectedPetId = unit.id;
+        this.render();
+      });
       const mask = portrait.addComponent(Mask);
       mask.type = Mask.Type.ELLIPSE;
       const art = new Node('portrait-art');
@@ -715,7 +716,7 @@ export class BattleView extends Component {
       const by = y + 17 + index * 22;
       this.rect(x + 69, by, 112, 10, '#10201F', '#526562', 2);
       if (bar.value > 0) this.rect(x + 70, by + 1, 110 * bar.value / bar.max, 8, bar.color, '', 1);
-      if (this.detailsOpen === kind && (kind === 'pet' || !progress)) {
+      if (kind === 'pet' ? this.selectedPetId === unit?.id && this.rosterOpen : this.detailsOpen && !progress) {
         const value = bar.label !== '经验' ? `${bar.value}/${bar.max}`
           : !progress ? '待定'
             : progress.level === HERO_PROGRESSION.maxLevel ? '已满级' : `${bar.value}/${bar.max}`;
@@ -766,7 +767,10 @@ export class BattleView extends Component {
       APTITUDE_KEYS.forEach((key, index) => this.text(`${labels[index]}  ${selected.aptitudes[key]}`, 400, 258 + index * 29, 19));
       this.text(`成长  ${selected.growth.toFixed(3)}`, 400, 434, 21);
       this.text(`总点数  ${BASE_STAT_KEYS.reduce((sum, key) => sum + stats[key], 0)}`, 400, 465, 20);
-      const close = () => { this.selectedPetId = null; this.allocationPreview = undefined; this.render(); };
+      const close = () => {
+        this.stopPotentialRepeat();
+        this.selectedPetId = null; this.allocationPreview = undefined; this.render();
+      };
       this.button('返回携带', 405, 550, 140, 43, true, close);
       this.renderAllocation(confirmed, close, draft => this.battle.confirmPetAllocation(selected.id, draft,
         next => saveProgress(window.localStorage, this.battle, undefined, next)));
@@ -835,11 +839,11 @@ export class BattleView extends Component {
     rows.forEach((row, index) => this.text(row, 400, 195 + index * 30, 21, '#F6F0DC', 233));
     this.button('关闭', 405, 550, 110, 43, true, close);
     this.renderAllocation(confirmed, close, draft => this.battle.confirmHeroAllocation(draft,
-      next => saveProgress(window.localStorage, this.battle, next)), true);
+      next => saveProgress(window.localStorage, this.battle, next)));
   }
 
   private renderAllocation(confirmed: LevelProgress, close: () => void,
-    confirm: (draft: LevelProgress) => boolean, allowHold = false): void {
+    confirm: (draft: LevelProgress) => boolean): void {
     const { stats, potential } = this.allocationPreview ?? confirmed;
     const editable = this.battle.phase === 'ended' && this.usesTestProgress && !this.progressReadFailed;
     const names = ['体质', '法力', '力量', '耐力', '敏捷'];
@@ -847,8 +851,7 @@ export class BattleView extends Component {
       const y = 197 + index * 51;
       this.text(`${names[index]}  ${stats[key]}`, 685, y + 7, 21, '#F6F0DC', 108);
       const adjust = (change: 1 | -1): boolean => {
-        if (allowHold && (this.detailsOpen !== 'hero' || this.battle.heroProgress !== confirmed
-          || this.battle.phase !== 'ended' || this.progressReadFailed)) return false;
+        if (this.battle.phase !== 'ended' || this.progressReadFailed) return false;
         const previous = this.allocationPreview ?? confirmed;
         const next = adjustPotential(confirmed, previous, key, change);
         if (next === previous) return false;
@@ -858,19 +861,14 @@ export class BattleView extends Component {
       };
       const canRemove = editable && stats[key] > confirmed.stats[key];
       const canAdd = editable && potential > 0;
-      if (allowHold) {
-        this.potentialButton('－', 796, y, canRemove, () => adjust(-1));
-        this.potentialButton('＋', 866, y, canAdd, () => adjust(1));
-      } else {
-        this.button('－', 796, y, 58, 39, canRemove, () => adjust(-1));
-        this.button('＋', 866, y, 58, 39, canAdd, () => adjust(1));
-      }
+      this.potentialButton('－', 796, y, canRemove, () => adjust(-1));
+      this.potentialButton('＋', 866, y, canAdd, () => adjust(1));
     });
     this.text(`剩余潜能  ${potential}`, 685, 457, 22, '#F4DC9C', 240);
     this.text(this.progressError || (editable ? '' : '战斗结束后可分配潜能'), 400, 511, 17, '#F4DC9C', 524);
     this.button('取消', 675, 550, 113, 43, true, close);
     this.button('确认', 809, 550, 113, 43, editable && potential < confirmed.potential, () => {
-      if (allowHold) this.stopPotentialRepeat();
+      this.stopPotentialRepeat();
       if (!this.allocationPreview) return;
       try {
         if (confirm(this.allocationPreview)) {
@@ -970,13 +968,12 @@ export class BattleView extends Component {
     this.renderHeroProgress();
     if (this.usesTestProgress && !this.playing && !this.rosterOpen)
       this.button('测试重置', 200, 104, 136, 54, true, () => this.resetTestProgress());
-    if (this.battle.heroProgress && !this.playing && !this.rosterOpen)
-      this.button('人物面板', 343, 104, 124, 54, true, () => this.openHeroPanel());
     if (this.battle.phase !== 'ended') this.autoButton();
     if (!this.playing) this.button(`携带 ${this.battle.roster.entries.length}/${this.battle.roster.capacity}`,
       25, 104, 165, 54, true, () => {
         this.choosingTarget = null;
         this.summonOpen = false;
+        this.stopPotentialRepeat();
         this.rosterOpen = !this.rosterOpen;
         this.selectedPetId = null;
         this.allocationPreview = undefined;

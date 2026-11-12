@@ -48,7 +48,7 @@ test('preview and normal battles share the once-per-victory pet experience path'
   assert.deepEqual(loss.roster.entries.map(state), [[1, 0, 0], [1, 0, 0]]);
 });
 
-test('baby growth, confirmed allocation and restored combat keep one individual', () => {
+test('baby growth, confirmed allocation and restored combat keep one individual', async t => {
   const capture = make({ babies: [0], roll: 0.4 });
   orders(capture, 'capture', 'enemy-0');
   const before = capture.roster.entries[2];
@@ -68,6 +68,19 @@ test('baby growth, confirmed allocation and restored combat keep one individual'
     setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
   saveProgress(storage, battle);
   const progress = petProgress(baby);
+  const { HoldRepeat } = await import('../assets/logic/hold-repeat.ts');
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const repeat = new HoldRepeat();
+  let draft = progress;
+  for (const change of [1, -1]) {
+    repeat.start(() => {
+      draft = adjustPotential(progress, draft, 'strength', change);
+      return change === 1 ? draft.potential > 0 : draft.stats.strength > progress.stats.strength;
+    });
+    for (let i = 0; i < 5; i++) t.mock.timers.tick(350);
+    assert.equal(draft.potential, change === 1 ? 0 : progress.potential);
+  }
+  assert.deepEqual(draft, progress);
   const preview = adjustPotential(progress, progress, 'strength', 1);
   assert.deepEqual(adjustPotential(progress, preview, 'strength', -1), progress);
   assert.deepEqual(readProgress(storage).pets[2], baby);
