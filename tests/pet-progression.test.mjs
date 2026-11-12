@@ -11,7 +11,7 @@ const { Battle } = await import('../assets/scripts/Battle.ts');
 const { initialHero, adjustPotential } = await import('../assets/logic/hero-progress.ts');
 const { petProgress } = await import('../assets/logic/roster.ts');
 const { wildCombat } = await import('../assets/logic/wild-encounter.ts');
-const { petPanel } = await import('../assets/logic/pet-panel.ts');
+const { petPanel, petPanelPreview } = await import('../assets/logic/pet-panel.ts');
 const { readProgress, saveProgress, resetProgress } = await import('../assets/logic/local-progress.ts');
 const make = ({ count = 1, previous, selectedPetId, babies = [], roll = 0 } = {}) =>
   new Battle(() => 0, count, 0, previous, () => babies.shift() ?? 1,
@@ -31,6 +31,22 @@ test('formal pet panel rounds each stat once and uses effective level for babies
   const expected = { maxHp: 83, maxMana: 32, attack: 19, defense: 17, speed: 13, dodge: 11, spirit: 16 };
   assert.deepEqual(petPanel(baby), expected);
   assert.deepEqual(petPanel({ ...baby, level: 1 }), expected);
+});
+
+test('baby allocation preview uses rounded formal stats and clears on cancel', () => {
+  const baseStats = { constitution: 11, mana: 11, strength: 11, endurance: 11, agility: 11 };
+  const pet = { level: 1, growth: 0.9, potential: 5, baseStats,
+    aptitudes: { stamina: 3330, mana: 1110, attack: 888, defense: 888, speed: 777, dodge: 1221 } };
+  const confirmed = { level: 1, exp: 0, potential: 5, stats: baseStats };
+  let draft = confirmed;
+  for (const key of ['constitution', 'strength', 'constitution', 'strength'])
+    draft = adjustPotential(confirmed, draft, key, 1);
+  const { panel, delta } = petPanelPreview(pet, draft);
+  assert.deepEqual(panel, { maxHp: 74, maxMana: 32, attack: 14, defense: 15, speed: 9, dodge: 13, spirit: 20 });
+  assert.deepEqual(Object.keys(panel).map(delta), ['+11', '+0', '+1', '+0', '+0', '+0', '+2']);
+  const cancelled = petPanelPreview(pet);
+  assert.deepEqual(cancelled.panel, { maxHp: 63, maxMana: 32, attack: 13, defense: 15, speed: 9, dodge: 13, spirit: 18 });
+  assert.ok(Object.keys(panel).every(key => cancelled.delta(key) === ''));
 });
 
 test('level 13 Tingwa uses all seven formal stats after loading an old panel', () => {

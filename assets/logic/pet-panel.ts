@@ -1,5 +1,6 @@
 import { CONFIG } from '../scripts/config';
 import { effectiveLevel } from './baby';
+import type { LevelProgress } from './hero-progress';
 import type { CarriedPet } from './roster';
 
 type PetPanelInput = Pick<CarriedPet, 'level' | 'aptitudes' | 'growth' | 'baseStats'>;
@@ -25,4 +26,12 @@ export function petPanel(pet: PetPanelInput) {
 export function petCombat(pet: PetPanelInput) {
   const { maxHp, attack, defense, speed } = petPanel(pet);
   return { hp: maxHp, maxHp, attack, defense, speed };
+}
+
+export function petPanelPreview(pet: PetPanelInput & Pick<CarriedPet, 'potential'>, draft?: LevelProgress) {
+  const current = petPanel(pet);
+  const pending = draft !== undefined && draft.potential < pet.potential;
+  const panel = pending ? petPanel({ ...pet, baseStats: draft.stats }) : current;
+  const delta = (key: keyof typeof current) => pending ? `+${panel[key] - current[key]}` : '';
+  return { panel, delta };
 }

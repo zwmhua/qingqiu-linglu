@@ -9,7 +9,7 @@ import { BASE_STAT_KEYS } from '../logic/base-stats';
 import { petTint } from '../logic/pet-visual';
 import type { CarriedPet, Roster } from '../logic/roster';
 import { petProgress } from '../logic/roster';
-import { petPanel } from '../logic/pet-panel';
+import { petPanel, petPanelPreview } from '../logic/pet-panel';
 import type { HeroProgress, LevelProgress } from '../logic/hero-progress';
 import { HERO_PROGRESSION, adjustPotential, heroPanel, initialHero, levelUpExp } from '../logic/hero-progress';
 import { HoldRepeat } from '../logic/hold-repeat';
@@ -788,7 +788,8 @@ export class BattleView extends Component {
     const identity = `${pet.isBaby ? '宝宝' : '野生'}${pet.isMutated ? ' · 变异' : ''}`;
     this.text(identity, 422, 151, 19, '#356456', 100);
     const frame = this.petArt(pet);
-    for (const [x, y, size] of [[282, 148, 65], [373, 374, 274]]) {
+    const portraits = points ? [[282, 148, 65]] : [[282, 148, 65], [373, 374, 274]];
+    for (const [x, y, size] of portraits) {
       if (!frame) {
         this.text(size === 65 ? '?' : '暂无立绘', x - size / 2, y - 18, 22, ink, size, 1);
         continue;
@@ -803,13 +804,17 @@ export class BattleView extends Component {
       Array.from(label).forEach((char, row) => this.text(char, 1095, y + 20 + row * 37, 26, ink, 56, 1));
     }
     const live = this.battle.pets.find(unit => unit.id === pet.id);
-    const { maxMana: mana, attack, defense, speed, dodge, spirit } = petPanel(pet);
-    [['气血', `${live?.hp ?? pet.hp}/${pet.maxHp}`], ['法力', `${mana}/${mana}`]].forEach(([name, value], i) => {
+    const preview = points ? petPanelPreview(pet, this.allocationPreview) : undefined;
+    const { maxHp, maxMana, attack, defense, speed, dodge, spirit } = preview?.panel ?? petPanel(pet);
+    const hp = `${live?.hp ?? pet.hp}/${maxHp}`;
+    const mana = `${maxMana}/${maxMana}`;
+    [['气血', hp], ['法力', mana]].forEach(([name, value], i) => {
       const y = (points ? 109 : 187) + i * 48;
       this.text(name, 617, y, 21, ink, 54);
       this.text(value, 758, y - 2, 23, '#F7E8CF', 216, 1);
     });
-    if (points) {
+    if (preview) {
+      this.renderPetPointsPreview(preview, hp, mana);
       this.renderAllocation(petProgress(pet), close, draft => this.battle.confirmPetAllocation(pet.id, draft,
         next => saveProgress(window.localStorage, this.battle, undefined, next)), 'pet');
       return;
@@ -828,6 +833,26 @@ export class BattleView extends Component {
       this.text(String(name), x, y, 21, ink, 107);
       this.text(String(value), x + 120, y, 21, ink, 90, 2);
     }));
+  }
+
+  private renderPetPointsPreview({ panel, delta }: ReturnType<typeof petPanelPreview>, hp: string, mana: string): void {
+    const ink = '#4A2C1D';
+    this.rect(219, 195, 308, 362, '#F9EFD9', '#C5A568', 12);
+    this.rect(263, 203, 220, 35, '#F0D69C', '#B89053', 12);
+    this.text('属性实时预览', 263, 203, 22, ink, 220, 1);
+    const rows = [
+      ['气血', 'maxHp', hp], ['法力', 'maxMana', mana], ['伤害', 'attack', panel.attack],
+      ['防御', 'defense', panel.defense], ['速度', 'speed', panel.speed],
+      ['躲避', 'dodge', panel.dodge], ['灵力', 'spirit', panel.spirit],
+    ] as const;
+    rows.forEach(([name, key, value], index) => {
+      const y = 249 + index * 44;
+      this.rect(229, y, 226, 34, '#ECDFC4', '', 6);
+      this.rect(462, y, 55, 34, '#E1E7C4', '', 6);
+      this.text(name, 241, y, 20, ink, 66);
+      this.text(String(value), 327, y, 20, ink, 117, 1);
+      this.text(delta(key), 462, y, 20, '#38652A', 55, 1);
+    });
   }
 
   private renderRosterList(): void {
