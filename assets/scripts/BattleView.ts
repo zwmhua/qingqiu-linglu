@@ -108,6 +108,7 @@ export class BattleView extends Component {
       return;
     }
     this.progressReadFailed = false;
+    this.auto = new AutoCommands();
     this.restartBattle(this.createBattle());
     this.persistProgress();
     this.render();
@@ -550,7 +551,7 @@ export class BattleView extends Component {
       this.displayedHp = null;
       this.displayedDeployment = null;
       this.displayedLeft = null;
-      if (this.auto.enabled) this.runAuto();
+      if (this.auto.enabled && this.battle.phase === 'command') this.runAuto();
       else this.render();
       return;
     }
@@ -772,7 +773,6 @@ export class BattleView extends Component {
 
   private restartBattle(battle: Battle): void {
     this.battle = battle;
-    this.auto = new AutoCommands();
     this.choosingTarget = null;
     this.displayedHp = null;
     this.displayedDeployment = null;
@@ -854,7 +854,6 @@ export class BattleView extends Component {
   }
 
   private render(): void {
-    this.auto.sync(this.battle);
     this.lastShownSecond = Math.ceil(this.battle.seconds);
     for (const child of [...this.node.children]) if (child.name !== 'Camera') child.destroy();
     this.unitNodes.clear();
