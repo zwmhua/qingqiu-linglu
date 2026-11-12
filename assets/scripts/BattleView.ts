@@ -8,7 +8,8 @@ import { APTITUDE_KEYS } from '../logic/aptitude';
 import { BASE_STAT_KEYS } from '../logic/base-stats';
 import { petTint } from '../logic/pet-visual';
 import type { Roster } from '../logic/roster';
-import type { HeroProgress } from '../logic/hero-progress';
+import { petProgress } from '../logic/roster';
+import type { HeroProgress, LevelProgress } from '../logic/hero-progress';
 import { HERO_PROGRESSION, adjustPotential, heroPanel, initialHero, levelUpExp } from '../logic/hero-progress';
 import { readProgress, resetProgress, saveProgress } from '../logic/local-progress';
 import type { TargetMode } from '../logic/targeting';
@@ -53,7 +54,7 @@ export class BattleView extends Component {
   private rosterOpen = false;
   private selectedPetId: string | null = null;
   private detailsOpen: 'pet' | 'hero' | null = null;
-  private heroPreview?: HeroProgress;
+  private allocationPreview?: LevelProgress;
   private playing = false;
   private speedMultiplier = 1;
   private auto = new AutoCommands();
@@ -676,8 +677,9 @@ export class BattleView extends Component {
       art.setScale(kind === 'hero' ? 0.75 : 0.22, kind === 'hero' ? 0.75 : 0.22, 1);
       art.setPosition(kind === 'hero' ? -2 : 0, kind === 'hero' ? -58 : 0, 0);
     }
-    const progress = this.battle.heroProgress;
-    const mana = progress ? heroPanel(progress.stats).maxMana : CONFIG.status.heroManaMax;
+    const heroProgress = this.battle.heroProgress;
+    const progress = kind === 'hero' ? heroProgress : this.battle.roster.entries.find(pet => pet.id === unit?.id);
+    const mana = heroProgress ? heroPanel(heroProgress.stats).maxMana : CONFIG.status.heroManaMax;
     const bars = kind === 'hero'
       ? [
         { label: '气血', value: unit ? this.displayedHp?.get(unit.id) ?? unit.hp : 0, max: unit?.maxHp ?? 1, color: '#D95757' },
@@ -688,7 +690,7 @@ export class BattleView extends Component {
       : [
         { label: '气血', value: unit ? this.displayedHp?.get(unit.id) ?? unit.hp : 0, max: unit?.maxHp ?? 1, color: '#D95757' },
         { label: '法力', value: unit ? CONFIG.status.petManaMax : 0, max: CONFIG.status.petManaMax, color: '#559DD8' },
-        { label: '经验', value: 0, max: 1, color: '#E6C95C' },
+        { label: '经验', value: progress?.exp ?? 0, max: progress ? levelUpExp(progress.level) : 1, color: '#E6C95C' },
       ];
     bars.forEach((bar, index) => {
       const by = y + 17 + index * 22;
@@ -696,7 +698,7 @@ export class BattleView extends Component {
       if (bar.value > 0) this.rect(x + 70, by + 1, 110 * bar.value / bar.max, 8, bar.color, '', 1);
       if (this.detailsOpen === kind && (kind === 'pet' || !progress)) {
         const value = bar.label !== '经验' ? `${bar.value}/${bar.max}`
-          : kind === 'pet' || !progress ? '待定'
+          : !progress ? '待定'
             : progress.level === HERO_PROGRESSION.maxLevel ? '已满级' : `${bar.value}/${bar.max}`;
         this.text(`${bar.label} ${value}`, x + 69, by - 8, 13, '#FFFFFF', 114);
       }
@@ -730,31 +732,28 @@ export class BattleView extends Component {
 
   private renderRosterList(): void {
     const roster = this.battle.roster;
-    this.rect(439, 133, 455, 500, '#1E3835', '#E5CB8D', 14);
     const selected = roster.entries.find(pet => pet.id === this.selectedPetId);
     if (selected) {
-      this.text(`${selected.isMutated ? '变异' : ''}${selected.name} Lv.${selected.level}`,
-        475, 156, 30, '#F3DFAD', 315, 1);
-      this.image(800, 155, 66, 66, this.petArt(selected)).sprite.color = this.unitColor(selected);
-      this.text('资质', 478, 214, 25, '#F3DFAD', 370);
-      this.text(selected.isBaby ? '宝宝' : '普通', 792, 222, 17, '#F3DFAD', 65, 1);
+      const confirmed = petProgress(selected);
+      const stats = this.allocationPreview?.stats ?? confirmed.stats;
+      const xp = selected.level === HERO_PROGRESSION.maxLevel ? '已满级' : `${selected.exp}/${levelUpExp(selected.level)}`;
+      this.rect(361, 120, 612, 489, '#1E3835', '#E5CB8D', 14).addComponent(BlockInputEvents);
+      this.text(`${selected.isMutated ? '变异' : ''}${selected.name} Lv.${selected.level}`, 399, 138, 30, '#F3DFAD', 530, 1);
+      this.image(885, 132, 58, 58, this.petArt(selected)).sprite.color = this.unitColor(selected);
+      this.rect(655, 197, 1, 313, '#829183');
+      this.text(`身份  ${selected.isBaby ? '宝宝' : '普通'}`, 400, 195, 21);
+      this.text(`升级经验  ${xp}`, 400, 226, 21);
       const labels = ['攻击资质', '防御资质', '体力资质', '法力资质', '躲避资质', '速度资质'];
-      APTITUDE_KEYS.forEach((key, index) => this.text(
-        `${labels[index]}  ${selected.aptitudes[key]}`, 490 + (index % 2) * 195,
-        253 + Math.floor(index / 2) * 36, 18, '#F6F0DC', 185));
-      this.text(`成长  ${selected.growth.toFixed(3)}`, 490, 364, 21, '#F6F0DC', 350);
-      this.text('基础属性', 478, 399, 25, '#F3DFAD', 370);
-      const statLabels = ['体质', '法力', '力量', '耐力', '敏捷'];
-      BASE_STAT_KEYS.forEach((key, index) => this.text(
-        `${statLabels[index]}  ${selected.baseStats[key]}`, 490 + (index % 2) * 195,
-        438 + Math.floor(index / 2) * 33, 20, '#F6F0DC', 185));
-      this.text(`总点数  ${BASE_STAT_KEYS.reduce((sum, key) => sum + selected.baseStats[key], 0)}`,
-        685, 524, 20, '#F3DFAD', 180);
-      this.button('返回携带', 539, 562, 255, 55, true, () => {
-        this.selectedPetId = null; this.render();
-      });
+      APTITUDE_KEYS.forEach((key, index) => this.text(`${labels[index]}  ${selected.aptitudes[key]}`, 400, 258 + index * 29, 19));
+      this.text(`成长  ${selected.growth.toFixed(3)}`, 400, 434, 21);
+      this.text(`总点数  ${BASE_STAT_KEYS.reduce((sum, key) => sum + stats[key], 0)}`, 400, 465, 20);
+      const close = () => { this.selectedPetId = null; this.allocationPreview = undefined; this.render(); };
+      this.button('返回携带', 405, 550, 140, 43, true, close);
+      this.renderAllocation(confirmed, close, draft => this.battle.confirmPetAllocation(selected.id, draft,
+        next => saveProgress(window.localStorage, this.battle, undefined, next)));
       return;
     }
+    this.rect(439, 133, 455, 500, '#1E3835', '#E5CB8D', 14);
     this.text(`携带 ${roster.entries.length}/${roster.capacity}`, 475, 153, 30, '#F3DFAD', 385, 1);
     roster.entries.forEach((pet, index) => {
       const current = this.battle.pets.find(unit => unit.id === pet.id);
@@ -778,7 +777,7 @@ export class BattleView extends Component {
     this.displayedDeployment = null;
     this.displayedLeft = null;
     this.detailsOpen = null;
-    this.heroPreview = undefined;
+    this.allocationPreview = undefined;
     this.summonOpen = false;
     this.rosterOpen = false;
     this.selectedPetId = null;
@@ -792,12 +791,11 @@ export class BattleView extends Component {
   }
 
   private renderHeroPanel(confirmed: HeroProgress): void {
-    const { level, exp, stats, potential } = this.heroPreview ?? confirmed;
+    const { level, exp, stats } = this.allocationPreview ?? confirmed;
     const panel = heroPanel(stats);
     const hero = this.battle.allies[0];
-    const editable = this.battle.phase === 'ended' && !this.progressReadFailed;
     const close = () => {
-      this.heroPreview = undefined;
+      this.allocationPreview = undefined;
       this.detailsOpen = null;
       this.render();
     };
@@ -810,12 +808,20 @@ export class BattleView extends Component {
       `法力  ${panel.maxMana}/${panel.maxMana}`, `伤害  ${panel.attack}`, `防御  ${panel.defense}`,
       `速度  ${panel.speed}`, `躲避  ${panel.dodge}`, `灵力  ${panel.spirit}`, `升级经验  ${xp}`];
     rows.forEach((row, index) => this.text(row, 400, 195 + index * 30, 21, '#F6F0DC', 233));
+    this.button('关闭', 405, 550, 110, 43, true, close);
+    this.renderAllocation(confirmed, close, draft => this.battle.confirmHeroAllocation(draft,
+      next => saveProgress(window.localStorage, this.battle, next)));
+  }
+
+  private renderAllocation(confirmed: LevelProgress, close: () => void, confirm: (draft: LevelProgress) => boolean): void {
+    const { stats, potential } = this.allocationPreview ?? confirmed;
+    const editable = this.battle.phase === 'ended' && this.usesTestProgress && !this.progressReadFailed;
     const names = ['体质', '法力', '力量', '耐力', '敏捷'];
     BASE_STAT_KEYS.forEach((key, index) => {
       const y = 197 + index * 51;
       this.text(`${names[index]}  ${stats[key]}`, 685, y + 7, 21, '#F6F0DC', 108);
       const adjust = (change: 1 | -1) => {
-        this.heroPreview = adjustPotential(confirmed, this.heroPreview ?? confirmed, key, change);
+        this.allocationPreview = adjustPotential(confirmed, this.allocationPreview ?? confirmed, key, change);
         this.render();
       };
       this.button('－', 796, y, 58, 39, editable && stats[key] > confirmed.stats[key], () => adjust(-1));
@@ -823,13 +829,12 @@ export class BattleView extends Component {
     });
     this.text(`剩余潜能  ${potential}`, 685, 457, 22, '#F4DC9C', 240);
     this.text(this.progressError || (editable ? '' : '战斗结束后可分配潜能'), 400, 511, 17, '#F4DC9C', 524);
-    this.button('关闭', 405, 550, 110, 43, true, close);
     this.button('取消', 675, 550, 113, 43, true, close);
     this.button('确认', 809, 550, 113, 43, editable && potential < confirmed.potential, () => {
-      if (!this.heroPreview) return;
+      if (!this.allocationPreview) return;
       try {
-        if (this.battle.confirmHeroAllocation(this.heroPreview, next => saveProgress(window.localStorage, this.battle, next))) {
-          this.heroPreview = undefined;
+        if (confirm(this.allocationPreview)) {
+          this.allocationPreview = undefined;
           this.progressError = '';
         }
       } catch {
@@ -935,6 +940,7 @@ export class BattleView extends Component {
         this.summonOpen = false;
         this.rosterOpen = !this.rosterOpen;
         this.selectedPetId = null;
+        this.allocationPreview = undefined;
         this.render();
       });
     if (this.battle.roster.full && !this.playing) this.text(`携带已满（${this.battle.roster.entries.length}/${this.battle.roster.capacity}），无法抓取`,
