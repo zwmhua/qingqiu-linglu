@@ -16,7 +16,7 @@
       "appid": "wx2b83dfd606e96e59",
       "orientation": "landscape",
       "buildOpenDataContextTemplate": false,
-      "separateEngine": false
+      "separateEngine": true
     }
   }
 }
