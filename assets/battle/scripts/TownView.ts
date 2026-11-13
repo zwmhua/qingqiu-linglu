@@ -5,6 +5,7 @@ import { CONFIG } from './config';
 export class TownView {
   readonly root = new Node('town');
   private readonly world = new Node('map-world');
+  private readonly labels = new Node('town-labels');
   movement = new TownMovement();
   region: Region = 'town';
   private origin = { x: 0, y: 0 };
@@ -28,6 +29,7 @@ export class TownView {
     this.root.addComponent(UITransform).setContentSize(CONFIG.width, CONFIG.height);
     this.root.addComponent(Mask);
     this.root.addChild(this.world);
+    this.root.addChild(this.labels);
   }
   stop = (): void => {
     this.movement.stop();
@@ -47,7 +49,7 @@ export class TownView {
       if (error || !frame) {
         this.error = this.loadError = '地图加载失败，请重试';
       } else {
-        for (const child of [...this.world.children]) {
+        for (const child of [...this.world.children, ...this.labels.children]) {
           child.active = false;
           child.destroy();
         }
@@ -114,7 +116,7 @@ export class TownView {
   private drawPlaces(): void {
     for (const place of TOWN_PLACES) {
       const node = new Node(place.id);
-      this.world.addChild(node);
+      this.labels.addChild(node);
       node.setPosition(place.x, -place.y);
       const label = node.addComponent(Label);
       label.string = place.name;
@@ -150,6 +152,7 @@ export class TownView {
     const { x, y } = this.movement.position;
     this.origin = cameraOrigin(this.movement.position, this.size, CONFIG);
     this.world.setPosition(-CONFIG.width / 2 - this.origin.x, CONFIG.height / 2 + this.origin.y);
+    this.labels.setPosition(this.world.position);
     if (this.region === 'town') {
       if (x !== beforeX) this.facing = x < beforeX ? -1 : 1;
       const bob = this.movement.target ? Math.abs(Math.sin(this.elapsed * 14)) * 4 : 0;

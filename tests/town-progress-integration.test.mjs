@@ -40,7 +40,8 @@ export const assetManager = { loadBundle(name, cb) { globalThis.loadedBundle = n
 export class Vec3 { constructor(x, y) { this.x = x; this.y = y; } }
 export class Color {}
 export class SpriteFrame {}
-export const BlockInputEvents = 0, EventTouch = 0, Graphics = 0, Label = { HorizontalAlign: { CENTER: 1 } }, Mask = 0,
+export const BlockInputEvents = 0, EventTouch = 0, Graphics = 0, Label = { HorizontalAlign: { CENTER: 1 } },
+Mask = { Type: { GRAPHICS_ELLIPSE: 1 } },
 UIOpacity = 0,
 RichText = 0, Sprite = { SizeMode: { CUSTOM: 1 } }, tween = 0, Tween = 0, UITransform = 0;`;
 registerHooks({
@@ -148,6 +149,9 @@ test('outskirts loading is atomic, ignores stale callbacks, and round trips with
   finish(null, townFrame);
   const places = [];
   view.draw(null, () => false, place => places.push(place.id));
+  const [world, labels] = view.root.children;
+  assert.deepEqual(labels?.children.map(node => node.name), ['bag', 'pet', 'fuse', 'notice', 'exit']);
+  assert.equal(world.children.some(node => node.name === 'exit'), false);
   const map = view.root.children[0].children[0];
   const touch = (id, x, y = 500) => ({
     getID: () => id,
@@ -187,6 +191,15 @@ test('outskirts loading is atomic, ignores stale callbacks, and round trips with
   v.renderTown();
   assert.equal(view.movement.target, undefined);
   v.detailsOpen = null;
+  const buttons = [], portraits = [];
+  v.button = (label, _x, _y, _w, _h, enabled) => {
+    buttons.push([label, enabled]);
+    return { addComponent() {} };
+  };
+  v.statusCard = (kind, x, unit) => portraits.push([kind, x, unit.id]);
+  v.renderTown();
+  assert.deepEqual(buttons, [['人物', true], ['宠物', true], ['背包·未开放', false], ['合宠·未开放', false], ['出城', true]]);
+  assert.deepEqual(portraits, [['pet', 906, session.selectedPetId], ['hero', 1102, 'hero']]);
   assert.ok(view.movement.select({ x: 800, y: 500 }));
   let activate;
   view.draw = (_hero, _blocked, onPlace) => { activate = onPlace; };

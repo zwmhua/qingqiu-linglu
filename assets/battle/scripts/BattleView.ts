@@ -828,22 +828,25 @@ export class BattleView extends Component {
     });
   }
 
-  private statusCard(kind: 'pet' | 'hero', x: number, unit: Unit | undefined): void {
+  private statusCard(kind: 'pet' | 'hero', x: number,
+    unit: Pick<Unit, 'id' | 'name' | 'species' | 'isMutated' | 'hp' | 'maxHp'> | undefined): void {
     const y = 18;
-    this.rect(x, y, 192, 104, '#203A37', '#829183', 9, undefined, 215);
+    const card = this.rect(x, y, 192, 104, '#203A37', '#829183', 9, undefined, 215);
+    if (this.townPreview) card.addComponent(BlockInputEvents);
     if (unit) {
       const portrait = new Node(`portrait-${kind}`);
       this.layer.addChild(portrait);
       this.pos(portrait, x + 32, y + 36);
       portrait.addComponent(UITransform).setContentSize(48, 48);
       portrait.on(Node.EventType.TOUCH_END, () => {
+        if (this.townPreview && (!this.enabledInHierarchy || this.town?.loading)) return;
         if (kind === 'hero') return this.openHeroPanel();
         if (this.playing || this.rosterOpen || this.summonOpen || this.confirmingTarget) return;
         this.rosterOpen = true;
         this.openPetPanel(unit.id);
       });
       const mask = portrait.addComponent(Mask);
-      mask.type = Mask.Type.ELLIPSE;
+      mask.type = Mask.Type.GRAPHICS_ELLIPSE;
       const art = new Node('portrait-art');
       portrait.addChild(art);
       art.addComponent(UITransform).setContentSize(256, 256);
@@ -854,8 +857,8 @@ export class BattleView extends Component {
       art.setScale(kind === 'hero' ? 0.75 : 0.22, kind === 'hero' ? 0.75 : 0.22, 1);
       art.setPosition(kind === 'hero' ? -2 : 0, kind === 'hero' ? -58 : 0, 0);
     }
-    const heroProgress = this.battle.heroProgress;
-    const pet = this.battle.roster.entries.find(pet => pet.id === unit?.id);
+    const heroProgress = this.progress.heroProgress;
+    const pet = this.progress.roster.entries.find(pet => pet.id === unit?.id);
     const progress = kind === 'hero' ? heroProgress : pet;
     const mana = heroProgress ? heroPanel(heroProgress.stats).maxMana : BATTLE_RULES.status.heroManaMax;
     const petMana = pet ? petPanel(pet).maxMana : 0;
@@ -863,7 +866,7 @@ export class BattleView extends Component {
       ? [
         { label: '气血', value: unit ? this.displayedHp?.get(unit.id) ?? unit.hp : 0, max: unit?.maxHp ?? 1, color: '#D95757' },
         { label: '法力', value: mana, max: mana, color: '#559DD8' },
-        { label: '愤怒', value: this.battle.heroRage, max: BATTLE_RULES.status.rageMax, color: '#EBA14F' },
+        { label: '愤怒', value: this.townPreview ? 0 : this.battle.heroRage, max: BATTLE_RULES.status.rageMax, color: '#EBA14F' },
         { label: '经验', value: progress?.exp ?? 0, max: progress ? levelUpExp(progress.level) : 1, color: '#E6C95C' },
       ]
       : [
@@ -1316,7 +1319,14 @@ export class BattleView extends Component {
     this.text(town.message || this.progressError || (town.region === 'town' ? '城里' : '野外'), 30, 24, 24);
     if (town.canRetry) this.button('重试', 540, 335, 250, 60, !town.loading, () => { town.load(); this.render(); });
     if (!town.frame || this.progressReadFailed) return;
-    const entries = town.region === 'town' ? ['人物'] : ['人物', '宠物', '背包·未开放', '合宠·未开放', '回城'];
+    if (town.region === 'town') {
+      const pet = this.progress.roster.entries.find(p => p.id === this.progress.selectedPetId);
+      const hero = this.progress.heroProgress;
+      const maxHp = hero ? heroPanel(hero.stats).maxHp : BATTLE_RULES.hero.hp;
+      this.statusCard('pet', 906, pet && { ...pet, hp: pet.maxHp });
+      this.statusCard('hero', 1102, { id: 'hero', name: BATTLE_RULES.hero.name, hp: maxHp, maxHp });
+    }
+    const entries = ['人物', '宠物', '背包·未开放', '合宠·未开放', town.region === 'town' ? '出城' : '回城'];
     entries.forEach((name, i) => {
       const enabled = !town.loading && (i < 2 || i === 4);
       this.button(name, 444 + i * 172, 678, 164, 56, enabled, () => {

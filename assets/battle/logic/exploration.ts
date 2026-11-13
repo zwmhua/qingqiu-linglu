@@ -34,7 +34,7 @@ export const TOWN_PLACES = [
   { id: 'pet', name: '灵兽栏', x: 320, y: 613 },
   { id: 'fuse', name: '丹炉台', x: 1214, y: 409 },
   { id: 'notice', name: '告示牌', x: 882, y: 577 },
-  { id: 'exit', name: '出城石门', x: 1485, y: 160 },
+  { id: 'exit', name: '出城石门', x: 1450, y: 228 },
 ] as const;
 export type TownPlace = typeof TOWN_PLACES[number];
 

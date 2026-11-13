@@ -60,4 +60,12 @@ test('new town has a scrollable street network and five distinct map entrances',
   assert.deepEqual(move.position, { x: 840, y: 460 });
   const scrolled = cameraOrigin(move.position, map, { width: 1334, height: 750 });
   assert.ok(scrolled.x > origin.x && scrolled.y > origin.y);
+  const gate = TOWN_PLACES.find(place => place.id === 'exit');
+  assert.ok(gate.y - origin.y > 122, 'gate label clears the portrait row during approach');
+  for (const [x, y] of [[960, 380], [1230, 292], [1390, 231], [gate.x, gate.y]]) {
+    assert.ok(move.select({ x, y }), `gate route ${x},${y}`);
+    move.update(10);
+  }
+  const edge = cameraOrigin(move.position, map, { width: 1334, height: 750 });
+  assert.ok(gate.x - edge.x < 1334 && gate.y - edge.y > 0);
 });
