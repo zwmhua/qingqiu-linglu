@@ -6,7 +6,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier.startsWith('.') && !specifier.endsWith('.ts')) return nextResolve(`${specifier}.ts`, context);
   return nextResolve(specifier, context);
 } });
-const { CONFIG } = await import('../assets/scripts/config.ts');
+const { CONFIG } = await import('../assets/battle/scripts/config.ts');
 
 test('ten enemies occupy two parallel diagonal rows with three active slots centered', () => {
   const [middle, lowerLeft, upperRight] = CONFIG.positions.enemy;

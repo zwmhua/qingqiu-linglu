@@ -7,12 +7,12 @@ registerHooks({ resolve(specifier, context, nextResolve) {
     ? `${specifier}.ts` : specifier, context);
 } });
 
-const { Battle } = await import('../assets/scripts/Battle.ts');
-const { initialHero, adjustPotential } = await import('../assets/logic/hero-progress.ts');
-const { petProgress } = await import('../assets/logic/roster.ts');
-const { wildCombat } = await import('../assets/logic/wild-encounter.ts');
-const { petPanel, petPanelPreview } = await import('../assets/logic/pet-panel.ts');
-const { readProgress, saveProgress, resetProgress } = await import('../assets/logic/local-progress.ts');
+const { Battle } = await import('../assets/battle/scripts/Battle.ts');
+const { initialHero, adjustPotential } = await import('../assets/battle/logic/hero-progress.ts');
+const { petProgress } = await import('../assets/battle/logic/roster.ts');
+const { wildCombat } = await import('../assets/battle/logic/wild-encounter.ts');
+const { petPanel, petPanelPreview } = await import('../assets/battle/logic/pet-panel.ts');
+const { readProgress, saveProgress, resetProgress } = await import('../assets/battle/logic/local-progress.ts');
 const make = ({ count = 1, previous, selectedPetId, babies = [], roll = 0 } = {}) =>
   new Battle(() => 0, count, 0, previous, () => babies.shift() ?? 1,
     () => 0, () => 0, () => 0, () => 0, () => roll, { hero: initialHero(), selectedPetId, petRandom: () => 0 });
@@ -66,7 +66,7 @@ test('level 13 Tingwa uses all seven formal stats after loading an old panel', (
 });
 
 test('preview and normal battles share the once-per-victory pet experience path', async () => {
-  const source = (await import('node:fs')).readFileSync(new URL('../assets/scripts/BattleView.ts', import.meta.url), 'utf8');
+  const source = (await import('node:fs')).readFileSync(new URL('../assets/battle/scripts/BattleView.ts', import.meta.url), 'utf8');
   assert.equal([...source.matchAll(/if \(PREVIEW && params\.get\('(?:mutation|baby)Sample'\)[^;]+\{ hero, selectedPetId \}\);/g)].length, 2);
   const battle = make({ count: 3, babies: [0], roll: 0.4 });
   battle.allies[0].hp = 500;
@@ -112,7 +112,7 @@ test('baby growth, confirmed allocation and restored combat keep one individual'
     setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
   saveProgress(storage, battle);
   const progress = petProgress(baby);
-  const { HoldRepeat } = await import('../assets/logic/hold-repeat.ts');
+  const { HoldRepeat } = await import('../assets/battle/logic/hold-repeat.ts');
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const repeat = new HoldRepeat();
   let draft = progress;

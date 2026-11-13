@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { toggleTarget, targetCommand } from '../assets/logic/targeting.ts';
+import { toggleTarget, targetCommand } from '../assets/battle/logic/targeting.ts';
 
 test('default enemy click means ordinary attack', () => {
   assert.equal(targetCommand(null), 'attack');

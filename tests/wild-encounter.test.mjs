@@ -6,10 +6,10 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   return nextResolve(specifier.startsWith('.') && !specifier.endsWith('.ts')
     ? `${specifier}.ts` : specifier, context);
 } });
-const { Battle } = await import('../assets/scripts/Battle.ts');
-const { captureChance } = await import('../assets/logic/capture.ts');
-const { wildCombat } = await import('../assets/logic/wild-encounter.ts');
-const { petPanel } = await import('../assets/logic/pet-panel.ts');
+const { Battle } = await import('../assets/battle/scripts/Battle.ts');
+const { captureChance } = await import('../assets/battle/logic/capture.ts');
+const { wildCombat } = await import('../assets/battle/logic/wild-encounter.ts');
+const { petPanel } = await import('../assets/battle/logic/pet-panel.ts');
 
 const sequence = (...values) => () => {
   assert.ok(values.length, 'unexpected extra random roll');

@@ -6,8 +6,8 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier.startsWith('.') && !specifier.endsWith('.ts')) return nextResolve(`${specifier}.ts`, context);
   return nextResolve(specifier, context);
 } });
-const { Battle } = await import('../assets/scripts/Battle.ts');
-const { AutoCommands, nextAutoOrder } = await import('../assets/logic/auto.ts');
+const { Battle } = await import('../assets/battle/scripts/Battle.ts');
+const { AutoCommands, nextAutoOrder } = await import('../assets/battle/logic/auto.ts');
 
 test('first-round auto issues both attacks immediately with injected random targets', () => {
   const battle = new Battle(() => 0.5, 3);

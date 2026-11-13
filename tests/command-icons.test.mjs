@@ -5,12 +5,12 @@ import { inflateSync } from 'node:zlib';
 
 const names = ['icon_attack', 'icon_defend', 'icon_protect', 'icon_summon', 'icon_capture',
   'icon_item', 'icon_flee', 'icon_spell', 'icon_retreat'];
-const scene = JSON.parse(readFileSync(new URL('../assets/scenes/Battle.scene', import.meta.url)));
+const scene = JSON.parse(readFileSync(new URL('../assets/battle/scenes/Battle.scene', import.meta.url)));
 const view = scene.find(item => item.battleBackground && item.jadeNormal);
 
 test('nine command icons are 128px RGBA circles with transparent corners', () => {
   for (const name of names) {
-    const png = readFileSync(new URL(`../assets/textures/ui/icons/${name}.png`, import.meta.url));
+    const png = readFileSync(new URL(`../assets/battle/textures/ui/icons/${name}.png`, import.meta.url));
     assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', name);
     assert.equal(png.readUInt32BE(16), 128, name);
     assert.equal(png.readUInt32BE(20), 128, name);
@@ -30,15 +30,15 @@ test('nine command icons are 128px RGBA circles with transparent corners', () =>
 test('scene binds command SpriteFrames in the requested order', () => {
   assert.equal(view.commandIcons.length, names.length);
   names.forEach((name, index) => {
-    const meta = JSON.parse(readFileSync(new URL(`../assets/textures/ui/icons/${name}.png.meta`, import.meta.url)));
+    const meta = JSON.parse(readFileSync(new URL(`../assets/battle/textures/ui/icons/${name}.png.meta`, import.meta.url)));
     assert.equal(view.commandIcons[index].__uuid__, `${meta.uuid}@f9941`, name);
   });
 });
 
 test('auto button icons are transparent 128px assets bound to the scene', () => {
   for (const [name, field] of [['icon_auto', 'iconAuto'], ['icon_auto_cancel', 'iconAutoCancel']]) {
-    const png = readFileSync(new URL(`../assets/textures/ui/icons/${name}.png`, import.meta.url));
-    const meta = JSON.parse(readFileSync(new URL(`../assets/textures/ui/icons/${name}.png.meta`, import.meta.url)));
+    const png = readFileSync(new URL(`../assets/battle/textures/ui/icons/${name}.png`, import.meta.url));
+    const meta = JSON.parse(readFileSync(new URL(`../assets/battle/textures/ui/icons/${name}.png.meta`, import.meta.url)));
     assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', name);
     assert.equal(png.readUInt32BE(16), 128, name);
     assert.equal(png.readUInt32BE(20), 128, name);

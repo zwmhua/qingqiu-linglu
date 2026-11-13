@@ -7,8 +7,8 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   return nextResolve(specifier, context);
 } });
 const { BASE_STAT_KEYS, BASE_STATS_CONFIG, generateBaseStats, baseStatTotal } =
-  await import('../assets/logic/base-stats.ts');
-const { Battle } = await import('../assets/scripts/Battle.ts');
+  await import('../assets/battle/logic/base-stats.ts');
+const { Battle } = await import('../assets/battle/scripts/Battle.ts');
 
 test('baby, normal and initial totals are exact and every stat has at least one point', () => {
   assert.equal(BASE_STATS_CONFIG.minPerStat, 1);

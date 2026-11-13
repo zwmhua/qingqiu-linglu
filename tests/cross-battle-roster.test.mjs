@@ -6,7 +6,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier.startsWith('.') && !specifier.endsWith('.ts')) return nextResolve(`${specifier}.ts`, context);
   return nextResolve(specifier, context);
 } });
-const { Battle } = await import('../assets/scripts/Battle.ts');
+const { Battle } = await import('../assets/battle/scripts/Battle.ts');
 
 function capture(battle, enemyId = 'enemy-0') {
   battle.command('hero', 'capture', enemyId);

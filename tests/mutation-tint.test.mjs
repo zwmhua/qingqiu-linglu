@@ -6,9 +6,9 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier.startsWith('.') && !specifier.endsWith('.ts')) return nextResolve(`${specifier}.ts`, context);
   return nextResolve(specifier, context);
 } });
-const { petTint } = await import('../assets/logic/pet-visual.ts');
-const { CONFIG } = await import('../assets/scripts/config.ts');
-const { Battle } = await import('../assets/scripts/Battle.ts');
+const { petTint } = await import('../assets/battle/logic/pet-visual.ts');
+const { CONFIG } = await import('../assets/battle/scripts/config.ts');
+const { Battle } = await import('../assets/battle/scripts/Battle.ts');
 
 test('pet tint is determined only by mutation identity', () => {
   const colors = CONFIG.visual.petTint;

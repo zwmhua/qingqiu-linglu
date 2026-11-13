@@ -6,11 +6,11 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier.startsWith('.') && !specifier.endsWith('.ts')) return nextResolve(`${specifier}.ts`, context);
   return nextResolve(specifier, context);
 } });
-const { Battle } = await import('../assets/scripts/Battle.ts');
-const { CONFIG } = await import('../assets/scripts/config.ts');
-const { petPanel } = await import('../assets/logic/pet-panel.ts');
-const { initialHero } = await import('../assets/logic/hero-progress.ts');
-const { readProgress, resetProgress, saveProgress } = await import('../assets/logic/local-progress.ts');
+const { Battle } = await import('../assets/battle/scripts/Battle.ts');
+const { CONFIG } = await import('../assets/battle/scripts/config.ts');
+const { petPanel } = await import('../assets/battle/logic/pet-panel.ts');
+const { initialHero } = await import('../assets/battle/logic/hero-progress.ts');
+const { readProgress, resetProgress, saveProgress } = await import('../assets/battle/logic/local-progress.ts');
 
 const winCapture = (battle, enemyId) => {
   battle.command('hero', 'capture', enemyId);

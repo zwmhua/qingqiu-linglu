@@ -6,7 +6,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier.startsWith('.') && !specifier.endsWith('.ts')) return nextResolve(`${specifier}.ts`, context);
   return nextResolve(specifier, context);
 } });
-const { CONFIG, COMMAND_LAYOUT, COMMAND_ICON_SIZE } = await import('../assets/scripts/config.ts');
+const { CONFIG, COMMAND_LAYOUT, COMMAND_ICON_SIZE } = await import('../assets/battle/scripts/config.ts');
 
 test('command slots form the requested L with a shared flee/retreat position', () => {
   const vertical = ['道具', '灵术', '攻击'].map(name => COMMAND_LAYOUT[name]);

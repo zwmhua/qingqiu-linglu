@@ -8,10 +8,10 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 } });
 
 test('04a character progression and browser progress', async t => {
-  const { Battle } = await import('../assets/scripts/Battle.ts');
-  const { awardExperience, heroPanel, initialHero, levelUpExp } = await import('../assets/logic/hero-progress.ts');
-  const { readProgress, saveProgress, resetProgress } = await import('../assets/logic/local-progress.ts');
-  const { petPanel } = await import('../assets/logic/pet-panel.ts');
+  const { Battle } = await import('../assets/battle/scripts/Battle.ts');
+  const { awardExperience, heroPanel, initialHero, levelUpExp } = await import('../assets/battle/logic/hero-progress.ts');
+  const { readProgress, saveProgress, resetProgress } = await import('../assets/battle/logic/local-progress.ts');
+  const { petPanel } = await import('../assets/battle/logic/pet-panel.ts');
   const make = ({ hero = initialHero(), pets, selectedPetId, petRandom, enemy = () => 0 } = {}) =>
     new Battle(() => 0, 1, 0, pets && { entries: pets }, () => 1,
       undefined, undefined, undefined, () => 1, enemy, { hero, selectedPetId, petRandom });

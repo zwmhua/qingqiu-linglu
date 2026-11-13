@@ -6,8 +6,8 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier.startsWith('.') && !specifier.endsWith('.ts')) return nextResolve(`${specifier}.ts`, context);
   return nextResolve(specifier, context);
 } });
-const { Battle } = await import('../assets/scripts/Battle.ts');
-const { CONFIG } = await import('../assets/scripts/config.ts');
+const { Battle } = await import('../assets/battle/scripts/Battle.ts');
+const { CONFIG } = await import('../assets/battle/scripts/config.ts');
 
 test('each encountered frog gets an independent 5% baby roll', () => {
   const values = [0, 0.05, 0.049999];

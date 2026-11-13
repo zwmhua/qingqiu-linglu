@@ -10,9 +10,9 @@ registerHooks({
     return nextResolve(specifier, context);
   },
 });
-const { Battle } = await import('../assets/scripts/Battle.ts');
-const { CONFIG } = await import('../assets/scripts/config.ts');
-const { targetCommand, toggleTarget } = await import('../assets/logic/targeting.ts');
+const { Battle } = await import('../assets/battle/scripts/Battle.ts');
+const { CONFIG } = await import('../assets/battle/scripts/config.ts');
+const { targetCommand, toggleTarget } = await import('../assets/battle/logic/targeting.ts');
 
 const fixed = () => 0.5;
 const make = (count = 1) => {

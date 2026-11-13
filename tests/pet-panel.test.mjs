@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 test('pet panels share compact, transparent artwork at the same display dimensions', () => {
-  const scene = JSON.parse(readFileSync(new URL('../assets/scenes/Battle.scene', import.meta.url)));
+  const scene = JSON.parse(readFileSync(new URL('../assets/battle/scenes/Battle.scene', import.meta.url)));
   const view = scene.find(entry => entry?.frogArt && entry?.characterBasicArt);
   for (const page of ['Basic', 'Aptitude', 'Points']) {
-    const path = new URL(`../assets/textures/ui/pet-${page.toLowerCase()}.png`, import.meta.url);
+    const path = new URL(`../assets/battle/textures/ui/pet-${page.toLowerCase()}.png`, import.meta.url);
     const png = readFileSync(path);
     const frame = JSON.parse(readFileSync(new URL(`${path.href}.meta`))).subMetas.f9941;
     assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');

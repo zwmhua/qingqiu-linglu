@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import { readFileSync, statSync } from 'node:fs';
 
 test('character panel uses compressed blank artwork bound to the battle scene', () => {
-  const scene = JSON.parse(readFileSync(new URL('../assets/scenes/Battle.scene', import.meta.url)));
+  const scene = JSON.parse(readFileSync(new URL('../assets/battle/scenes/Battle.scene', import.meta.url)));
   const view = scene.find(entry => entry?.heroArt && entry?.frogArt);
   for (const [property, filename] of [
     ['characterBasicArt', 'character-basic.png'],
     ['characterPointsArt', 'character-points.png'],
   ]) {
-    const path = new URL(`../assets/textures/ui/${filename}`, import.meta.url);
+    const path = new URL(`../assets/battle/textures/ui/${filename}`, import.meta.url);
     const image = readFileSync(path);
     const meta = JSON.parse(readFileSync(new URL(`${path.href}.meta`)));
     const frame = meta.subMetas.f9941;

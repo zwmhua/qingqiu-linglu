@@ -6,8 +6,8 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier.startsWith('.') && !specifier.endsWith('.ts')) return nextResolve(`${specifier}.ts`, context);
   return nextResolve(specifier, context);
 } });
-const { Battle } = await import('../assets/scripts/Battle.ts');
-const { captureChance } = await import('../assets/logic/capture.ts');
+const { Battle } = await import('../assets/battle/scripts/Battle.ts');
+const { captureChance } = await import('../assets/battle/logic/capture.ts');
 
 test('capture uses the confirmed health formula and injected roll', () => {
   for (const hp of [1, 0.05, 0.22, 1]) {

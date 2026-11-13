@@ -7,9 +7,9 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   return nextResolve(specifier, context);
 } });
 const { APTITUDE_RANGES, APTITUDE_KEYS, aptitudeBarRatio, generateAptitudes } =
-  await import('../assets/logic/aptitude.ts');
-const { Battle } = await import('../assets/scripts/Battle.ts');
-const { petCombat } = await import('../assets/logic/pet-panel.ts');
+  await import('../assets/battle/logic/aptitude.ts');
+const { Battle } = await import('../assets/battle/scripts/Battle.ts');
+const { petCombat } = await import('../assets/battle/logic/pet-panel.ts');
 const combat = ({ hp, maxHp, attack, defense, speed }) => ({ hp, maxHp, attack, defense, speed });
 
 test('aptitude bar maps the species range and clamps mutated values to full', () => {

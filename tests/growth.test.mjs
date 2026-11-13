@@ -6,9 +6,9 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier.startsWith('.') && !specifier.endsWith('.ts')) return nextResolve(`${specifier}.ts`, context);
   return nextResolve(specifier, context);
 } });
-const { TINGWA_GROWTH, generateGrowth } = await import('../assets/logic/growth.ts');
-const { Battle } = await import('../assets/scripts/Battle.ts');
-const { petCombat } = await import('../assets/logic/pet-panel.ts');
+const { TINGWA_GROWTH, generateGrowth } = await import('../assets/battle/logic/growth.ts');
+const { Battle } = await import('../assets/battle/scripts/Battle.ts');
+const { petCombat } = await import('../assets/battle/logic/pet-panel.ts');
 
 test('normal and baby growth include their configured endpoints and use thousandths', () => {
   assert.deepEqual(TINGWA_GROWTH, { min: 0.882, max: 0.918, decimals: 3 });

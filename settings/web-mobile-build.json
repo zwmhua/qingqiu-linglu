@@ -1,0 +1,23 @@
+{
+  "platform": "web-mobile",
+  "taskName": "web-mobile",
+  "buildPath": "project://build",
+  "debug": false,
+  "mainBundleCompressionType": "merge_dep",
+  "startScene": "3ca2435e-bec8-4656-9bf9-63cfaadc18b7",
+  "scenes": [
+    {
+      "url": "db://assets/boot/Boot.scene",
+      "uuid": "3ca2435e-bec8-4656-9bf9-63cfaadc18b7"
+    },
+    {
+      "url": "db://assets/battle/scenes/Battle.scene",
+      "uuid": "66ba6897-199f-4cf3-acc4-a475045cdfa8"
+    }
+  ],
+  "packages": {
+    "web-mobile": {
+      "orientation": "landscape"
+    }
+  }
+}

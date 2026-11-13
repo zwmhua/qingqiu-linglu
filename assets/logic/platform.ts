@@ -23,3 +23,11 @@ export function wechatStorage(api: WeChatStorage): Pick<Storage, 'getItem' | 'se
     removeItem: key => api.removeStorageSync(key),
   };
 }
+
+const PROGRESS_KEY = 'qingqiu-linglu:test-progress';
+export type ProgressStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+export const progressIO = {
+  read: (storage: ProgressStorage) => storage.getItem(PROGRESS_KEY),
+  write: (storage: ProgressStorage, value: string) => storage.setItem(PROGRESS_KEY, value),
+  clear: (storage: ProgressStorage) => storage.removeItem(PROGRESS_KEY),
+};

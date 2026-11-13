@@ -7,7 +7,7 @@ import type { HeroProgress } from './hero-progress';
 import type { CarriedPet } from './roster';
 import type { Battle } from '../scripts/Battle';
 
-const KEY = 'qingqiu-linglu:test-progress';
+import { progressIO, type ProgressStorage } from '../../logic/platform';
 const VERSION = 3;
 type ProgressStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 type Snapshot = { version: number; hero: HeroProgress; pets: CarriedPet[]; selectedPetId: string; nextCapturedId?: number };
@@ -32,7 +32,7 @@ function validPet(pet: CarriedPet, legacy: boolean): boolean {
 }
 
 export function readProgress(storage: ProgressStorage, capacity = 5): Snapshot | null {
-  const raw = storage.getItem(KEY);
+  const raw = progressIO.read(storage);
   if (raw === null) return null;
   const saved: Snapshot = JSON.parse(raw);
   const hero = saved?.hero;
@@ -72,10 +72,10 @@ export function saveProgress(storage: ProgressStorage, battle: Battle, hero = ba
       const entry = updatedPet?.id === pet.id ? updatedPet : pet;
       return { ...entry, hp: entry.maxHp };
     }) };
-  storage.setItem(KEY, JSON.stringify(saved));
+  progressIO.write(storage, JSON.stringify(saved));
 }
 
 export function resetProgress(storage: ProgressStorage, confirmed: boolean): boolean {
-  if (confirmed) storage.removeItem(KEY);
+  if (confirmed) progressIO.clear(storage);
   return confirmed;
 }

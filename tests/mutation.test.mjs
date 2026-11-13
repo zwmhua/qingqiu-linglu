@@ -6,9 +6,9 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   if (specifier.startsWith('.') && !specifier.endsWith('.ts')) return nextResolve(`${specifier}.ts`, context);
   return nextResolve(specifier, context);
 } });
-const { MUTATION_CONFIG, isMutation, mutateAptitudes } = await import('../assets/logic/mutation.ts');
-const { APTITUDE_KEYS, APTITUDE_RANGES, generateAptitudes } = await import('../assets/logic/aptitude.ts');
-const { Battle } = await import('../assets/scripts/Battle.ts');
+const { MUTATION_CONFIG, isMutation, mutateAptitudes } = await import('../assets/battle/logic/mutation.ts');
+const { APTITUDE_KEYS, APTITUDE_RANGES, generateAptitudes } = await import('../assets/battle/logic/aptitude.ts');
+const { Battle } = await import('../assets/battle/scripts/Battle.ts');
 
 test('mutation boundary is exactly 25% and boosts all six without a cap', () => {
   assert.deepEqual(MUTATION_CONFIG, { rate: 0.25, multiplier: 1.18 });
