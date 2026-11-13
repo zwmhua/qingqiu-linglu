@@ -9,7 +9,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 
 const { Battle } = await import('../assets/battle/scripts/Battle.ts');
 const { initialHero } = await import('../assets/battle/logic/hero-progress.ts');
-const { readProgress } = await import('../assets/battle/logic/local-progress.ts');
+const { loadSessionProgress, readProgress } = await import('../assets/battle/logic/local-progress.ts');
 
 const cycle = (...rolls) => {
   let next = 0;
@@ -73,6 +73,10 @@ test('old v1 and v2 snapshots read as v3 with the same progress and formal pet p
       version: 3, hero, selectedPetId,
       pets: pets.map(pet => ({ ...pet, exp: 0, potential: 0, hp: 66, maxHp: 66, attack: 13, defense: 16, speed: 13 })),
     });
+    const session = loadSessionProgress({ getItem: key => storage.get(key) ?? null });
+    assert.deepEqual(session.heroProgress, hero);
+    assert.equal(session.selectedPetId, selectedPetId);
+    assert.deepEqual(session.roster.entries, readProgress({ getItem: () => raw }).pets);
     assert.equal(storage.get('qingqiu-linglu:test-progress'), raw);
   }
 });

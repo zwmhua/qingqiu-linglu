@@ -9,14 +9,15 @@ import { APTITUDE_KEYS, aptitudeBarRatio } from '../logic/aptitude';
 import { WILD_SPECIES } from '../logic/wild-encounter';
 import { BASE_STAT_KEYS } from '../logic/base-stats';
 import { petTint } from '../logic/pet-visual';
-import type { CarriedPet, RosterState } from '../logic/roster';
+import type { CarriedPet } from '../logic/roster';
+import { SessionProgress } from '../logic/session-progress';
 import { petProgress } from '../logic/roster';
 import { petPanel, petPanelPreview } from '../logic/pet-panel';
 import type { HeroProgress, LevelProgress } from '../logic/hero-progress';
 import { HERO_PROGRESSION, adjustPotential, heroPanel, heroPanelPreview, initialHero, levelUpExp } from '../logic/hero-progress';
 import { HoldRepeat } from '../logic/hold-repeat';
 import { browserParams, wechatStorage } from '../../logic/platform';
-import { readProgress, resetProgress, saveProgress } from '../logic/local-progress';
+import { loadSessionProgress, resetProgress, saveProgress } from '../logic/local-progress';
 import type { TargetMode } from '../logic/targeting';
 
 const { ccclass, property } = _decorator;
@@ -103,16 +104,14 @@ export class BattleView extends Component {
     return !this.layoutTest && !(PREVIEW && (params.get('mutationSample') === '1' || params.get('babySample') === '1'));
   }
 
-  private createBattle(previous?: RosterState, rage = 0,
-    hero = initialHero(), selectedPetId?: string): Battle {
+  private createBattle(previous?: SessionProgress, rage = 0): Battle {
+    const session = previous ?? new SessionProgress(initialHero());
     const params = queryParams();
     if (PREVIEW && params.get('mutationSample') === '1')
-      return new Battle(previous ? () => 0.9 : () => 0, 1, rage, previous, () => 1,
-        Math.random, Math.random, Math.random, () => 0, undefined, { hero, selectedPetId });
-    if (PREVIEW && params.get('babySample') === '1') return new Battle(() => 0, 1, rage, previous,
-      undefined, undefined, undefined, undefined, undefined, undefined, { hero, selectedPetId });
-    return new Battle(Math.random, undefined, rage, previous, undefined,
-      undefined, undefined, undefined, undefined, undefined, { hero, selectedPetId });
+      return new Battle(previous ? () => 0.9 : () => 0, 1, rage, session, () => 1,
+        Math.random, Math.random, Math.random, () => 0);
+    if (PREVIEW && params.get('babySample') === '1') return new Battle(() => 0, 1, rage, session);
+    return new Battle(Math.random, undefined, rage, session);
   }
 
   onEnable(): void {
@@ -136,16 +135,15 @@ export class BattleView extends Component {
   }
 
   start(): void {
-    let saved: ReturnType<typeof readProgress> = null;
+    let saved: SessionProgress | null = null;
     if (this.usesTestProgress) {
-      try { saved = readProgress(progressStorage()); }
+      try { saved = loadSessionProgress(progressStorage()); }
       catch {
         this.progressReadFailed = true;
         this.progressError = '本地进度读取失败，可使用测试重置。';
       }
     }
-    this.battle = this.createBattle(saved ? { entries: saved.pets, nextCapturedId: saved.nextCapturedId } : undefined,
-      0, saved?.hero, saved?.selectedPetId);
+    this.battle = this.createBattle(saved ?? undefined);
     if (!saved) this.persistProgress();
     view.setDesignResolutionSize(CONFIG.width, CONFIG.height, WECHAT ? ResolutionPolicy.SHOW_ALL : ResolutionPolicy.FIXED_WIDTH);
     this.render();
@@ -154,7 +152,7 @@ export class BattleView extends Component {
   private persistProgress(): void {
     if (!this.usesTestProgress || this.progressReadFailed) return;
     try {
-      saveProgress(progressStorage(), this.battle);
+      saveProgress(progressStorage(), this.battle.session);
       this.progressError = '';
     } catch {
       this.progressError = '本地进度保存失败。';
@@ -945,7 +943,7 @@ export class BattleView extends Component {
     });
     this.renderPetPointsPreview(preview, hp, mana);
     this.renderAllocation(petProgress(pet), () => open(this.petReturnPage), draft => this.battle.confirmPetAllocation(pet.id, draft,
-      next => saveProgress(progressStorage(), this.battle, undefined, next)), 'pet');
+      next => saveProgress(progressStorage(), this.battle.session, undefined, next)), 'pet');
   }
 
   private renderReleaseButton(pet: CarriedPet): void {
@@ -968,7 +966,7 @@ export class BattleView extends Component {
     this.button('取消', 477, 384, 170, 56, true, close);
     this.button('确认', 687, 384, 170, 56, true, () => {
       try {
-        if (this.battle.releasePet(pet.id, pets => saveProgress(progressStorage(), this.battle, undefined, undefined, pets))) {
+        if (this.battle.releasePet(pet.id, pets => saveProgress(progressStorage(), this.battle.session, undefined, undefined, pets))) {
           this.progressError = '';
           this.selectedPetId = this.battle.roster.entries[0].id;
         }
@@ -1186,7 +1184,7 @@ export class BattleView extends Component {
       this.text(delta(key), 450, y, 24, '#38652A', 102, 1);
     });
     this.renderAllocation(confirmed, close, draft => this.battle.confirmHeroAllocation(draft,
-      next => saveProgress(progressStorage(), this.battle, next)));
+      next => saveProgress(progressStorage(), this.battle.session, next)));
   }
 
   private renderAllocation(confirmed: LevelProgress, close: () => void,
@@ -1405,8 +1403,8 @@ export class BattleView extends Component {
         ? `本场获得经验 ${earnedExp}` : '林间遭遇暂告一段落', 470, 322, 22, '#c6dbc6', 380, 1);
       if (levelsGained) this.text(`升 ${levelsGained} 级 · 每级五项各 +1、潜能 +5`, 425, 352, 20, '#F4DC9C', 466, 1);
       this.button('再来一场', 513, 384, 286, 69, true, () => {
-        const { roster, heroRage, heroProgress, selectedPetId } = this.battle;
-        this.restartBattle(this.createBattle(roster, heroRage, heroProgress, selectedPetId));
+        const { session, heroRage } = this.battle;
+        this.restartBattle(this.createBattle(session, heroRage));
         this.render();
       });
     }

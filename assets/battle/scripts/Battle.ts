@@ -1,7 +1,6 @@
-import { BATTLE_RULES, INITIAL_PET_IDS } from '../logic/battle-rules';
+import { BATTLE_RULES } from '../logic/battle-rules';
 import { captureChance, captureTarget } from '../logic/capture';
-import { Roster, petProgress } from '../logic/roster';
-import { petCombat } from '../logic/pet-panel';
+import { SessionProgress } from '../logic/session-progress';
 import type { CarriedPet, RosterState } from '../logic/roster';
 import { BABY_CONFIG, effectiveLevel, isBabyEncounter } from '../logic/baby';
 import { generateAptitudes } from '../logic/aptitude';
@@ -12,7 +11,7 @@ import type { BaseStats } from '../logic/base-stats';
 import { MUTATION_CONFIG, isMutation, mutateAptitudes } from '../logic/mutation';
 import { WILD_SPECIES, pickWildLevel, pickWildSpecies, wildCombat } from '../logic/wild-encounter';
 import type { WildSpecies } from '../logic/wild-encounter';
-import { HERO_PROGRESSION, awardExperience, confirmPotential, heroPanel } from '../logic/hero-progress';
+import { HERO_PROGRESSION, awardExperience, heroPanel } from '../logic/hero-progress';
 import type { HeroProgress, LevelProgress } from '../logic/hero-progress';
 
 export type Side = 'ally' | 'enemy';
@@ -40,7 +39,8 @@ export type BattleEvent = AttackEvent | SummonEvent | CaptureEvent;
 export class Battle {
   allies: Unit[] = [];
   enemies: Unit[] = [];
-  roster!: Roster;
+  readonly session: SessionProgress;
+  get roster() { return this.session.roster; }
   commands = new Map<string, { command: Command; target?: string }>();
   lastCommands = new Map<string, { command: Command; target?: string }>();
   log: string[] = [];
@@ -54,15 +54,15 @@ export class Battle {
   round = 1;
   seconds: number = BATTLE_RULES.commandSeconds;
   private random: () => number;
-  heroProgress?: HeroProgress;
-  selectedPetId: string;
+  get heroProgress() { return this.session.heroProgress; }
+  get selectedPetId() { return this.session.selectedPetId; }
   earnedExp = 0;
   levelsGained = 0;
   readonly participatedPets = new Set<string>();
   private victoryExp = 0;
 
   constructor(random: () => number = Math.random, count?: number, initialRage = 0,
-    previousRoster?: RosterState, babyRandom: () => number = random,
+    previousRoster?: RosterState | SessionProgress, babyRandom: () => number = random,
     aptitudeRandom: () => number = Math.random, growthRandom: () => number = Math.random,
     baseStatsRandom: () => number = Math.random, mutationRandom: () => number = Math.random,
     // Fixed-count previews and legacy fixtures retain level-one Tingwa unless given an encounter source.
@@ -70,29 +70,20 @@ export class Battle {
     progression?: { hero: HeroProgress; selectedPetId?: string; petRandom?: () => number }) {
     this.random = random;
     this.heroRage = Math.max(0, Math.min(BATTLE_RULES.status.rageMax, initialRage));
-    this.heroProgress = progression?.hero;
-    this.selectedPetId = progression?.selectedPetId ?? previousRoster?.entries[0]?.id ?? INITIAL_PET_IDS[0];
-    const stats = progression ? heroPanel(progression.hero.stats) : undefined;
+    this.session = previousRoster instanceof SessionProgress ? previousRoster
+      : new SessionProgress(progression?.hero, previousRoster, progression?.selectedPetId,
+        progression?.petRandom, aptitudeRandom, growthRandom, baseStatsRandom);
+    const progress = this.heroProgress;
+    const stats = progress ? heroPanel(progress.stats) : undefined;
     const hero = BATTLE_RULES.hero;
-    const frog = BATTLE_RULES.frog;
-    const petRandom = progression?.petRandom ?? Math.random;
-    const initialPets = previousRoster ? [] : INITIAL_PET_IDS.map((id): Unit => {
-      const level = progression ? pickWildLevel(petRandom()) : frog.level;
-      const traits = { level, aptitudes: generateAptitudes(false, aptitudeRandom),
-        growth: generateGrowth(false, growthRandom), baseStats: generateBaseStats(level, baseStatsRandom) };
-      return { id, name: frog.name, side: 'ally', slot: 0, species: 'tingwa',
-        isBaby: false, combatLevel: effectiveLevel(level), ...traits, ...petCombat(traits),
-        defending: false, left: false, deployed: id === this.selectedPetId, skill: frog.innateSkill };
-    });
     this.allies = [
-      { id: 'hero', name: hero.name, side: 'ally', slot: 1, level: progression?.hero.level ?? hero.level,
+      { id: 'hero', name: hero.name, side: 'ally', slot: 1, level: progress?.level ?? hero.level,
         hp: stats?.maxHp ?? hero.hp, maxHp: stats?.maxHp ?? hero.hp, attack: stats?.attack ?? hero.attack,
         defense: stats?.defense ?? hero.defense, speed: stats?.speed ?? hero.speed,
-        combatLevel: effectiveLevel(progression?.hero.level ?? hero.level), defending: false, left: false, deployed: true },
-      ...initialPets,
+        combatLevel: effectiveLevel(progress?.level ?? hero.level), defending: false, left: false, deployed: true },
     ];
-    this.roster = new Roster(BATTLE_RULES.maxCarriedPets, this.pets, previousRoster);
-    if (previousRoster) this.allies = [this.allies[0], ...this.roster.entries.map(pet => ({
+    this.roster.beginBattle();
+    this.allies.push(...this.roster.entries.map(pet => ({
       id: pet.id, name: pet.name, side: 'ally' as const, slot: 0, level: pet.level,
       species: pet.species, isBaby: pet.isBaby, combatLevel: effectiveLevel(pet.level),
       aptitudes: pet.aptitudes,
@@ -101,7 +92,7 @@ export class Battle {
       isMutated: pet.isMutated,
       hp: pet.maxHp, maxHp: pet.maxHp, attack: pet.attack, defense: pet.defense,
       speed: pet.speed, skill: pet.skill, defending: false, left: false, deployed: pet.id === this.selectedPetId,
-    }))];
+    })));
     this.participatedPets.add(this.selectedPetId);
     const quantity = count ?? this.pickCount();
     const counts = BATTLE_RULES.encounter;
@@ -194,28 +185,19 @@ export class Battle {
   }
 
   confirmHeroAllocation(preview: HeroProgress, persist: (hero: HeroProgress) => void): boolean {
-    const confirmed = this.heroProgress;
-    if (!confirmed || this.phase !== 'ended') return false;
-    const next = confirmPotential(confirmed, preview);
-    if (!next) return false;
-    persist(next);
-    this.heroProgress = next;
-    Object.assign(this.allies[0], heroPanel(next.stats));
+    if (!this.session.confirmHeroAllocation(this.phase !== 'ended', preview, persist)) return false;
+    Object.assign(this.allies[0], heroPanel(this.heroProgress!.stats));
     return true;
   }
 
   confirmPetAllocation(id: string, preview: LevelProgress, persist: (pet: CarriedPet) => void): boolean {
-    if (!this.heroProgress || this.phase !== 'ended') return false;
-    const pet = this.roster.entries.find(entry => entry.id === id);
-    if (!pet) return false;
-    const next = confirmPotential(petProgress(pet), preview);
-    if (!next) return false;
-    const { hp: _fullHp, ...panel } = petCombat({ ...pet, baseStats: next.stats });
-    const updated = { ...pet, ...panel, baseStats: next.stats, potential: next.potential };
-    persist(updated);
-    Object.assign(pet, updated);
+    if (!this.session.confirmPetAllocation(this.phase !== 'ended', id, preview, persist)) return false;
+    const pet = this.roster.entries.find(entry => entry.id === id)!;
     const unit = this.pets.find(entry => entry.id === id);
-    if (unit) Object.assign(unit, panel, { baseStats: next.stats });
+    if (unit) {
+      const { maxHp, attack, defense, speed, baseStats } = pet;
+      Object.assign(unit, { maxHp, attack, defense, speed, baseStats });
+    }
     return true;
   }
 
@@ -224,7 +206,7 @@ export class Battle {
   }
 
   releasePet(id: string, persist: (pets: CarriedPet[]) => void): boolean {
-    if (!this.roster.release(id, this.selectedPetId, this.phase !== 'ended', persist)) return false;
+    if (!this.session.releasePet(this.phase !== 'ended', id, persist)) return false;
     this.allies = this.allies.filter(unit => unit.id !== id);
     return true;
   }
@@ -237,7 +219,7 @@ export class Battle {
     if (this.winner === 'ally' && this.heroProgress) {
       const before = this.heroProgress.level;
       this.earnedExp = this.victoryExp;
-      this.heroProgress = awardExperience(this.heroProgress, this.earnedExp);
+      this.session.heroProgress = awardExperience(this.heroProgress, this.earnedExp);
       this.levelsGained = this.heroProgress.level - before;
       if (this.levelsGained > 0) {
         const hero = this.allies[0];
@@ -298,7 +280,7 @@ export class Battle {
         const outgoing = this.pets.find(u => u.deployed);
         if (outgoing) outgoing.deployed = false;
         incoming.deployed = true;
-        this.selectedPetId = incoming.id;
+        this.session.selectedPetId = incoming.id;
         this.participatedPets.add(incoming.id);
         this.summonsUsed++;
         this.events.push({ kind: 'summon', actorId: turn.actor.id, fromId: outgoing?.id, toId: incoming.id });

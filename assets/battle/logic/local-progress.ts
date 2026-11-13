@@ -6,7 +6,7 @@ import { WILD_SPECIES, wildCombat } from './wild-encounter';
 import { petCombat } from './pet-panel';
 import type { HeroProgress } from './hero-progress';
 import type { CarriedPet } from './roster';
-import type { Battle } from '../scripts/Battle';
+import { SessionProgress } from './session-progress';
 
 import { progressIO, type ProgressStorage } from '../../logic/platform';
 const VERSION = 3;
@@ -63,11 +63,17 @@ export function readProgress(storage: ProgressStorage, capacity: number = BATTLE
     pets: pets.map(pet => ({ ...pet, ...(legacy ? petCombat(pet) : {}), skill: pet.skill })) };
 }
 
-export function saveProgress(storage: ProgressStorage, battle: Battle, hero = battle.heroProgress,
-  updatedPet?: CarriedPet, roster = battle.roster.entries): void {
+export function loadSessionProgress(storage: ProgressStorage): SessionProgress | null {
+  const saved = readProgress(storage);
+  return saved ? new SessionProgress(saved.hero, { entries: saved.pets, nextCapturedId: saved.nextCapturedId },
+    saved.selectedPetId) : null;
+}
+
+export function saveProgress(storage: ProgressStorage, progress: Pick<SessionProgress, 'heroProgress' | 'roster' | 'selectedPetId'>,
+  hero = progress.heroProgress, updatedPet?: CarriedPet, roster = progress.roster.entries): void {
   if (!hero) throw new Error('人物进度尚未初始化');
-  const saved: Snapshot = { version: VERSION, hero, selectedPetId: battle.selectedPetId,
-    nextCapturedId: battle.roster.nextCapturedId,
+  const saved: Snapshot = { version: VERSION, hero, selectedPetId: progress.selectedPetId,
+    nextCapturedId: progress.roster.nextCapturedId,
     pets: roster.map(pet => {
       const entry = updatedPet?.id === pet.id ? updatedPet : pet;
       return { ...entry, hp: entry.maxHp };

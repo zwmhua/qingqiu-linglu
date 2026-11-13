@@ -37,6 +37,11 @@ export class Roster {
     this.captureId = Math.max(highestId + 1, previous?.nextCapturedId ?? 1);
   }
 
+  beginBattle(): void {
+    this.capturedEnemies.clear();
+    for (const pet of this.entries) pet.hp = pet.maxHp;
+  }
+
   awardExperience(participants: ReadonlySet<string>, earned: number): void {
     for (const pet of this.entries) {
       if (!participants.has(pet.id)) continue;

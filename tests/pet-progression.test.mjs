@@ -67,7 +67,7 @@ test('level 13 Tingwa uses all seven formal stats after loading an old panel', (
 
 test('preview and normal battles share the once-per-victory pet experience path', async () => {
   const source = (await import('node:fs')).readFileSync(new URL('../assets/battle/scripts/BattleView.ts', import.meta.url), 'utf8');
-  assert.equal([...source.matchAll(/if \(PREVIEW && params\.get\('(?:mutation|baby)Sample'\)[^;]+\{ hero, selectedPetId \}\);/g)].length, 2);
+  assert.equal([...source.matchAll(/if \(PREVIEW && params\.get\('(?:mutation|baby)Sample'\)[^;]+new Battle\([^;]+, rage, session\b[^;]*\);/g)].length, 2);
   const battle = make({ count: 3, babies: [0], roll: 0.4 });
   battle.allies[0].hp = 500;
   orders(battle, 'capture', 'enemy-0');
