@@ -64,6 +64,16 @@ test('real view routes town without Battle; retry and redraw keep the same progr
   v.onDisable();
   v.update(30);
   assert.equal(v.town.movement.target, undefined);
+  let blocked;
+  v.town.draw = (_hero, check) => { blocked = check; };
+  v.town.frame = undefined;
+  v.rect = () => ({ addComponent() {} });
+  v.text = () => {};
+  v.enabledInHierarchy = false;
+  v.renderTown();
+  assert.equal(blocked(), true);
+  v.enabledInHierarchy = true;
+  assert.equal(blocked(), false);
   townDisk.raw = '{bad';
   const broken = new BattleView();
   broken.render = () => {};

@@ -1298,7 +1298,7 @@ export class BattleView extends Component {
     const overlay = new Node('town-ui');
     this.node.addChild(overlay);
     this.layer = overlay;
-    town.draw(this.heroArt, () => !!this.detailsOpen || this.rosterOpen || this.progressReadFailed);
+    town.draw(this.heroArt, () => !this.enabledInHierarchy || !!this.detailsOpen || this.rosterOpen || this.progressReadFailed);
     this.rect(20, 18, 470, 52, '#203D36', '', 10, undefined, 220).addComponent(BlockInputEvents);
     this.text(this.progressError || town.error || (town.loading ? '城图加载中…' : '城里'), 30, 24, 24);
     if (town.error && !town.frame) this.button('重试', 540, 335, 250, 60, !town.loading, () => { town.load(); this.render(); });
