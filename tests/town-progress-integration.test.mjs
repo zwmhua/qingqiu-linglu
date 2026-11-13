@@ -14,14 +14,29 @@ export const sys = { isBrowser: true, localStorage: globalThis.townDisk };
 export const view = { setDesignResolutionSize() {} };
 export const ResolutionPolicy = { SHOW_ALL: 1, FIXED_WIDTH: 2 };
 export class Component { node = { children: [], addChild() {} }; }
-export class Node { static EventType = {}; children = []; addComponent() { return { setContentSize() {} }; } }
+export class Node {
+  static EventType = { TOUCH_START: 'start', TOUCH_END: 'end', TOUCH_CANCEL: 'cancel' };
+  constructor(name) { this.name = name; }
+  children = [];
+  handlers = {};
+  addChild(node) { this.children.push(node); }
+  addComponent() { return this; }
+  getComponent() { return this; }
+  setContentSize() {}
+  setAnchorPoint() {}
+  setPosition() {}
+  setScale() {}
+  convertToNodeSpaceAR(p) { return p; }
+  on(event, callback) { this.handlers[event] = callback; }
+  destroy() { this.destroyed = true; }
+}
 export const game = { on() {}, off() {} }, Game = { EVENT_HIDE: 'hide' };
-export const assetManager = { loadBundle(_name, cb) { globalThis.townLoad = cb; } };
-export class Vec3 {}
+export const assetManager = { loadBundle(name, cb) { globalThis.loadedBundle = name; globalThis.townLoad = cb; } };
+export class Vec3 { constructor(x, y) { this.x = x; this.y = y; } }
 export class Color {}
 export class SpriteFrame {}
 export const BlockInputEvents = 0, EventTouch = 0, Graphics = 0, Label = 0, Mask = 0,
-RichText = 0, Sprite = 0, tween = 0, Tween = 0, UIOpacity = 0, UITransform = 0;`;
+RichText = 0, Sprite = { SizeMode: { CUSTOM: 1 } }, tween = 0, Tween = 0, UIOpacity = 0, UITransform = 0;`;
 registerHooks({
   resolve(s, c, next) {
     if (s === 'cc' || s === 'cc/env') return { url: `mock:${s}`, shortCircuit: true };
@@ -42,6 +57,7 @@ const { SessionProgress } = await import('../assets/battle/logic/session-progres
 const { initialHero, awardExperience, adjustPotential } = await import('../assets/battle/logic/hero-progress.ts');
 const { petProgress } = await import('../assets/battle/logic/roster.ts');
 const { loadSessionProgress, saveProgress } = await import('../assets/battle/logic/local-progress.ts');
+const { OUTSKIRTS, TOWN } = await import('../assets/battle/logic/exploration.ts');
 
 test('real view routes town without Battle; retry and redraw keep the same progress', () => {
   const v = new BattleView();
@@ -111,4 +127,65 @@ test('town panel callbacks use correct IDs, preserve failed writes and persist c
   const restored = loadSessionProgress(townDisk);
   assert.equal(restored.heroProgress.stats.strength, heroDraft.stats.strength);
   assert.deepEqual(restored.roster.entries.map(p => p.id), ['pet']);
+});
+
+test('outskirts loading is atomic, ignores stale callbacks, and round trips without a save', () => {
+  const v = new BattleView();
+  v.render = () => {};
+  v.start();
+  const session = v.progress, writes = townDisk.writes, raw = townDisk.raw;
+  const view = v.town;
+  let finish;
+  const bundle = { load(path, _type, cb) { finish = cb; return path; } };
+  townLoad(null, bundle);
+  const townFrame = {};
+  finish(null, townFrame);
+  view.draw(null, () => false);
+  const map = view.root.children[0].children[0];
+  const touch = (id, x) => ({ getID: () => id, getUILocation: () => ({ x: x - 667, y: -125 }) });
+  map.handlers.start(touch(1, 800));
+  map.handlers.start(touch(2, 850));
+  map.handlers.end(touch(2, 850));
+  assert.equal(view.movement.target, undefined);
+  map.handlers.end(touch(1, 800));
+  assert.deepEqual(view.movement.target, { x: 800, y: 500 });
+  view.load('outskirts');
+  assert.equal(view.movement.target, undefined);
+  assert.equal(loadedBundle, 'outskirts');
+  const pending = townLoad;
+  view.load('outskirts');
+  assert.equal(townLoad, pending);
+  pending(null, bundle);
+  const stale = finish;
+  finish(new Error('map failed'));
+  assert.equal(view.region, 'town');
+  assert.equal(view.frame, townFrame);
+  assert.match(view.error, /加载失败/);
+  view.load('outskirts');
+  stale(null, {});
+  assert.equal(view.region, 'town');
+  townLoad(null, bundle);
+  finish(null, {});
+  assert.equal(view.region, 'outskirts');
+  assert.deepEqual(view.movement.position, OUTSKIRTS.spawn);
+  assert.equal(map.destroyed, true);
+  view.load('town');
+  townLoad(null, bundle);
+  finish(null, townFrame);
+  assert.deepEqual(view.movement.position, TOWN.spawn);
+  assert.equal(view.movement.target, undefined);
+  assert.equal(v.progress, session);
+  assert.equal(v.battle, undefined);
+  assert.equal(townDisk.writes, writes);
+  assert.equal(townDisk.raw, raw);
+});
+
+test('the ordinary entry still creates a battle from the saved session', () => {
+  window.location.search = '';
+  const v = new BattleView();
+  v.render = () => {};
+  v.start();
+  assert.ok(v.battle.enemies.length > 0);
+  assert.equal(v.town, undefined);
+  assert.equal(v.battle.session.selectedPetId, loadSessionProgress(townDisk).selectedPetId);
 });

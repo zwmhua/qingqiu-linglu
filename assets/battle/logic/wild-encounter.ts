@@ -28,8 +28,8 @@ export const WILD_SPECIES = {
 } as const;
 
 export type WildSpecies = keyof typeof WILD_SPECIES;
-const speciesKeys = Object.keys(WILD_SPECIES) as WildSpecies[];
-const wildLevels = [1, 2, 3, 4, 5] as const;
+export const speciesKeys = Object.keys(WILD_SPECIES) as readonly WildSpecies[];
+export const wildLevels = [1, 2, 3, 4, 5] as const;
 const attackAndSpeedLevelStep = 2;
 
 function uniformIndex(roll: number, length: number): number {

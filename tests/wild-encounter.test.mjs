@@ -10,6 +10,19 @@ const { Battle } = await import('../assets/battle/scripts/Battle.ts');
 const { captureChance } = await import('../assets/battle/logic/capture.ts');
 const { wildCombat } = await import('../assets/battle/logic/wild-encounter.ts');
 const { petPanel } = await import('../assets/battle/logic/pet-panel.ts');
+const { OUTSKIRTS } = await import('../assets/battle/logic/exploration.ts');
+const { BATTLE_RULES } = await import('../assets/battle/logic/battle-rules.ts');
+const { BABY_CONFIG } = await import('../assets/battle/logic/baby.ts');
+const { MUTATION_CONFIG } = await import('../assets/battle/logic/mutation.ts');
+
+test('the first outskirts region uses the existing encounter sources', () => {
+  const pool = OUTSKIRTS.pool;
+  assert.equal(pool.counts, BATTLE_RULES.encounter);
+  assert.equal(pool.baby, BABY_CONFIG);
+  assert.equal(pool.mutation, MUTATION_CONFIG);
+  assert.deepEqual(pool.species, ['tingwa', 'pangui', 'maomaochong']);
+  assert.deepEqual(pool.levels, [1, 2, 3, 4, 5]);
+});
 
 const sequence = (...values) => () => {
   assert.ok(values.length, 'unexpected extra random roll');
