@@ -142,7 +142,7 @@ export class Battle {
     return this.pets.filter(u => !u.deployed && u.hp > 0 && !u.left);
   }
   protectTargets(actorId: string): Unit[] {
-    const reserved = new Set([...this.commands.values()]
+    const reserved = new Set(Array.from(this.commands.values())
       .filter(c => c.command === 'protect').map(c => c.target));
     return this.allies.filter(u => u.id !== actorId && u.deployed && u.hp > 0 && !u.left && !reserved.has(u.id));
   }

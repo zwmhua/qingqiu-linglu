@@ -1,0 +1,22 @@
+{
+  "platform": "wechatgame",
+  "taskName": "wechatgame",
+  "buildPath": "project://build",
+  "debug": false,
+  "mainBundleCompressionType": "merge_dep",
+  "startScene": "66ba6897-199f-4cf3-acc4-a475045cdfa8",
+  "scenes": [
+    {
+      "url": "db://assets/scenes/Battle.scene",
+      "uuid": "66ba6897-199f-4cf3-acc4-a475045cdfa8"
+    }
+  ],
+  "packages": {
+    "wechatgame": {
+      "appid": "wx2b83dfd606e96e59",
+      "orientation": "landscape",
+      "buildOpenDataContextTemplate": false,
+      "separateEngine": false
+    }
+  }
+}
