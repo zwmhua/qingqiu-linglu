@@ -7,7 +7,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   return nextResolve(specifier, context);
 } });
 const { Battle } = await import('../assets/battle/scripts/Battle.ts');
-const { CONFIG } = await import('../assets/battle/scripts/config.ts');
+const { BATTLE_RULES } = await import('../assets/battle/logic/battle-rules.ts');
 const { petPanel } = await import('../assets/battle/logic/pet-panel.ts');
 const { initialHero } = await import('../assets/battle/logic/hero-progress.ts');
 const { readProgress, resetProgress, saveProgress } = await import('../assets/battle/logic/local-progress.ts');
@@ -21,7 +21,7 @@ test('roster starts with two distinct initial pets and one usable summon', () =>
   const battle = new Battle(() => 0, 3);
   assert.equal(battle.roster.entries.length, 2);
   assert.equal(battle.roster.capacity, 5);
-  assert.equal(CONFIG.maxCarriedPets, 5);
+  assert.equal(BATTLE_RULES.maxCarriedPets, 5);
   assert.equal(new Set(battle.roster.entries.map(pet => pet.id)).size, 2);
   assert.deepEqual(battle.roster.entries.map(pet => pet.origin), ['initial', 'initial']);
   assert.deepEqual(battle.summonTargets().map(pet => pet.id), ['pet-2']);

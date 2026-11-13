@@ -11,7 +11,7 @@ registerHooks({
   },
 });
 const { Battle } = await import('../assets/battle/scripts/Battle.ts');
-const { CONFIG } = await import('../assets/battle/scripts/config.ts');
+const { BATTLE_RULES } = await import('../assets/battle/logic/battle-rules.ts');
 const { targetCommand, toggleTarget } = await import('../assets/battle/logic/targeting.ts');
 
 const fixed = () => 0.5;
@@ -171,7 +171,7 @@ test('retreated and downed pets cannot be summoned; summon count is capped', () 
   battle.allies.find(unit => unit.id === 'pet-2').hp = 0;
   assert.throws(() => battle.command('hero', 'summon', 'pet-2'));
   battle.allies.find(unit => unit.id === 'pet-2').hp = 38;
-  battle.summonsUsed = CONFIG.summon.maxPerBattle;
+  battle.summonsUsed = BATTLE_RULES.summon.maxPerBattle;
   assert.deepEqual(battle.summonTargets(), []);
   assert.throws(() => battle.command('hero', 'summon', 'pet-2'));
 });

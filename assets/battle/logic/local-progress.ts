@@ -1,4 +1,5 @@
 import { APTITUDE_KEYS } from './aptitude';
+import { BATTLE_RULES } from './battle-rules';
 import { BASE_STAT_KEYS, baseStatTotal } from './base-stats';
 import { HERO_PROGRESSION, levelUpExp } from './hero-progress';
 import { WILD_SPECIES, wildCombat } from './wild-encounter';
@@ -9,7 +10,6 @@ import type { Battle } from '../scripts/Battle';
 
 import { progressIO, type ProgressStorage } from '../../logic/platform';
 const VERSION = 3;
-type ProgressStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 type Snapshot = { version: number; hero: HeroProgress; pets: CarriedPet[]; selectedPetId: string; nextCapturedId?: number };
 
 const inRange = (n: number, low: number, high: number) => Number.isInteger(n) && n >= low && n <= high;
@@ -31,7 +31,7 @@ function validPet(pet: CarriedPet, legacy: boolean): boolean {
     && pet.defense === panel.defense && pet.speed === panel.speed;
 }
 
-export function readProgress(storage: ProgressStorage, capacity = 5): Snapshot | null {
+export function readProgress(storage: ProgressStorage, capacity: number = BATTLE_RULES.maxCarriedPets): Snapshot | null {
   const raw = progressIO.read(storage);
   if (raw === null) return null;
   const saved: Snapshot = JSON.parse(raw);

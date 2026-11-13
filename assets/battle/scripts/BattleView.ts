@@ -1,6 +1,7 @@
 import { _decorator, BlockInputEvents, Color, Component, EventTouch, Graphics, Label, Mask, Node, ResolutionPolicy, RichText, Sprite, SpriteFrame, sys, tween, Tween, UIOpacity, UITransform, Vec3, view } from 'cc';
 import { Battle, BattleEvent, Unit } from './Battle';
 import { COMMAND_ICON_SIZE, COMMAND_LAYOUT, CONFIG } from './config';
+import { BATTLE_RULES } from '../logic/battle-rules';
 import { targetCommand, toggleTarget } from '../logic/targeting';
 import { AutoCommands } from '../logic/auto';
 import { PREVIEW, WECHAT } from 'cc/env';
@@ -137,7 +138,7 @@ export class BattleView extends Component {
   start(): void {
     let saved: ReturnType<typeof readProgress> = null;
     if (this.usesTestProgress) {
-      try { saved = readProgress(progressStorage(), CONFIG.maxCarriedPets); }
+      try { saved = readProgress(progressStorage()); }
       catch {
         this.progressReadFailed = true;
         this.progressError = '本地进度读取失败，可使用测试重置。';
@@ -823,13 +824,13 @@ export class BattleView extends Component {
     const heroProgress = this.battle.heroProgress;
     const pet = this.battle.roster.entries.find(pet => pet.id === unit?.id);
     const progress = kind === 'hero' ? heroProgress : pet;
-    const mana = heroProgress ? heroPanel(heroProgress.stats).maxMana : CONFIG.status.heroManaMax;
+    const mana = heroProgress ? heroPanel(heroProgress.stats).maxMana : BATTLE_RULES.status.heroManaMax;
     const petMana = pet ? petPanel(pet).maxMana : 0;
     const bars = kind === 'hero'
       ? [
         { label: '气血', value: unit ? this.displayedHp?.get(unit.id) ?? unit.hp : 0, max: unit?.maxHp ?? 1, color: '#D95757' },
         { label: '法力', value: mana, max: mana, color: '#559DD8' },
-        { label: '愤怒', value: this.battle.heroRage, max: CONFIG.status.rageMax, color: '#EBA14F' },
+        { label: '愤怒', value: this.battle.heroRage, max: BATTLE_RULES.status.rageMax, color: '#EBA14F' },
         { label: '经验', value: progress?.exp ?? 0, max: progress ? levelUpExp(progress.level) : 1, color: '#E6C95C' },
       ]
       : [

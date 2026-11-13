@@ -25,6 +25,8 @@
 
 | 2026-11-13 | battle 资源落入微信主包，主包达 3.11 MB | 构建后检查 game.json 和 assets/battle/ | 为 battle 指定 Creator 构建配置组，微信选本地小游戏分包，web-mobile 沿用本地 Asset Bundle。 |
 
+| 2026-11-13 | `local-progress.ts` 导入并重复声明 `ProgressStorage` | 限定 tsc 包含存档模块和平台接口时出现 TS2440 | P2-01 保留平台导出的类型，删除重复声明，存档键、版本和读写逻辑保持原样。 |
+
 ## 微信开发者工具待观察问题
 
 - 2026-11-13，Windows 模拟器出现 Cocos 着色器错误 16323、16324，随后 D3D11 缓冲区分配失败并丢失 WebGL 上下文。关闭 GPU 后首屏无法创建 WebGL 缓冲区。恢复默认渲染并重新编译后，模拟器完成玩法回归。

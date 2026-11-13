@@ -1,9 +1,9 @@
-import { CONFIG } from './config';
+import { BATTLE_RULES, INITIAL_PET_IDS } from '../logic/battle-rules';
 import { captureChance, captureTarget } from '../logic/capture';
 import { Roster, petProgress } from '../logic/roster';
 import { petCombat } from '../logic/pet-panel';
 import type { CarriedPet, RosterState } from '../logic/roster';
-import { effectiveLevel, isBabyEncounter } from '../logic/baby';
+import { BABY_CONFIG, effectiveLevel, isBabyEncounter } from '../logic/baby';
 import { generateAptitudes } from '../logic/aptitude';
 import { generateGrowth } from '../logic/growth';
 import { generateBaseStats } from '../logic/base-stats';
@@ -52,7 +52,7 @@ export class Battle {
   phase: 'command' | 'ended' = 'command';
   winner: Side | null = null;
   round = 1;
-  seconds: number = CONFIG.commandSeconds;
+  seconds: number = BATTLE_RULES.commandSeconds;
   private random: () => number;
   heroProgress?: HeroProgress;
   selectedPetId: string;
@@ -69,14 +69,14 @@ export class Battle {
     encounterRandom: () => number = count === undefined ? random : () => 0,
     progression?: { hero: HeroProgress; selectedPetId?: string; petRandom?: () => number }) {
     this.random = random;
-    this.heroRage = Math.max(0, Math.min(CONFIG.status.rageMax, initialRage));
+    this.heroRage = Math.max(0, Math.min(BATTLE_RULES.status.rageMax, initialRage));
     this.heroProgress = progression?.hero;
-    this.selectedPetId = progression?.selectedPetId ?? previousRoster?.entries[0]?.id ?? 'pet';
+    this.selectedPetId = progression?.selectedPetId ?? previousRoster?.entries[0]?.id ?? INITIAL_PET_IDS[0];
     const stats = progression ? heroPanel(progression.hero.stats) : undefined;
-    const hero = CONFIG.hero;
-    const frog = CONFIG.frog;
+    const hero = BATTLE_RULES.hero;
+    const frog = BATTLE_RULES.frog;
     const petRandom = progression?.petRandom ?? Math.random;
-    const initialPets = previousRoster ? [] : ['pet', 'pet-2'].map((id): Unit => {
+    const initialPets = previousRoster ? [] : INITIAL_PET_IDS.map((id): Unit => {
       const level = progression ? pickWildLevel(petRandom()) : frog.level;
       const traits = { level, aptitudes: generateAptitudes(false, aptitudeRandom),
         growth: generateGrowth(false, growthRandom), baseStats: generateBaseStats(level, baseStatsRandom) };
@@ -91,7 +91,7 @@ export class Battle {
         combatLevel: effectiveLevel(progression?.hero.level ?? hero.level), defending: false, left: false, deployed: true },
       ...initialPets,
     ];
-    this.roster = new Roster(CONFIG.maxCarriedPets, this.pets, previousRoster);
+    this.roster = new Roster(BATTLE_RULES.maxCarriedPets, this.pets, previousRoster);
     if (previousRoster) this.allies = [this.allies[0], ...this.roster.entries.map(pet => ({
       id: pet.id, name: pet.name, side: 'ally' as const, slot: 0, level: pet.level,
       species: pet.species, isBaby: pet.isBaby, combatLevel: effectiveLevel(pet.level),
@@ -104,13 +104,15 @@ export class Battle {
     }))];
     this.participatedPets.add(this.selectedPetId);
     const quantity = count ?? this.pickCount();
-    if (quantity < 1 || quantity > 3) throw new Error('遭遇数量超出配置范围');
+    const counts = BATTLE_RULES.encounter;
+    if (quantity < counts[0].count || quantity > counts[counts.length - 1].count)
+      throw new Error('遭遇数量超出配置范围');
     for (let i = 0; i < quantity; i++) {
       const species = pickWildSpecies(encounterRandom());
       const wild = WILD_SPECIES[species];
-      const isBaby = isBabyEncounter(babyRandom(), CONFIG.baby.encounterRate);
+      const isBaby = isBabyEncounter(babyRandom(), BABY_CONFIG.encounterRate);
       const isMutated = isMutation(mutationRandom(), MUTATION_CONFIG.rate);
-      const level = isBaby ? CONFIG.baby.level : pickWildLevel(encounterRandom());
+      const level = isBaby ? BABY_CONFIG.level : pickWildLevel(encounterRandom());
       const aptitudes = generateAptitudes(isBaby, aptitudeRandom, wild.aptitudes);
       this.enemies.push({ id: `enemy-${i}`, name: isBaby ? `${wild.name}宝宝` : `野外${wild.name}`,
         side: 'enemy', slot: i, species, level, isBaby, isMutated, combatLevel: effectiveLevel(level),
@@ -127,18 +129,18 @@ export class Battle {
   private pickCount(): number {
     const value = this.random();
     let total = 0;
-    for (const option of CONFIG.encounter) {
+    for (const option of BATTLE_RULES.encounter) {
       total += option.weight;
       if (value < total) return option.count;
     }
-    return CONFIG.encounter[CONFIG.encounter.length - 1].count;
+    return BATTLE_RULES.encounter[BATTLE_RULES.encounter.length - 1].count;
   }
 
   get units(): Unit[] { return [...this.allies, ...this.enemies]; }
   get pets(): Unit[] { return this.allies.filter(u => u.id.startsWith('pet') || u.id.startsWith('caught-')); }
   get pending(): Unit[] { return this.allies.filter(u => u.deployed && u.hp > 0 && !u.left && !this.commands.has(u.id)); }
   summonTargets(): Unit[] {
-    if (this.summonsUsed >= CONFIG.summon.maxPerBattle) return [];
+    if (this.summonsUsed >= BATTLE_RULES.summon.maxPerBattle) return [];
     return this.pets.filter(u => !u.deployed && u.hp > 0 && !u.left);
   }
   protectTargets(actorId: string): Unit[] {
@@ -329,25 +331,25 @@ export class Battle {
           ? targets.filter(u => u.deployed && u.hp > 0 && !u.left)[Math.floor(this.random() * targets.filter(u => u.deployed && u.hp > 0 && !u.left).length)]
           : targets.find(u => u.deployed && u.hp > 0 && !u.left));
       if (!target) break;
-      const d = CONFIG.damage;
+      const d = BATTLE_RULES.damage;
       const factor = d.randomMin + this.random() * (d.randomMax - d.randomMin);
       let damage = Math.max(d.min, Math.round((turn.actor.attack - target.defense * d.defenseFactor) * factor));
       const beforeDefense = damage;
-      if (target.defending) damage = Math.max(d.min, Math.round(damage * CONFIG.defenseDamageFactor));
+      if (target.defending) damage = Math.max(d.min, Math.round(damage * BATTLE_RULES.defenseDamageFactor));
       const guard = turn.actor.side === 'enemy'
         ? this.allies.find(u => u.deployed && u.hp > 0 && !u.left && this.commands.get(u.id)?.command === 'protect'
           && this.commands.get(u.id)?.target === target.id)
         : undefined;
-      const guardedDamage = guard ? Math.ceil(damage * CONFIG.protection.protectorShare) : 0;
+      const guardedDamage = guard ? Math.ceil(damage * BATTLE_RULES.protection.protectorShare) : 0;
       const targetDamage = damage - guardedDamage;
       const targetBefore = target.hp;
       const guardBefore = guard?.hp;
       if (guard) guard.hp = Math.max(0, guard.hp - guardedDamage);
       target.hp = Math.max(0, target.hp - targetDamage);
-      if (target.id === 'hero') this.heroRage = Math.min(CONFIG.status.rageMax,
-        this.heroRage + (targetBefore - target.hp) * CONFIG.status.ragePerDamage);
-      if (guard?.id === 'hero' && guardBefore !== undefined) this.heroRage = Math.min(CONFIG.status.rageMax,
-        this.heroRage + (guardBefore - guard.hp) * CONFIG.status.ragePerDamage);
+      if (target.id === 'hero') this.heroRage = Math.min(BATTLE_RULES.status.rageMax,
+        this.heroRage + (targetBefore - target.hp) * BATTLE_RULES.status.ragePerDamage);
+      if (guard?.id === 'hero' && guardBefore !== undefined) this.heroRage = Math.min(BATTLE_RULES.status.rageMax,
+        this.heroRage + (guardBefore - guard.hp) * BATTLE_RULES.status.ragePerDamage);
       const event: AttackEvent = { kind: 'attack', actorId: turn.actor.id, targetId: target.id, damage,
         targetDamage, targetBefore, targetAfter: target.hp,
         guardId: guard?.id, guardDamage: guard ? guardedDamage : undefined, guardAfter: guard?.hp };
@@ -363,7 +365,7 @@ export class Battle {
     this.commands.clear();
     if (!this.winner) {
       this.round++;
-      this.seconds = CONFIG.commandSeconds;
+      this.seconds = BATTLE_RULES.commandSeconds;
       for (const ally of this.allies) ally.defending = false;
     } else {
       this.log.push(this.winner === 'ally' ? '战斗胜利！' : '战斗失败。');

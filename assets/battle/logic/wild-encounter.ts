@@ -30,6 +30,7 @@ export const WILD_SPECIES = {
 export type WildSpecies = keyof typeof WILD_SPECIES;
 const speciesKeys = Object.keys(WILD_SPECIES) as WildSpecies[];
 const wildLevels = [1, 2, 3, 4, 5] as const;
+const attackAndSpeedLevelStep = 2;
 
 function uniformIndex(roll: number, length: number): number {
   return Math.min(length - 1, Math.floor(roll * length));
@@ -42,7 +43,7 @@ export function wildCombat(species: WildSpecies, level: number) {
   const { base, hpPerLevel, defenseStep } = WILD_SPECIES[species];
   const d = effectiveLevel(level) - 1;
   const hp = base.hp + hpPerLevel * d;
-  const half = Math.floor(d / 2);
+  const half = Math.floor(d / attackAndSpeedLevelStep);
   return { hp, maxHp: hp, attack: base.attack + half,
     defense: base.defense + Math.floor(d / defenseStep), speed: base.speed + half };
 }

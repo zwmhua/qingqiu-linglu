@@ -7,13 +7,13 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   return nextResolve(specifier, context);
 } });
 const { Battle } = await import('../assets/battle/scripts/Battle.ts');
-const { CONFIG } = await import('../assets/battle/scripts/config.ts');
+const { BABY_CONFIG } = await import('../assets/battle/logic/baby.ts');
 
 test('each encountered frog gets an independent 5% baby roll', () => {
   const values = [0, 0.05, 0.049999];
   let rolls = 0;
   const battle = new Battle(() => 0.5, 3, 0, undefined, () => values[rolls++]);
-  assert.equal(CONFIG.baby.encounterRate, 0.05);
+  assert.equal(BABY_CONFIG.encounterRate, 0.05);
   assert.equal(rolls, 3);
   assert.deepEqual(battle.enemies.map(enemy => [enemy.name, enemy.level, enemy.isBaby]), [
     ['汀蛙宝宝', 0, true], ['野外汀蛙', 1, false], ['汀蛙宝宝', 0, true],
