@@ -26,6 +26,8 @@ export class Node {
   setAnchorPoint() {}
   setPosition() {}
   setScale() {}
+  circle() {}
+  stroke() {}
   convertToNodeSpaceAR(p) { return p; }
   on(event, callback) { this.handlers[event] = callback; }
   destroy() { this.destroyed = true; }
@@ -38,8 +40,9 @@ export const assetManager = { loadBundle(name, cb) { globalThis.loadedBundle = n
 export class Vec3 { constructor(x, y) { this.x = x; this.y = y; } }
 export class Color {}
 export class SpriteFrame {}
-export const BlockInputEvents = 0, EventTouch = 0, Graphics = 0, Label = 0, Mask = 0,
-RichText = 0, Sprite = { SizeMode: { CUSTOM: 1 } }, tween = 0, Tween = 0, UIOpacity = 0, UITransform = 0;`;
+export const BlockInputEvents = 0, EventTouch = 0, Graphics = 0, Label = { HorizontalAlign: { CENTER: 1 } }, Mask = 0,
+UIOpacity = 0,
+RichText = 0, Sprite = { SizeMode: { CUSTOM: 1 } }, tween = 0, Tween = 0, UITransform = 0;`;
 registerHooks({
   resolve(s, c, next) {
     if (s === 'cc' || s === 'cc/env') return { url: `mock:${s}`, shortCircuit: true };
@@ -60,7 +63,7 @@ const { SessionProgress } = await import('../assets/battle/logic/session-progres
 const { initialHero, awardExperience, adjustPotential } = await import('../assets/battle/logic/hero-progress.ts');
 const { petProgress } = await import('../assets/battle/logic/roster.ts');
 const { loadSessionProgress, saveProgress } = await import('../assets/battle/logic/local-progress.ts');
-const { OUTSKIRTS, TOWN } = await import('../assets/battle/logic/exploration.ts');
+const { OUTSKIRTS, TOWN, TOWN_PLACES } = await import('../assets/battle/logic/exploration.ts');
 
 test('real view routes town without Battle; retry and redraw keep the same progress', () => {
   const v = new BattleView();
@@ -76,10 +79,10 @@ test('real view routes town without Battle; retry and redraw keep the same progr
   assert.equal(v.town.error, '');
   assert.equal(v.progress, session);
   assert.equal(townDisk.raw, before);
-  v.town.movement.select({ x: 850, y: 500 });
+  assert.ok(v.town.movement.select({ x: 850, y: TOWN.spawn.y }));
   v.stopPotentialRepeat({ type: 'blur' });
   assert.equal(v.town.movement.target, undefined);
-  v.town.movement.select({ x: 850, y: 500 });
+  assert.ok(v.town.movement.select({ x: 850, y: TOWN.spawn.y }));
   v.onDisable();
   v.update(30);
   assert.equal(v.town.movement.target, undefined);
@@ -143,15 +146,29 @@ test('outskirts loading is atomic, ignores stale callbacks, and round trips with
   townLoad(null, bundle);
   const townFrame = {};
   finish(null, townFrame);
-  view.draw(null, () => false);
+  const places = [];
+  view.draw(null, () => false, place => places.push(place.id));
   const map = view.root.children[0].children[0];
-  const touch = (id, x) => ({ getID: () => id, getUILocation: () => ({ x: x - 667, y: -125 }) });
+  const touch = (id, x, y = 500) => ({
+    getID: () => id,
+    getUILocation: () => ({ x: x - 667 - view.origin.x, y: 375 + view.origin.y - y }),
+  });
   map.handlers.start(touch(1, 800));
   map.handlers.start(touch(2, 850));
   map.handlers.end(touch(2, 850));
   assert.equal(view.movement.target, undefined);
   map.handlers.end(touch(1, 800));
   assert.deepEqual(view.movement.target, { x: 800, y: 500 });
+  assert.equal(view.ripple.active, true);
+  view.update(0.5);
+  assert.equal(view.ripple.active, false);
+  for (const place of TOWN_PLACES) {
+    const event = touch(4, place.x, place.y);
+    map.handlers.start(event);
+    map.handlers.end(event);
+    assert.equal(view.movement.target, undefined);
+  }
+  assert.deepEqual(places, ['bag', 'pet', 'fuse', 'notice', 'exit']);
   map.handlers.start(touch(3, 850));
   map.handlers.cancel(touch(3, 850));
   map.handlers.end(touch(3, 850));
@@ -171,6 +188,13 @@ test('outskirts loading is atomic, ignores stale callbacks, and round trips with
   assert.equal(view.movement.target, undefined);
   v.detailsOpen = null;
   assert.ok(view.movement.select({ x: 800, y: 500 }));
+  let activate;
+  view.draw = (_hero, _blocked, onPlace) => { activate = onPlace; };
+  v.renderTown();
+  for (const place of TOWN_PLACES.filter(p => ['bag', 'fuse', 'notice'].includes(p.id))) {
+    activate(place);
+    assert.equal(view.message, `${place.name}·未开放`);
+  }
   view.load('outskirts');
   assert.equal(view.movement.target, undefined);
   assert.equal(loadedBundle, 'outskirts');

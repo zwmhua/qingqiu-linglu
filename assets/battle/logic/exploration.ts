@@ -10,11 +10,33 @@ type WalkArea = { spawn: TownPoint; regions: readonly ConvexRegion[] };
 export type Region = 'town' | 'outskirts';
 
 export const TOWN = {
-  speed: 180, tolerance: 0.01, spawn: { x: 667, y: 500 },
-  // Canvas coordinates, clockwise: clear paving between the stalls and ornaments.
-  vertices: [{ x: 490, y: 310 }, { x: 900, y: 310 }, { x: 1090, y: 445 },
-    { x: 970, y: 620 }, { x: 450, y: 620 }, { x: 390, y: 450 }],
+  speed: 180, tolerance: 0.01, spawn: { x: 690, y: 443 },
+  vertices: [{ x: 625, y: 365 }, { x: 970, y: 365 }, { x: 995, y: 490 },
+    { x: 745, y: 555 }, { x: 599, y: 518 }],
 };
+
+// Clockwise polygons in image coordinates, from the plaza to each paved street.
+const townStreets: ConvexRegion[] = [
+  [{ x: 321, y: 463 }, { x: 625, y: 370 }, { x: 651, y: 511 }, { x: 565, y: 536 }],
+  [{ x: 622, y: 530 }, { x: 780, y: 522 }, { x: 743, y: 594 }, { x: 681, y: 701 },
+    { x: 576, y: 749 }, { x: 514, y: 706 }],
+  [{ x: 535, y: 674 }, { x: 625, y: 726 }, { x: 416, y: 824 }, { x: 199, y: 854 }, { x: 281, y: 788 }],
+  [{ x: 913, y: 365 }, { x: 1049, y: 312 }, { x: 1267, y: 253 }, { x: 1310, y: 307 },
+    { x: 1173, y: 351 }, { x: 988, y: 401 }],
+  [{ x: 1225, y: 273 }, { x: 1495, y: 144 }, { x: 1530, y: 164 },
+    { x: 1471, y: 235 }, { x: 1296, y: 314 }],
+  [{ x: 978, y: 460 }, { x: 1135, y: 516 }, { x: 1144, y: 573 }, { x: 1088, y: 612 },
+    { x: 974, y: 542 }, { x: 932, y: 498 }],
+];
+
+export const TOWN_PLACES = [
+  { id: 'bag', name: '杂货铺', x: 340, y: 305 },
+  { id: 'pet', name: '灵兽栏', x: 320, y: 613 },
+  { id: 'fuse', name: '丹炉台', x: 1214, y: 409 },
+  { id: 'notice', name: '告示牌', x: 882, y: 577 },
+  { id: 'exit', name: '出城石门', x: 1485, y: 160 },
+] as const;
+export type TownPlace = typeof TOWN_PLACES[number];
 
 export const OUTSKIRTS = {
   width: 3344 * 750 / 941, height: 750, spawn: { x: 540, y: 375 },
@@ -29,9 +51,9 @@ export const OUTSKIRTS = {
     baby: BABY_CONFIG, mutation: MUTATION_CONFIG },
 };
 
-const townArea = { spawn: TOWN.spawn, regions: [TOWN.vertices] };
+const townArea = { spawn: TOWN.spawn, regions: [TOWN.vertices, ...townStreets] };
 export const MAPS = {
-  town: { name: '城里', texture: 'map_qingqiu_town', width: 2048, height: 1152, area: townArea },
+  town: { name: '城里', texture: 'town_qingqiu_streets', width: 1672, height: 941, area: townArea },
   outskirts: { name: '野外', texture: 'map_qingqiu_outskirts_wide', ...OUTSKIRTS, area: OUTSKIRTS },
 };
 

@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
 registerHooks({ resolve(s, c, next) { return next(s.startsWith('.') && !s.endsWith('.ts') ? `${s}.ts` : s, c); } });
-const { TownMovement, TOWN, walkable } = await import('../assets/battle/logic/exploration.ts');
+const { TownMovement, TOWN, MAPS, TOWN_PLACES, cameraOrigin, walkable } =
+  await import('../assets/battle/logic/exploration.ts');
 
 test('convex plaza includes spawn and edges with a world-unit tolerance', () => {
   assert.ok(walkable(TOWN.spawn));
@@ -32,12 +33,31 @@ test('180 units per second, partition invariance, replacement and exact arrival'
 
 test('invalid click and pause discard the old target; resume never catches up', () => {
   const move = new TownMovement();
-  move.select({ x: 850, y: 500 });
+  assert.ok(move.select({ x: 850, y: TOWN.spawn.y }));
   assert.equal(move.select({ x: 0, y: 0 }), false);
   move.update(10);
   assert.deepEqual(move.position, TOWN.spawn);
-  move.select({ x: 850, y: 500 });
+  assert.ok(move.select({ x: 850, y: TOWN.spawn.y }));
   move.stop();
   move.update(100);
   assert.deepEqual(move.position, TOWN.spawn);
+});
+
+test('new town has a scrollable street network and five distinct map entrances', () => {
+  const map = MAPS.town;
+  assert.deepEqual([map.texture, map.width, map.height], ['town_qingqiu_streets', 1672, 941]);
+  assert.deepEqual(TOWN_PLACES.map(place => place.id), ['bag', 'pet', 'fuse', 'notice', 'exit']);
+  for (const [x, y] of [[690, 443], [632, 590], [1120, 306], [1460, 208], [385, 754]]) {
+    assert.equal(walkable({ x, y }), true, `street ${x},${y}`);
+  }
+  for (const [x, y] of [[890, 194], [1210, 808], [481, 590], [748, 298], [878, 590]]) {
+    assert.equal(walkable({ x, y }), false, `obstacle ${x},${y}`);
+  }
+  const move = new TownMovement();
+  const origin = cameraOrigin(move.position, map, { width: 1334, height: 750 });
+  assert.ok(move.select({ x: 840, y: 460 }));
+  move.update(2);
+  assert.deepEqual(move.position, { x: 840, y: 460 });
+  const scrolled = cameraOrigin(move.position, map, { width: 1334, height: 750 });
+  assert.ok(scrolled.x > origin.x && scrolled.y > origin.y);
 });

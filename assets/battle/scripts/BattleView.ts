@@ -1298,19 +1298,33 @@ export class BattleView extends Component {
     const overlay = new Node('town-ui');
     this.node.addChild(overlay);
     this.layer = overlay;
-    town.draw(this.heroArt, () => !this.enabledInHierarchy || !!this.detailsOpen || this.rosterOpen || this.progressReadFailed);
+    const openPets = () => {
+      this.rosterOpen = true;
+      this.openPetPanel(this.progress.selectedPetId);
+    };
+    const travel = () => { town.load(town.destination); this.render(); };
+    town.draw(this.heroArt, () => !this.enabledInHierarchy || !!this.detailsOpen || this.rosterOpen || this.progressReadFailed,
+      place => {
+        if (place.id === 'pet') openPets();
+        else if (place.id === 'exit') travel();
+        else {
+          town.error = `${place.name}·未开放`;
+          this.render();
+        }
+      });
     this.rect(20, 18, 470, 52, '#203D36', '', 10, undefined, 220).addComponent(BlockInputEvents);
     this.text(town.message || this.progressError || (town.region === 'town' ? '城里' : '野外'), 30, 24, 24);
     if (town.canRetry) this.button('重试', 540, 335, 250, 60, !town.loading, () => { town.load(); this.render(); });
     if (!town.frame || this.progressReadFailed) return;
-    ['人物', '宠物', '背包·未开放', '合宠·未开放', town.region === 'town' ? '出城' : '回城'].forEach((name, i) => {
+    const entries = town.region === 'town' ? ['人物'] : ['人物', '宠物', '背包·未开放', '合宠·未开放', '回城'];
+    entries.forEach((name, i) => {
       const enabled = !town.loading && (i < 2 || i === 4);
       this.button(name, 444 + i * 172, 678, 164, 56, enabled, () => {
         if (!this.enabledInHierarchy || town.loading) return;
         town.stop();
         if (i === 0) this.openHeroPanel();
-        else if (i === 1) { this.rosterOpen = true; this.openPetPanel(this.progress.selectedPetId); }
-        else { town.load(town.destination); this.render(); }
+        else if (i === 1) openPets();
+        else travel();
       }).addComponent(BlockInputEvents);
     });
     if (this.rosterOpen) this.renderRosterList();

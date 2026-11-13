@@ -1,5 +1,5 @@
-import { assetManager, EventTouch, Mask, Node, Sprite, SpriteFrame, UITransform, Vec3 } from 'cc';
-import { cameraOrigin, MAPS, Region, TownMovement, worldPoint } from '../logic/exploration';
+import { assetManager, Color, EventTouch, Graphics, Label, Mask, Node, Sprite, SpriteFrame, UIOpacity, UITransform, Vec3 } from 'cc';
+import { cameraOrigin, MAPS, Region, TOWN_PLACES, TownMovement, TownPlace, worldPoint } from '../logic/exploration';
 import { CONFIG } from './config';
 
 export class TownView {
@@ -20,6 +20,9 @@ export class TownView {
   private touch?: number;
   private disposed = false;
   private elapsed = 0;
+  private facing = 1;
+  private ripple?: Node;
+  private rippleTime = 0;
   constructor(parent: Node, private changed: () => void) {
     parent.addChild(this.root);
     this.root.addComponent(UITransform).setContentSize(CONFIG.width, CONFIG.height);
@@ -49,6 +52,8 @@ export class TownView {
           child.destroy();
         }
         this.actor = undefined;
+        this.ripple = undefined;
+        this.facing = 1;
         this.region = region;
         this.frame = frame;
         this.movement = new TownMovement(MAPS[region].area);
@@ -61,7 +66,7 @@ export class TownView {
       else bundle.load(`textures/${MAPS[region].texture}/spriteFrame`, SpriteFrame, complete);
     });
   }
-  draw(hero: SpriteFrame | null, blocked: () => boolean): void {
+  draw(hero: SpriteFrame | null, blocked: () => boolean, activatePlace: (place: TownPlace) => void): void {
     if (!this.frame || this.actor) return;
     const sprite = (name: string, frame: SpriteFrame | null, w: number, h: number) => {
       const node = new Node(name);
@@ -72,10 +77,8 @@ export class TownView {
       image.spriteFrame = frame;
       return node;
     };
-    const config = MAPS[this.region];
-    const scale = this.region === 'town' ? Math.min(CONFIG.width / config.width, CONFIG.height / config.height) : 1;
     const size = this.size;
-    const map = sprite('town-map', this.frame, config.width * scale, config.height * scale);
+    const map = sprite('town-map', this.frame, size.width, size.height);
     map.setPosition(size.width / 2, -size.height / 2);
     const movement = this.movement;
     const unavailable = () => this.loading || this.disposed || movement !== this.movement || blocked();
@@ -89,22 +92,80 @@ export class TownView {
       if (unavailable()) return this.stop();
       const p = e.getUILocation();
       const local = this.root.getComponent(UITransform)!.convertToNodeSpaceAR(new Vec3(p.x, p.y));
-      this.error = this.movement.select(worldPoint(local, this.origin, CONFIG)) ? '' : '不能直达';
+      const point = worldPoint(local, this.origin, CONFIG);
+      if (this.region === 'town') {
+        this.showRipple(point.x, point.y);
+        const place = TOWN_PLACES.find(p => Math.abs(point.x - p.x) <= 74 && Math.abs(point.y - p.y) <= 42);
+        if (place) {
+          this.stop();
+          activatePlace(place);
+          return;
+        }
+      }
+      this.error = this.movement.select(point) ? '' : '不能直达';
       this.changed();
     });
-    this.actor = sprite('town-hero', hero, hero ? 140 * hero.rect.width / hero.rect.height : 100, 140);
+    const height = this.region === 'town' ? 96 : 140;
+    this.actor = sprite('town-hero', hero, hero ? height * hero.rect.width / hero.rect.height : height * 0.7, height);
     this.actor.getComponent(UITransform)!.setAnchorPoint(0.5, 0);
+    if (this.region === 'town') this.drawPlaces();
     this.update(0);
   }
-  private get size() { return this.region === 'town' ? CONFIG : MAPS.outskirts; }
+  private drawPlaces(): void {
+    for (const place of TOWN_PLACES) {
+      const node = new Node(place.id);
+      this.world.addChild(node);
+      node.setPosition(place.x, -place.y);
+      const label = node.addComponent(Label);
+      label.string = place.name;
+      label.fontSize = 23;
+      label.color = new Color(255, 245, 209);
+      label.enableOutline = true;
+      label.outlineColor = new Color(37, 62, 44);
+      label.outlineWidth = 3;
+    }
+  }
+  private showRipple(x: number, y: number): void {
+    if (!this.ripple) {
+      this.ripple = new Node('town-ripple');
+      this.world.addChild(this.ripple);
+      const ring = this.ripple.addComponent(Graphics);
+      ring.lineWidth = 3;
+      ring.strokeColor = new Color(255, 246, 204);
+      ring.circle(0, 0, 12);
+      ring.stroke();
+      this.ripple.addComponent(UIOpacity);
+    }
+    this.ripple.setPosition(x, -y);
+    this.ripple.setScale(0.8, 0.8, 1);
+    this.ripple.getComponent(UIOpacity)!.opacity = 255;
+    this.rippleTime = 0;
+    this.ripple.active = true;
+  }
+  private get size() { return MAPS[this.region]; }
   update(dt: number): void {
+    const beforeX = this.movement.position.x;
     this.movement.update(dt);
     this.elapsed += dt;
     const { x, y } = this.movement.position;
     this.origin = cameraOrigin(this.movement.position, this.size, CONFIG);
     this.world.setPosition(-CONFIG.width / 2 - this.origin.x, CONFIG.height / 2 + this.origin.y);
-    this.actor?.setPosition(x, -y - 3);
-    this.actor?.setScale(1, 1 + (this.movement.target ? Math.sin(this.elapsed * 12) * 0.015 : 0), 1);
+    if (this.region === 'town') {
+      if (x !== beforeX) this.facing = x < beforeX ? -1 : 1;
+      const bob = this.movement.target ? Math.abs(Math.sin(this.elapsed * 14)) * 4 : 0;
+      this.actor?.setPosition(x, -y - 3 + bob);
+      this.actor?.setScale(this.facing, 1, 1);
+    } else {
+      this.actor?.setPosition(x, -y - 3);
+      this.actor?.setScale(1, 1 + (this.movement.target ? Math.sin(this.elapsed * 12) * 0.015 : 0), 1);
+    }
+    if (this.ripple?.active) {
+      const progress = Math.min(1, (this.rippleTime += dt) / 0.5);
+      const scale = 0.8 + progress * 0.9;
+      this.ripple.setScale(scale, scale, 1);
+      this.ripple.getComponent(UIOpacity)!.opacity = Math.round((1 - progress) * 255);
+      this.ripple.active = progress < 1;
+    }
   }
   dispose(): void {
     this.disposed = true;
