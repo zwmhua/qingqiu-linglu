@@ -1,0 +1,14 @@
+{
+  "ver": "1.2.0",
+  "importer": "directory",
+  "imported": true,
+  "uuid": "722a0d13-e37e-4f06-a3dc-3f075582e3ed",
+  "files": [],
+  "subMetas": {},
+  "userData": {
+    "isBundle": true,
+    "bundleConfigID": "battle",
+    "bundleName": "town",
+    "priority": 1
+  }
+}

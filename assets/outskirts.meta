@@ -1,0 +1,14 @@
+{
+  "ver": "1.2.0",
+  "importer": "directory",
+  "imported": true,
+  "uuid": "85633528-390c-4a6c-8831-641108a1bd34",
+  "files": [],
+  "subMetas": {},
+  "userData": {
+    "isBundle": true,
+    "bundleConfigID": "battle",
+    "bundleName": "outskirts",
+    "priority": 1
+  }
+}

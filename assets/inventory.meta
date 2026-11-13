@@ -1,0 +1,14 @@
+{
+  "ver": "1.2.0",
+  "importer": "directory",
+  "imported": true,
+  "uuid": "5c14fab8-8603-42e8-b8ba-dcf1f4f66a00",
+  "files": [],
+  "subMetas": {},
+  "userData": {
+    "isBundle": true,
+    "bundleConfigID": "battle",
+    "bundleName": "inventory",
+    "priority": 1
+  }
+}
