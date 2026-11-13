@@ -30,7 +30,10 @@ export class Node {
   on(event, callback) { this.handlers[event] = callback; }
   destroy() { this.destroyed = true; }
 }
-export const game = { on() {}, off() {} }, Game = { EVENT_HIDE: 'hide' };
+export const game = {
+  on(_event, callback) { globalThis.townHide = callback; },
+  off() { globalThis.townHide = undefined; },
+}, Game = { EVENT_HIDE: 'hide' };
 export const assetManager = { loadBundle(name, cb) { globalThis.loadedBundle = name; globalThis.townLoad = cb; } };
 export class Vec3 { constructor(x, y) { this.x = x; this.y = y; } }
 export class Color {}
@@ -149,6 +152,25 @@ test('outskirts loading is atomic, ignores stale callbacks, and round trips with
   assert.equal(view.movement.target, undefined);
   map.handlers.end(touch(1, 800));
   assert.deepEqual(view.movement.target, { x: 800, y: 500 });
+  map.handlers.start(touch(3, 850));
+  map.handlers.cancel(touch(3, 850));
+  map.handlers.end(touch(3, 850));
+  assert.equal(view.movement.target, undefined);
+  v.onEnable();
+  view.movement.select({ x: 800, y: 500 });
+  townHide();
+  assert.equal(view.movement.target, undefined);
+  v.onDisable();
+  assert.equal(townHide, undefined);
+  v.enabledInHierarchy = true;
+  v.detailsOpen = 'hero';
+  v.rect = v.button = () => ({ addComponent() {} });
+  v.text = v.renderHeroPanel = () => {};
+  view.movement.select({ x: 800, y: 500 });
+  v.renderTown();
+  assert.equal(view.movement.target, undefined);
+  v.detailsOpen = null;
+  assert.ok(view.movement.select({ x: 800, y: 500 }));
   view.load('outskirts');
   assert.equal(view.movement.target, undefined);
   assert.equal(loadedBundle, 'outskirts');
