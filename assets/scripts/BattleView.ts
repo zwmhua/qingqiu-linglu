@@ -1,9 +1,9 @@
-import { _decorator, BlockInputEvents, Color, Component, EventTouch, Graphics, Label, Mask, Node, RichText, Sprite, SpriteFrame, tween, Tween, UIOpacity, UITransform, Vec3, view } from 'cc';
+import { _decorator, BlockInputEvents, Color, Component, EventTouch, Graphics, Label, Mask, Node, ResolutionPolicy, RichText, Sprite, SpriteFrame, sys, tween, Tween, UIOpacity, UITransform, Vec3, view } from 'cc';
 import { Battle, BattleEvent, Unit } from './Battle';
 import { COMMAND_ICON_SIZE, COMMAND_LAYOUT, CONFIG } from './config';
 import { targetCommand, toggleTarget } from '../logic/targeting';
 import { AutoCommands } from '../logic/auto';
-import { PREVIEW } from 'cc/env';
+import { PREVIEW, WECHAT } from 'cc/env';
 import { APTITUDE_KEYS, aptitudeBarRatio } from '../logic/aptitude';
 import { WILD_SPECIES } from '../logic/wild-encounter';
 import { BASE_STAT_KEYS } from '../logic/base-stats';
@@ -14,6 +14,7 @@ import { petPanel, petPanelPreview } from '../logic/pet-panel';
 import type { HeroProgress, LevelProgress } from '../logic/hero-progress';
 import { HERO_PROGRESSION, adjustPotential, heroPanel, heroPanelPreview, initialHero, levelUpExp } from '../logic/hero-progress';
 import { HoldRepeat } from '../logic/hold-repeat';
+import { browserParams, wechatStorage } from '../logic/platform';
 import { readProgress, resetProgress, saveProgress } from '../logic/local-progress';
 import type { TargetMode } from '../logic/targeting';
 
@@ -21,6 +22,23 @@ const { ccclass, property } = _decorator;
 const POTENTIAL_RELEASE_EVENTS = ['pointerup', 'pointercancel', 'pointerout', 'mouseup', 'touchend', 'touchcancel', 'blur'] as const;
 const C = (hex: string) => new Color(hex);
 const COMMAND_NAMES = ['攻击', '防御', '保护', '召唤', '抓取', '道具', '逃跑', '灵术', '撤退'] as const;
+declare const wx: Parameters<typeof wechatStorage>[0] & {
+  showModal(options: { content: string; showCancel: boolean; success?: (result: { confirm: boolean }) => void;
+    complete?: () => void }): void;
+  onTouchEnd(callback: () => void): void;
+  offTouchEnd(callback: () => void): void;
+  onTouchCancel(callback: () => void): void;
+  offTouchCancel(callback: () => void): void;
+  onHide(callback: () => void): void;
+  offHide(callback: () => void): void;
+};
+const browserWindow = () => sys.isBrowser && typeof window !== 'undefined' ? window : undefined;
+const queryParams = () => browserParams(sys.isBrowser, typeof window === 'undefined' ? undefined : window);
+const progressStorage = () => WECHAT ? wechatStorage(wx) : browserWindow()?.localStorage ?? sys.localStorage;
+const showNotice = (content: string) => {
+  if (WECHAT) wx.showModal({ content, showCancel: false });
+  else browserWindow()?.alert?.(content);
+};
 
 @ccclass('BattleView')
 export class BattleView extends Component {
@@ -43,7 +61,7 @@ export class BattleView extends Component {
   private battle!: Battle;
   private progressError = '';
   private progressReadFailed = false;
-  private layoutTest = new URLSearchParams(window.location.search).get('layout') === '10v10';
+  private layoutTest = queryParams().get('layout') === '10v10';
   private choosingTarget: TargetMode | null = null;
   private lastShownSecond = -1;
   private layer!: Node;
@@ -55,6 +73,7 @@ export class BattleView extends Component {
   private basePositions = new Map<string, Vec3>();
   private ringOpacities = new Map<string, UIOpacity>();
   private confirmingTarget = false;
+  private confirmingReset = false;
   private displayedHp: Map<string, number> | null = null;
   private animationQueue: BattleEvent[] = [];
   private displayedDeployment: Map<string, boolean> | null = null;
@@ -79,13 +98,13 @@ export class BattleView extends Component {
   private auto = new AutoCommands();
 
   private get usesTestProgress(): boolean {
-    const params = new URLSearchParams(window.location.search);
+    const params = queryParams();
     return !this.layoutTest && !(PREVIEW && (params.get('mutationSample') === '1' || params.get('babySample') === '1'));
   }
 
   private createBattle(previous?: RosterState, rage = 0,
     hero = initialHero(), selectedPetId?: string): Battle {
-    const params = new URLSearchParams(window.location.search);
+    const params = queryParams();
     if (PREVIEW && params.get('mutationSample') === '1')
       return new Battle(previous ? () => 0.9 : () => 0, 1, rage, previous, () => 1,
         Math.random, Math.random, Math.random, () => 0, undefined, { hero, selectedPetId });
@@ -97,18 +116,28 @@ export class BattleView extends Component {
 
   onEnable(): void {
     // The canvas survives the redraw that replaces the pressed button.
-    for (const event of POTENTIAL_RELEASE_EVENTS) window.addEventListener(event, this.stopPotentialRepeat, true);
+    if (WECHAT) {
+      wx.onTouchEnd(this.stopPotentialRepeat);
+      wx.onTouchCancel(this.stopPotentialRepeat);
+      wx.onHide(this.stopPotentialRepeat);
+    } else for (const event of POTENTIAL_RELEASE_EVENTS)
+      browserWindow()?.addEventListener?.(event, this.stopPotentialRepeat, true);
   }
 
   onDisable(): void {
-    for (const event of POTENTIAL_RELEASE_EVENTS) window.removeEventListener(event, this.stopPotentialRepeat, true);
+    if (WECHAT) {
+      wx.offTouchEnd(this.stopPotentialRepeat);
+      wx.offTouchCancel(this.stopPotentialRepeat);
+      wx.offHide(this.stopPotentialRepeat);
+    } else for (const event of POTENTIAL_RELEASE_EVENTS)
+      browserWindow()?.removeEventListener?.(event, this.stopPotentialRepeat, true);
     this.stopPotentialRepeat();
   }
 
   start(): void {
     let saved: ReturnType<typeof readProgress> = null;
     if (this.usesTestProgress) {
-      try { saved = readProgress(window.localStorage, CONFIG.maxCarriedPets); }
+      try { saved = readProgress(progressStorage(), CONFIG.maxCarriedPets); }
       catch {
         this.progressReadFailed = true;
         this.progressError = '本地进度读取失败，可使用测试重置。';
@@ -117,14 +146,14 @@ export class BattleView extends Component {
     this.battle = this.createBattle(saved ? { entries: saved.pets, nextCapturedId: saved.nextCapturedId } : undefined,
       0, saved?.hero, saved?.selectedPetId);
     if (!saved) this.persistProgress();
-    view.setDesignResolutionSize(CONFIG.width, CONFIG.height, 4);
+    view.setDesignResolutionSize(CONFIG.width, CONFIG.height, WECHAT ? ResolutionPolicy.SHOW_ALL : ResolutionPolicy.FIXED_WIDTH);
     this.render();
   }
 
   private persistProgress(): void {
     if (!this.usesTestProgress || this.progressReadFailed) return;
     try {
-      saveProgress(window.localStorage, this.battle);
+      saveProgress(progressStorage(), this.battle);
       this.progressError = '';
     } catch {
       this.progressError = '本地进度保存失败。';
@@ -132,8 +161,18 @@ export class BattleView extends Component {
   }
 
   private resetTestProgress(): void {
-    if (this.confirmingTarget || !window.confirm('清除本游戏的测试进度并重新开始？')) return;
-    try { resetProgress(window.localStorage, true); }
+    if (this.confirmingTarget || this.confirmingReset) return;
+    const content = '清除本游戏的测试进度并重新开始？';
+    if (WECHAT) {
+      this.confirmingReset = true;
+      wx.showModal({ content, showCancel: true,
+        success: ({ confirm }) => { if (confirm) this.clearTestProgress(); },
+        complete: () => { this.confirmingReset = false; } });
+    } else if (browserWindow()?.confirm?.(content)) this.clearTestProgress();
+  }
+
+  private clearTestProgress(): void {
+    try { resetProgress(progressStorage(), true); }
     catch {
       this.progressError = '本地进度重置失败。';
       this.render();
@@ -150,7 +189,7 @@ export class BattleView extends Component {
     this.idleTime += dt;
     if (this.layoutTest) return;
     if (this.playing) { this.syncMovingUnits(); return; }
-    if (this.confirmingTarget || this.rosterOpen) return;
+    if (this.confirmingTarget || this.confirmingReset || this.rosterOpen) return;
     if (this.auto.enabled && this.battle.pending.length) { this.runAuto(); return; }
     const before = this.battle.round;
     const phase = this.battle.phase;
@@ -482,7 +521,7 @@ export class BattleView extends Component {
   }
 
   private syncMovingUnits(): void {
-    const units = [...this.unitNodes.entries()].sort((a, b) => b[1].position.y - a[1].position.y);
+    const units = Array.from(this.unitNodes).sort((a, b) => b[1].position.y - a[1].position.y);
     const firstUnitIndex = this.unitLayer.children.length - units.length;
     units.forEach(([id, node], index) => {
       const base = this.basePositions.get(id)!;
@@ -905,14 +944,14 @@ export class BattleView extends Component {
     });
     this.renderPetPointsPreview(preview, hp, mana);
     this.renderAllocation(petProgress(pet), () => open(this.petReturnPage), draft => this.battle.confirmPetAllocation(pet.id, draft,
-      next => saveProgress(window.localStorage, this.battle, undefined, next)), 'pet');
+      next => saveProgress(progressStorage(), this.battle, undefined, next)), 'pet');
   }
 
   private renderReleaseButton(pet: CarriedPet): void {
     const blocked = this.battle.petReleaseBlock(pet.id)
       ?? (!this.usesTestProgress || this.progressReadFailed ? '当前无法保存放生结果。' : undefined);
     this.rect(442, 455, 80, 36, '#82796D', '', 12, () => {
-      if (blocked) { window.alert(blocked); return; }
+      if (blocked) { showNotice(blocked); return; }
       this.releasePrompt = pet;
       this.render();
     }, blocked ? 220 : 0);
@@ -928,12 +967,12 @@ export class BattleView extends Component {
     this.button('取消', 477, 384, 170, 56, true, close);
     this.button('确认', 687, 384, 170, 56, true, () => {
       try {
-        if (this.battle.releasePet(pet.id, pets => saveProgress(window.localStorage, this.battle, undefined, undefined, pets))) {
+        if (this.battle.releasePet(pet.id, pets => saveProgress(progressStorage(), this.battle, undefined, undefined, pets))) {
           this.progressError = '';
           this.selectedPetId = this.battle.roster.entries[0].id;
         }
       } catch {
-        window.alert('本地进度保存失败。');
+        showNotice('本地进度保存失败。');
       }
       close();
     });
@@ -1146,7 +1185,7 @@ export class BattleView extends Component {
       this.text(delta(key), 450, y, 24, '#38652A', 102, 1);
     });
     this.renderAllocation(confirmed, close, draft => this.battle.confirmHeroAllocation(draft,
-      next => saveProgress(window.localStorage, this.battle, next)));
+      next => saveProgress(progressStorage(), this.battle, next)));
   }
 
   private renderAllocation(confirmed: LevelProgress, close: () => void,
