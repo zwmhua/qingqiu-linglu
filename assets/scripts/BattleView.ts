@@ -74,6 +74,7 @@ export class BattleView extends Component {
     this.potentialRepeat.stop();
   };
   private playing = false;
+  private idleTime = 0;
   private speedMultiplier = 1;
   private auto = new AutoCommands();
 
@@ -146,6 +147,7 @@ export class BattleView extends Component {
   }
 
   update(dt: number): void {
+    this.idleTime += dt;
     if (this.layoutTest) return;
     if (this.playing) { this.syncMovingUnits(); return; }
     if (this.confirmingTarget || this.rosterOpen) return;
@@ -296,7 +298,10 @@ export class BattleView extends Component {
     if (enabled && onClick) {
       hit.on(Node.EventType.TOUCH_START, () => node.setScale(0.94, 0.94, 1));
       hit.on(Node.EventType.TOUCH_CANCEL, () => node.setScale(1, 1, 1));
-      hit.on(Node.EventType.TOUCH_END, () => { node.setScale(1, 1, 1); onClick(); });
+      hit.on(Node.EventType.TOUCH_END, () => {
+        node.setScale(1, 1, 1);
+        if (!this.playing) onClick();
+      });
     }
   }
 
@@ -313,7 +318,7 @@ export class BattleView extends Component {
       title.string = this.auto.enabled ? '取消' : '自动';
     };
     const click = () => {
-      if (this.confirmingTarget) return;
+      if (this.confirmingTarget || (this.playing && !this.auto.enabled)) return;
       this.auto.toggle();
       this.choosingTarget = null;
       this.summonOpen = false;
@@ -367,7 +372,7 @@ export class BattleView extends Component {
   }
 
   private canSelect(unit: Unit): boolean {
-    if (this.layoutTest || this.summonOpen || this.rosterOpen) return false;
+    if (this.playing || this.layoutTest || this.summonOpen || this.rosterOpen) return false;
     const actor = this.battle.pending[0];
     if (!actor || unit.hp === 0 || unit.left) return false;
     if (this.choosingTarget === 'protect') return this.battle.protectTargets(actor.id).some(u => u.id === unit.id);
@@ -421,7 +426,24 @@ export class BattleView extends Component {
     sprite.color = this.unitColor(unit);
     if (dead) sprite.grayscale = true;
     visual.addComponent(UIOpacity).opacity = dead ? 0 : 255;
+    if (!dead && !this.playing) this.idleUnit(visual, unit);
     if (!this.playing && this.canSelect(unit)) visual.on(Node.EventType.TOUCH_END, () => this.chooseTarget(unit.id));
+  }
+
+  private idleUnit(visual: Node, unit: Unit): void {
+    const a = CONFIG.animation;
+    const origin = visual.position.clone(), scale = visual.scale.clone();
+    const slot = unit.slot + (unit.side === 'enemy' ? CONFIG.positions.allyGroups.length * 2 : 0);
+    // The round timer rebuilds these nodes. Keep their idle phase continuous across redraws.
+    const phase = (this.idleTime + slot * a.idleStagger) / a.idleSeconds;
+    const sway = (node: Node, progress = 0) => {
+      const rise = (1 - Math.cos((phase + progress) * 2 * Math.PI)) / 2;
+      const breath = 1 + a.idleScale * rise;
+      node.setPosition(origin.x, origin.y + a.idleHeight * rise, origin.z);
+      node.setScale(scale.x * breath, scale.y * breath, scale.z);
+    };
+    sway(visual);
+    tween(visual).repeatForever(tween<Node>().to(a.idleSeconds, {}, { onUpdate: sway })).start();
   }
 
   private unitInfo(unit: Unit): void {
@@ -556,7 +578,7 @@ export class BattleView extends Component {
     return true;
   }
 
-  private damageNumber(id: string, damage: number): void {
+  private damageNumber(id: string, damage: number, speed: number): void {
     if (damage <= 0) return;
     const point = this.unitPoint(this.battle.units.find(unit => unit.id === id)!);
     const previous = this.layer;
@@ -569,10 +591,68 @@ export class BattleView extends Component {
     label.outlineColor = C('#36291F');
     label.outlineWidth = 2;
     const opacity = number.addComponent(UIOpacity);
-    const duration = CONFIG.animation.floatSeconds / this.speedMultiplier;
+    const duration = CONFIG.animation.floatSeconds / speed;
     tween(number).to(duration, { position: new Vec3(number.position.x,
       number.position.y + CONFIG.animation.floatDistance, 0) }).start();
     tween(opacity).to(duration, { opacity: 0 }).call(() => number.destroy()).start();
+  }
+
+  private shakeUnit(node: Node, distance: number, seconds: number): Tween<Node> {
+    const at = node.position.clone();
+    return tween(node).to(seconds / 4, { position: new Vec3(at.x + distance, at.y, at.z) })
+      .to(seconds / 2, { position: new Vec3(at.x - distance, at.y, at.z) })
+      .to(seconds / 4, { position: at });
+  }
+
+  private flashUnit(node: Node, seconds: number): void {
+    const frame = node.getComponent(Sprite)!.spriteFrame;
+    const { width, height } = node.getComponent(UITransform)!.contentSize;
+    const flash = new Node('hit-flash');
+    node.addChild(flash);
+    const transform = flash.addComponent(UITransform);
+    transform.setContentSize(width, height);
+    transform.setAnchorPoint(0.5, 0);
+    flash.addComponent(Mask).type = Mask.Type.SPRITE_STENCIL;
+    const stencil = flash.getComponent(Sprite)!;
+    stencil.sizeMode = Sprite.SizeMode.CUSTOM;
+    stencil.trim = false;
+    stencil.spriteFrame = frame;
+    const fill = new Node('flash-fill');
+    flash.addChild(fill);
+    const graphics = fill.addComponent(Graphics);
+    graphics.fillColor = Color.WHITE;
+    graphics.rect(-width / 2, 0, width, height);
+    graphics.fill();
+    tween(flash).delay(seconds).call(() => flash.destroy()).start();
+  }
+
+  private showImpact(id: string, damage: number, hp: number, dx: number, dy: number, speed: number): void {
+    this.displayedHp!.set(id, hp);
+    this.damageNumber(id, damage, speed);
+    const previous = this.layer;
+    this.markerNodes.get(id)?.destroy();
+    this.markerNodes.delete(id);
+    this.layer = this.markerLayer;
+    this.unitInfo(this.battle.units.find(unit => unit.id === id)!);
+    this.layer = previous;
+    const target = this.unitNodes.get(id);
+    if (!target || damage <= 0) return;
+    const a = CONFIG.animation;
+    const seconds = a.hitSeconds / speed;
+    const at = target.position.clone();
+    const defending = this.battle.lastCommands.get(id)?.command === 'defend';
+    if (!defending) this.flashUnit(target, a.flashSeconds / speed);
+    const reaction = defending
+      ? tween(target).to(seconds / 2, { position: new Vec3(at.x + dx * a.defendDistance, at.y + dy * a.defendDistance, at.z) })
+        .to(seconds / 2, { position: at })
+      : this.shakeUnit(target, a.hitDistance, seconds);
+    if (hp === 0) reaction.call(() => {
+      target.getComponent(Sprite)!.grayscale = true;
+      const shadow = this.shadowNodes.get(id);
+      if (shadow) shadow.active = false;
+      tween(target.getComponent(UIOpacity)!).to(a.fadeSeconds / speed, { opacity: 0 }).start();
+    });
+    reaction.start();
   }
 
   private playNextAttack(): void {
@@ -593,52 +673,45 @@ export class BattleView extends Component {
       this.playNextAttack();
       return;
     }
-    if (event.kind !== 'attack') {
-      if (event.kind === 'captureSuccess') this.displayedLeft!.set(event.targetId, true);
-      this.render();
-      this.playNextAttack();
-      return;
-    }
-    const actor = this.unitNodes.get(event.actorId)!;
-    const target = this.unitNodes.get(event.targetId)!;
-    const actorPoint = this.unitPoint(this.battle.units.find(unit => unit.id === event.actorId)!);
-    const targetPoint = this.unitPoint(this.battle.units.find(unit => unit.id === event.targetId)!);
-    const length = Math.hypot(targetPoint.x - actorPoint.x, targetPoint.y - actorPoint.y);
-    const dx = (targetPoint.x - actorPoint.x) / length;
-    const dy = (targetPoint.y - actorPoint.y) / length;
     const a = CONFIG.animation;
     const speed = this.speedMultiplier;
+    const target = this.unitNodes.get(event.targetId);
+    const next = () => { this.render(); this.playNextAttack(); };
+    if (event.kind !== 'attack') {
+      const captured = event.kind === 'captureSuccess';
+      const finish = () => {
+        if (captured) this.displayedLeft!.set(event.targetId, true);
+        next();
+      };
+      if (!target) { finish(); return; }
+      if (captured) {
+        const duration = a.captureSeconds / speed;
+        const scale = target.scale.clone().multiplyScalar(a.captureScale);
+        const shadow = this.shadowNodes.get(event.targetId), marker = this.markerNodes.get(event.targetId);
+        if (shadow) shadow.active = false;
+        if (marker) marker.active = false;
+        tween(target.getComponent(UIOpacity)!).to(duration, { opacity: 0 }).start();
+        tween(target).to(duration, { scale }, { easing: 'quadIn' }).call(finish).start();
+      } else this.shakeUnit(target, a.captureFailDistance, a.captureFailSeconds / speed).call(finish).start();
+      return;
+    }
+    const actor = this.unitNodes.get(event.actorId);
+    const direction = actor && target ? target.position.clone().subtract(actor.position).normalize() : Vec3.ZERO;
+    const hit = () => {
+      const { x, y } = direction;
+      this.showImpact(event.targetId, event.targetDamage, event.targetAfter, x, y, speed);
+      if (event.guardId && event.guardAfter !== undefined)
+        this.showImpact(event.guardId, event.guardDamage ?? 0, event.guardAfter, x, y, speed);
+    };
+    if (!actor || !target) { hit(); next(); return; }
     const origin = actor.position.clone();
-    const arrival = new Vec3(origin.x + targetPoint.x - actorPoint.x - dx * a.approachDistance,
-      origin.y - (targetPoint.y - actorPoint.y - dy * a.approachDistance), 0);
-    const strike = new Vec3(arrival.x + dx * a.lungeDistance,
-      arrival.y - dy * a.lungeDistance, 0);
-    actor.setScale(dx < 0 ? Math.abs(actor.scale.x) : -Math.abs(actor.scale.x), actor.scale.y, 1);
-    tween(actor).to(a.runSeconds / speed, { position: arrival }).call(() => {
-      const sprite = target.getComponent(Sprite)!;
-      sprite.color = C('#FF7777');
-      const targetOrigin = target.position.clone();
-      tween(target).to(a.strikeSeconds / (2 * speed), { position: new Vec3(
-        targetOrigin.x + dx * a.knockbackDistance,
-        targetOrigin.y - dy * a.knockbackDistance, 0) })
-        .to(a.strikeSeconds / (2 * speed), { position: targetOrigin }).start();
-      this.damageNumber(event.targetId, event.targetDamage);
-      if (event.guardId && event.guardDamage) this.damageNumber(event.guardId, event.guardDamage);
-    }).to(a.strikeSeconds / (2 * speed), { position: strike })
-      .to(a.strikeSeconds / (2 * speed), { position: arrival }).call(() => {
-        target.getComponent(Sprite)!.color = this.unitColor(this.battle.units.find(unit => unit.id === event.targetId)!);
-        this.displayedHp!.set(event.targetId, event.targetAfter);
-        if (event.guardId && event.guardAfter !== undefined) this.displayedHp!.set(event.guardId, event.guardAfter);
-        for (const id of [event.targetId, event.guardId]) {
-          if (!id || this.displayedHp!.get(id) !== 0) continue;
-          const fallen = this.unitNodes.get(id);
-          if (!fallen) continue;
-          fallen.getComponent(Sprite)!.grayscale = true;
-          tween(fallen.getComponent(UIOpacity)!).to(a.fadeSeconds / speed, { opacity: 0 }).start();
-        }
-      }).to(a.runSeconds / speed, { position: origin })
-      .delay(Math.max(0, a.floatSeconds - a.strikeSeconds - a.runSeconds) / speed)
-      .call(() => { this.render(); this.playNextAttack(); }).start();
+    const strike = origin.clone().add(direction.clone().multiplyScalar(a.attackDistance));
+    const leg = a.attackSeconds / 2;
+    const fallen = event.targetAfter === 0 || event.guardAfter === 0;
+    const reaction = a.hitSeconds + (fallen ? a.fadeSeconds : 0);
+    tween(actor).to(leg / speed, { position: strike }, { easing: 'quadOut' }).call(hit)
+      .to(leg / speed, { position: origin }, { easing: 'quadOut' })
+      .delay((Math.max(leg, a.floatSeconds, reaction) - leg) / speed).call(next).start();
   }
 
   private logLines(): { text: string; result: boolean }[] {

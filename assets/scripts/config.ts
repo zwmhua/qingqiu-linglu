@@ -56,9 +56,12 @@ export const CONFIG = {
     commandTop: 185, commandStep: 74, commandHeight: 64,
   },
   animation: {
-    approachDistance: 60, runSeconds: 0.3, lungeDistance: 15, strikeSeconds: 0.1,
-    knockbackDistance: 10, floatDistance: 60, floatSeconds: 0.6,
-    fadeSeconds: 0.4, fastMultiplier: 2,
+    idleSeconds: 2.2, idleHeight: 4, idleScale: 0.02, idleStagger: 0.31,
+    attackSeconds: 0.3, attackDistance: 56,
+    hitSeconds: 0.2, hitDistance: 7, defendDistance: 4, flashSeconds: 0.08,
+    fadeSeconds: 0.4, floatDistance: 40, floatSeconds: 0.32,
+    captureSeconds: 0.35, captureScale: 0.18, captureFailSeconds: 0.18, captureFailDistance: 4,
+    fastMultiplier: 2,
     targetPadding: 20, targetConfirmSeconds: 0.16,
   },
   positions: {
