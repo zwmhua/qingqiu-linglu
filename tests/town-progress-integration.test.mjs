@@ -82,7 +82,7 @@ const { petProgress } = await import('../assets/battle/logic/roster.ts');
 const { loadSessionProgress, saveProgress } = await import('../assets/battle/logic/local-progress.ts');
 const { OUTSKIRTS, TOWN, TOWN_PLACES } = await import('../assets/battle/logic/exploration.ts');
 
-test('town and outskirts share looping run frames, a fixed foot anchor and the same stop behavior', () => {
+test('town and outskirts use Spine run downhill, frame run uphill and keep one foot baseline', () => {
   const v = new BattleView();
   v.render = () => {};
   v.start();
@@ -130,6 +130,7 @@ test('town and outskirts share looping run frames, a fixed foot anchor and the s
     assert.equal(actor.spriteFrame.rect.y, 256);
     view.stop();
     assert.equal(spine.active, true);
+    assert.deepEqual(spine.played, [0, 'idle', true]);
     assert.equal(actor.active, false);
     assert.equal(Math.sign(spine.scale[0]), -1);
     const scale = height * 250 / (256 * 697);
@@ -144,6 +145,24 @@ test('town and outskirts share looping run frames, a fixed foot anchor and the s
     view.update(0.25);
     assert.equal(actor.spriteFrame, idle);
     assert.equal(actor.position.y, -(current.y + 0.2) - 3);
+    const down = view.movement.position;
+    assert.ok(view.movement.select({ x: down.x + 40, y: down.y + 15 }));
+    view.update(0.01);
+    assert.equal(spine.active, true);
+    assert.equal(actor.active, false);
+    assert.deepEqual(spine.played, [0, 'run', true]);
+    assert.equal(Math.sign(spine.scale[0]), 1);
+    assert.ok(Math.abs(spine.timeScale - 11 / 9) < 1e-12);
+    assert.equal(spine.position.y, actor.position.y - 37 * scale);
+    view.stop();
+    assert.deepEqual(spine.played, [0, 'idle', true]);
+    const left = view.movement.position;
+    assert.ok(view.movement.select({ x: left.x - 40, y: left.y + 15 }));
+    view.update(0.01);
+    assert.deepEqual(spine.played, [0, 'run', true]);
+    assert.equal(Math.sign(spine.scale[0]), -1);
+    view.stop();
+    assert.equal(Math.sign(spine.scale[0]), -1);
   }
 });
 

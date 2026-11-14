@@ -45,9 +45,14 @@ def main(source_dir):
             ["leftElbow", "rightElbow", "leftKnee", "rightKnee"] and
             all(b.get("parent") == "root" for b in removed),
             "unexpected root-level duplicate bones")
-    timeline_names = set(data["animations"]["idle"]["bones"])
-    require(not timeline_names.intersection(b["name"] for b in removed),
-            "animation uses a duplicate name; deletion is ambiguous")
+    require({"idle", "run"} <= data["animations"].keys(),
+            "export must contain idle and run")
+    timeline_names = {name for animation in data["animations"].values()
+                      for name in animation.get("bones", {})}
+    # The run export animates leftKnee/rightKnee. The surviving knees are the
+    # only ones connected to the legs and bound to the foot slots.
+    require(timeline_names.intersection(b["name"] for b in removed) <=
+            {"leftKnee", "rightKnee"}, "ambiguous animated duplicate")
     # No descendant names refer to the removed bones; all four later copies
     # remain under their corresponding arm or leg.
     for bone in removed:
