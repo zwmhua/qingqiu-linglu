@@ -1,10 +1,10 @@
 # Stretchy 主角 Spine 测试资源
 
-在 Stretchy 导出目录中准备 `skeleton.repaired.json` 和 `images/` 下的 24 张 768×768 透明 PNG。当前原始 `skeleton.json` 有双小数点错误，须先修复为 `skeleton.repaired.json`；这两份脚本不处理该语法错误。脚本需要 Python 3 和 Pillow。以下命令在项目根目录用 PowerShell 运行：
+在 Stretchy 导出目录中准备同时含 `idle`、`run` 的 `skeleton.repaired.json` 和 `images/` 下的 24 张 768×768 透明 PNG。当前原始 `skeleton.json` 有双小数点错误，须先修复为 `skeleton.repaired.json`；这两份脚本不处理该语法错误。脚本需要 Python 3 和 Pillow。以下命令在项目根目录用 PowerShell 运行：
 
 ```powershell
-$src = 'E:\Temp\stretchy\spine'
-$out = 'E:\Temp\stretchy\spine\packed-42b' # 须为尚不存在的目录
+$src = 'E:\Temp\stretchy\spine_run'
+$out = 'E:\Temp\stretchy\spine_run\packed-42b' # 须为尚不存在的目录
 python tools/spine/convert_40_to_42b.py $src
 python tools/spine/pack_spine_atlas.py $src $out
 ```

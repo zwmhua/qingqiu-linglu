@@ -1,5 +1,5 @@
 import { assetManager, Color, EventTouch, Graphics, Label, Mask, Node, Rect, Size, sp, Sprite, SpriteFrame, Texture2D, UIOpacity, UITransform, Vec3 } from 'cc';
-import { cameraOrigin, MAPS, Region, TOWN_PLACES, TownMovement, TownPlace, worldPoint } from '../logic/exploration';
+import { cameraOrigin, MAPS, Region, TOWN, TOWN_PLACES, TownMovement, TownPlace, worldPoint } from '../logic/exploration';
 import { runFacing, type RunFacing } from './run-facing';
 import { CONFIG } from './config';
 
@@ -30,6 +30,7 @@ export class TownView {
   private loadingRun = false;
   private spineData?: sp.SkeletonData;
   private spineNode?: Node;
+  private spineAnimation?: 'idle' | 'run';
   private loadingSpine = false;
   private spineScale = 1;
   private ripple?: Node;
@@ -66,6 +67,7 @@ export class TownView {
         }
         this.actor = undefined;
         this.spineNode = undefined;
+        this.spineAnimation = undefined;
         this.ripple = undefined;
         this.region = region;
         this.frame = frame;
@@ -143,6 +145,7 @@ export class TownView {
     skeleton.setSkin('default');
     skeleton.loop = true;
     skeleton.setAnimation(0, 'idle', true);
+    this.spineAnimation = 'idle';
     this.updateHeroArt(0);
   }
   private loadSpineData(): void {
@@ -206,14 +209,23 @@ export class TownView {
     }
     this.actor.setScale(this.facing.flip, 1, 1);
     const moving = !!this.movement.target;
+    const spineRun = moving && this.facing.row === 0;
     if (this.spineNode) {
-      this.spineNode.active = !moving;
+      this.spineNode.active = !moving || spineRun;
+      const animation = spineRun ? 'run' : 'idle';
+      if (this.spineAnimation !== animation) {
+        const skeleton = this.spineNode.getComponent(sp.Skeleton)!;
+        skeleton.timeScale = spineRun
+          ? TOWN.speed * CONFIG.explorationRun.spineDuration / CONFIG.explorationRun.spineStride : 1;
+        skeleton.setAnimation(0, animation, true);
+        this.spineAnimation = animation;
+      }
       this.spineNode.setScale(this.facing.flip * this.spineScale, this.spineScale, 1);
       const { x, y } = this.movement.position;
       this.spineNode.setPosition(x - this.facing.flip * 389 * this.spineScale,
         -y - 3 - 37 * this.spineScale);
     }
-    this.actor.active = moving || !this.spineNode;
+    this.actor.active = !this.spineNode || (moving && !spineRun);
   }
   private drawPlaces(): void {
     for (const place of TOWN_PLACES) {
