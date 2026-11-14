@@ -66,6 +66,13 @@ test('town routes reach all entrances and the far bridge bank without crossing o
       y: region.reduce((sum, p) => sum + p.y, 0) / region.length };
     assert.ok(planPath(area.spawn, center, area), `walkable region ${i + 1} connects to the plaza`);
   }
+  for (const [name, p] of Object.entries({
+    plaza: [700,470,760,490,950,485], marketLeft: [160,400,230,400,300,420], petGate: [495,650,530,680,580,690],
+    noticeBottom: [700,650,640,730,600,760,550,790], furnaceFront: [1170,475,1200,530,1200,550],
+    bridgeDeck: [1150,555,1250,590,1350,605,1450,640,1510,685],
+  })) for (let i = 2; i < p.length; i += 2) assert.ok(segmentWalkable(
+    { x: p[i - 2], y: p[i - 1] }, { x: p[i], y: p[i + 1] }, area.regions), `${name} segment ${i / 2}`);
+  assert.equal(segmentWalkable({ x: 1200, y: 450 }, { x: 1200, y: 450 }, area.regions), false, 'furnace platform rim');
   for (const point of [{ x: 200, y: 200 }, { x: 340, y: 610 }, { x: 875, y: 590 }, { x: 885, y: 715 }, { x: 775, y: 675 }, { x: 985, y: 640 },
     { x: 770, y: 280 }, { x: 1220, y: 350 }, { x: 1230, y: 810 }]) {
     assert.equal(segmentWalkable(point, point, area.regions), false, `obstacle ${point.x},${point.y}`);
