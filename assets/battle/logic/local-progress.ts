@@ -71,6 +71,11 @@ export function loadSessionProgress(storage: ProgressStorage): SessionProgress |
 
 export function saveProgress(storage: ProgressStorage, progress: Pick<SessionProgress, 'heroProgress' | 'roster' | 'selectedPetId'>,
   hero = progress.heroProgress, updatedPet?: CarriedPet, roster = progress.roster.entries): void {
+  progressIO.write(storage, progressSnapshot(progress, hero, updatedPet, roster));
+}
+
+export function progressSnapshot(progress: Pick<SessionProgress, 'heroProgress' | 'roster' | 'selectedPetId'>,
+  hero = progress.heroProgress, updatedPet?: CarriedPet, roster = progress.roster.entries): string {
   if (!hero) throw new Error('人物进度尚未初始化');
   const saved: Snapshot = { version: VERSION, hero, selectedPetId: progress.selectedPetId,
     nextCapturedId: progress.roster.nextCapturedId,
@@ -78,7 +83,7 @@ export function saveProgress(storage: ProgressStorage, progress: Pick<SessionPro
       const entry = updatedPet?.id === pet.id ? updatedPet : pet;
       return { ...entry, hp: entry.maxHp };
     }) };
-  progressIO.write(storage, JSON.stringify(saved));
+  return JSON.stringify(saved);
 }
 
 export function resetProgress(storage: ProgressStorage, confirmed: boolean): boolean {

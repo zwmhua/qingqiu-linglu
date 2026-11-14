@@ -20,7 +20,7 @@ export class Node {
   children = [];
   active = true;
   handlers = {};
-  addChild(node) { this.children.push(node); }
+  addChild(node) { this.children.push(node); node.parent = this; }
   addComponent() { return this; }
   getComponent() { return this; }
   setContentSize(width, height) { this.size = [width, height]; }
@@ -33,7 +33,11 @@ export class Node {
   stroke() {}
   convertToNodeSpaceAR(p) { return p; }
   on(event, callback) { this.handlers[event] = callback; }
-  destroy() { this.destroyed = true; }
+  destroy() {
+    this.destroyed = true;
+    for (const child of [...this.children]) child.destroy();
+    if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this);
+  }
 }
 export const game = {
   on(_event, callback) { globalThis.townHide = callback; },
@@ -352,4 +356,157 @@ test('the ordinary entry still creates a battle from the saved session', () => {
   assert.ok(v.battle.enemies.length > 0);
   assert.equal(v.town, undefined);
   assert.equal(v.battle.session.selectedPetId, loadSessionProgress(townDisk).selectedPetId);
+});
+
+async function roundTripView(sample = 'single') {
+  const { Node } = await import('cc');
+  window.location.search = `?townPreview=1&roundTripSample=${sample}`;
+  townDisk.raw = null;
+  townDisk.fail = false;
+  const v = new BattleView();
+  v.node = new Node('canvas');
+  v.enabledInHierarchy = true;
+  v.render = () => {};
+  v.start();
+  const complete = () => townLoad(null, { load(_path, _type, cb) { cb(null, {}); } });
+  complete();
+  v.town.load('outskirts');
+  complete();
+  v.town.movement.position = { x: 1500, y: 410 };
+  v.town.movement.select({ x: 1600, y: 420 });
+  v.startFixedBattle();
+  return { v, complete, session: v.progress, position: { x: 1500, y: 410 } };
+}
+
+test('map victory waits for playback, retries the identical snapshot, and blocks side writes', async () => {
+  const { v, session, position } = await roundTripView();
+  const battle = v.battle, root = v.town.root, movement = v.town.movement;
+  const before = townDisk.raw, writes = townDisk.writes;
+  v.startFixedBattle();
+  assert.equal(v.battle, battle);
+  assert.equal(battle.session, session);
+  assert.equal(root.active, false);
+  assert.equal(movement.target, undefined);
+  const hp = v.captureHp(), deployed = v.captureDeployment();
+  battle.command('hero', 'capture', 'enemy-0');
+  battle.command('pet', 'defend');
+  const nextAttack = v.playNextAttack;
+  v.playNextAttack = () => {};
+  assert.equal(v.startPlayback(1, 'command', hp, deployed), true);
+  assert.equal(townDisk.raw, before);
+  v.finishBattle();
+  assert.equal(v.mapBattle, true);
+  v.animationQueue = [];
+  townDisk.fail = true;
+  nextAttack.call(v);
+  assert.equal(v.playing, false);
+  assert.match(v.progressError, /保存失败/);
+  assert.equal(v.mapBattle, true);
+  const snapshot = v.resultCandidate;
+  assert.equal(typeof snapshot, 'string');
+  assert.equal(townDisk.raw, before);
+  const draft = adjustPotential(session.heroProgress, session.heroProgress, 'strength', 1);
+  assert.equal(v.confirmHeroPoints(draft), false);
+  assert.equal(v.releaseProgressPet('pet-2'), false);
+  v.onEnable();
+  townHide();
+  v.onDisable();
+  v.onEnable();
+  v.update(100);
+  v.finishBattle();
+  assert.equal(v.resultCandidate, snapshot);
+  assert.equal(v.mapBattle, true);
+  townDisk.fail = false;
+  v.finishBattle();
+  v.finishBattle();
+  nextAttack.call(v);
+  assert.equal(townDisk.raw, snapshot);
+  assert.equal(townDisk.writes, writes + 1);
+  assert.equal(v.mapBattle, false);
+  assert.equal(v.town.root, root);
+  assert.equal(root.destroyed, undefined);
+  assert.equal(root.active, true);
+  assert.deepEqual(movement.position, position);
+  assert.equal(movement.target, undefined);
+  assert.equal(v.progress, session);
+  assert.equal(loadSessionProgress(townDisk).roster.entries.length, 3);
+  assert.equal(loadSessionProgress(townDisk).selectedPetId, session.selectedPetId);
+});
+
+test('kill, escape and defeat return once; captured pets survive and auto uses the latest choice', async () => {
+  for (const outcome of ['victory', 'escaped', 'defeat']) {
+    const { v, session, position, complete } = await roundTripView('pair');
+    const b = v.battle;
+    b.command('hero', 'capture', 'enemy-0');
+    b.command('pet', 'defend');
+    v.playNextAttack = () => {};
+    v.startPlayback(1, 'command', v.captureHp(), v.captureDeployment());
+    assert.equal(loadSessionProgress(townDisk).roster.entries.length, 3);
+    v.playing = false;
+    b.command('hero', 'summon', 'caught-1');
+    b.command('pet', 'defend');
+    if (outcome === 'escaped') {
+      b.command('hero', 'flee');
+      b.command('caught-1', 'defend');
+    } else {
+      (outcome === 'victory' ? b.enemies : b.allies).forEach(unit => { unit.hp = 0; });
+      b.checkWinner();
+    }
+    assert.equal(b.result, outcome);
+    assert.equal(v.resultTitle, { victory: '战斗胜利', escaped: '整队逃离', defeat: '战斗失败' }[outcome]);
+    assert.equal(b.earnedExp, outcome === 'victory' ? 20 : 0);
+    v.auto.toggle();
+    v.finishBattle();
+    if (outcome === 'defeat') complete();
+    assert.equal(v.town.region, outcome === 'defeat' ? 'town' : 'outskirts');
+    assert.deepEqual(v.town.movement.position, outcome === 'defeat' ? TOWN.spawn : position);
+    assert.equal(v.town.movement.target, undefined);
+    assert.equal(loadSessionProgress(townDisk).selectedPetId, 'caught-1');
+    assert.equal(loadSessionProgress(townDisk).roster.entries.length, 3);
+    if (outcome === 'defeat') { v.town.load('outskirts'); complete(); }
+    v.startFixedBattle();
+    assert.equal(v.auto.enabled, true);
+    v.auto.toggle();
+    v.battle.allies.forEach(unit => { unit.hp = 0; });
+    v.battle.checkWinner();
+    v.playing = false;
+    v.finishBattle();
+    complete();
+    v.town.load('outskirts');
+    complete();
+    v.startFixedBattle();
+    assert.equal(v.auto.enabled, false);
+    assert.equal(v.battle.round, 1);
+    assert.ok(v.battle.allies.every(unit => unit.hp === unit.maxHp));
+  }
+});
+
+test('battle redraw cleanup preserves the map root and removes only transient layers', async () => {
+  const { v } = await roundTripView();
+  const { Node } = await import('cc');
+  const camera = new Node('Camera'), battleLayer = new Node('result-layer');
+  v.node.addChild(camera);
+  v.node.addChild(battleLayer);
+  v.clearView();
+  assert.equal(camera.destroyed, undefined);
+  assert.equal(v.town.root.destroyed, undefined);
+  assert.equal(battleLayer.destroyed, true);
+});
+
+test('defeat cannot start another field fight when the town reload fails; retry does not save again', async () => {
+  const { v, complete } = await roundTripView('defeat');
+  const battle = v.battle;
+  battle.allies.forEach(unit => { unit.hp = 0; });
+  battle.checkWinner();
+  assert.equal(v.startPlayback(1, 'command', v.captureHp(), v.captureDeployment()), true);
+  const writes = townDisk.writes;
+  townLoad(new Error('town unavailable'));
+  v.startFixedBattle();
+  assert.equal(v.battle, battle);
+  assert.equal(v.returningTown, true);
+  v.town.load('town');
+  complete();
+  assert.equal(v.town.region, 'town');
+  assert.deepEqual(v.town.movement.position, TOWN.spawn);
+  assert.equal(townDisk.writes, writes);
 });

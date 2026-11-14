@@ -51,6 +51,7 @@ export class Battle {
   heroRage: number;
   phase: 'command' | 'ended' = 'command';
   winner: Side | null = null;
+  result?: 'victory' | 'defeat' | 'escaped';
   round = 1;
   seconds: number = BATTLE_RULES.commandSeconds;
   private random: () => number;
@@ -215,7 +216,10 @@ export class Battle {
     if (this.phase === 'ended') return this.winner;
     if (this.enemies.every(u => u.hp === 0 || u.left)) this.winner = 'ally';
     else if (this.allies.every(u => !u.deployed || u.hp === 0 || u.left)) this.winner = 'enemy';
-    if (this.winner) this.phase = 'ended';
+    if (this.winner) {
+      this.phase = 'ended';
+      this.result = this.winner === 'ally' ? 'victory' : 'defeat';
+    }
     if (this.winner === 'ally' && this.heroProgress) {
       const before = this.heroProgress.level;
       this.earnedExp = this.victoryExp;
@@ -241,6 +245,15 @@ export class Battle {
     this.lastCommands = new Map(this.commands);
     this.attackEvents = [];
     this.events = [];
+    if (this.commands.get('hero')?.command === 'flee' && this.allies[0].hp > 0) {
+      for (const ally of this.allies) ally.left = true;
+      this.result = 'escaped';
+      this.winner = 'enemy'; // Preserve the legacy Side API; callers use result for the reason.
+      this.phase = 'ended';
+      this.commands.clear();
+      this.log.push('撷灵客带领整队离开战斗。');
+      return;
+    }
     for (const ally of this.allies) {
       const chosen = this.commands.get(ally.id);
       ally.left = ally.left || chosen?.command === 'retreat' || chosen?.command === 'flee';

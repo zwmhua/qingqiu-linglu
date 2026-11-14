@@ -21,6 +21,46 @@ const make = (count = 1) => {
   return battle;
 };
 
+test('hero flee withdraws the whole team before attacks, with an explicit result and no reward', () => {
+  const battle = make(2);
+  assert.throws(() => battle.command('hero', 'retreat'));
+  assert.throws(() => battle.command('pet', 'flee'));
+  const hp = battle.units.map(unit => unit.hp);
+  battle.command('hero', 'flee');
+  battle.command('pet', 'attack', 'enemy-0');
+  assert.equal(battle.result, 'escaped');
+  assert.equal(battle.phase, 'ended');
+  assert.ok(battle.allies.every(unit => unit.left));
+  assert.deepEqual(battle.units.map(unit => unit.hp), hp);
+  assert.deepEqual(battle.events, []);
+  assert.equal(battle.earnedExp, 0);
+  const down = make();
+  down.allies[0].hp = 0;
+  assert.throws(() => down.command('hero', 'flee'));
+  down.command('pet', 'retreat');
+  assert.equal(down.result, 'defeat');
+});
+
+test('capture continues until the last enemy; victory rewards are applied exactly once', async () => {
+  const { SessionProgress } = await import('../assets/battle/logic/session-progress.ts');
+  const { initialHero } = await import('../assets/battle/logic/hero-progress.ts');
+  const session = new SessionProgress(initialHero(), undefined, undefined, () => 0);
+  const battle = new Battle(() => 0, 2, 0, session, () => 1);
+  battle.command('hero', 'capture', 'enemy-0');
+  battle.command('pet', 'defend');
+  assert.equal(battle.result, undefined);
+  assert.equal(battle.earnedExp, 0);
+  assert.equal(session.roster.entries.length, 3);
+  battle.command('hero', 'capture', 'enemy-1');
+  battle.command('pet', 'defend');
+  assert.equal(battle.result, 'victory');
+  assert.equal(battle.earnedExp, 20);
+  const candidate = JSON.stringify(session);
+  battle.checkWinner();
+  battle.timeout();
+  assert.equal(JSON.stringify(session), candidate);
+});
+
 test('attack button then enemy and direct enemy click submit the same order and continue', () => {
   const direct = make();
   const selected = make();
