@@ -116,7 +116,7 @@ export class TownView {
       }
     }
     const movement = this.movement;
-    const unavailable = () => this.loading || this.disposed || movement !== this.movement || blocked();
+    const unavailable = () => !this.root.active || this.loading || this.disposed || movement !== this.movement || blocked();
     map.on(Node.EventType.TOUCH_START, (e: EventTouch) => {
       if (!unavailable() && this.touch === undefined) this.touch = e.getID() ?? undefined;
     });
@@ -280,6 +280,7 @@ export class TownView {
   }
   private get size() { return MAPS[this.region]; }
   update(dt: number): void {
+    if (!this.root.active) return;
     const { position, target } = this.movement;
     this.movement.update(dt);
     const { x, y } = this.movement.position;

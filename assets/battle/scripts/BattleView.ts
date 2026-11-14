@@ -17,8 +17,8 @@ import { petPanel, petPanelPreview } from '../logic/pet-panel';
 import type { HeroProgress, LevelProgress } from '../logic/hero-progress';
 import { HERO_PROGRESSION, adjustPotential, heroPanel, heroPanelPreview, initialHero, levelUpExp } from '../logic/hero-progress';
 import { HoldRepeat } from '../logic/hold-repeat';
-import { browserParams, wechatStorage } from '../../logic/platform';
-import { loadSessionProgress, resetProgress, saveProgress } from '../logic/local-progress';
+import { browserParams, progressIO, wechatStorage } from '../../logic/platform';
+import { loadSessionProgress, progressSnapshot, resetProgress, saveProgress } from '../logic/local-progress';
 import type { TargetMode } from '../logic/targeting';
 
 const { ccclass, property } = _decorator;
@@ -65,20 +65,34 @@ export class BattleView extends Component {
   private town?: TownView;
   private townSession?: SessionProgress;
   private townPreview = PREVIEW && queryParams().get('townPreview') === '1';
+  private mapBattle = false;
+  private returningTown = false;
+  private returnPoint?: { x: number; y: number };
+  private resultCandidate?: string;
+  private resultSaved = false;
+  private returnMessage = '';
+  private postBattle?: { result: Battle['result']; position: { x: number; y: number } };
+  private get onMap(): boolean { return this.townPreview && !this.mapBattle; }
+  private get resultTitle(): string {
+    return this.battle.result === 'escaped' ? '整队逃离' : this.battle.result === 'victory' ? '战斗胜利' : '战斗失败';
+  }
   private get progress(): SessionProgress { return this.townSession ?? this.battle.session; }
-  private get inBattle(): boolean { return !this.townPreview && this.battle.phase !== 'ended'; }
+  private get inBattle(): boolean { return !this.onMap && (this.battle.phase !== 'ended' || !this.resultSaved); }
   private stopTown = (): void => { this.town?.stop(); };
   private confirmHeroPoints(draft: HeroProgress): boolean {
+    if (this.inBattle) return false;
     const persist = (next: HeroProgress) => saveProgress(progressStorage(), this.progress, next);
-    return this.townPreview ? this.progress.confirmHeroAllocation(false, draft, persist) : this.battle.confirmHeroAllocation(draft, persist);
+    return this.onMap ? this.progress.confirmHeroAllocation(false, draft, persist) : this.battle.confirmHeroAllocation(draft, persist);
   }
   private confirmPetPoints(id: string, draft: LevelProgress): boolean {
+    if (this.inBattle) return false;
     const persist = (next: CarriedPet) => saveProgress(progressStorage(), this.progress, undefined, next);
-    return this.townPreview ? this.progress.confirmPetAllocation(false, id, draft, persist) : this.battle.confirmPetAllocation(id, draft, persist);
+    return this.onMap ? this.progress.confirmPetAllocation(false, id, draft, persist) : this.battle.confirmPetAllocation(id, draft, persist);
   }
   private releaseProgressPet(id: string): boolean {
+    if (this.inBattle) return false;
     const persist = (pets: CarriedPet[]) => saveProgress(progressStorage(), this.progress, undefined, undefined, pets);
-    return this.townPreview ? this.progress.releasePet(false, id, persist) : this.battle.releasePet(id, persist);
+    return this.onMap ? this.progress.releasePet(false, id, persist) : this.battle.releasePet(id, persist);
   }
   private progressError = '';
   private progressReadFailed = false;
@@ -172,7 +186,10 @@ export class BattleView extends Component {
       this.townSession = saved ?? (this.progressReadFailed ? undefined : new SessionProgress(initialHero()));
       if (this.townSession && !saved) this.persistProgress();
       view.setDesignResolutionSize(CONFIG.width, CONFIG.height, ResolutionPolicy.SHOW_ALL);
-      this.town = new TownView(this.node, () => this.render());
+      this.town = new TownView(this.node, () => {
+        if (this.town?.region === 'town' && !this.town.loading) this.returningTown = false;
+        this.render();
+      });
       this.town.load();
       this.render();
       return;
@@ -193,7 +210,11 @@ export class BattleView extends Component {
     }
   }
 
+  private get canResetProgress(): boolean {
+    return !this.mapBattle && (this.progressReadFailed || this.battle?.phase !== 'ended' || this.resultSaved);
+  }
   private resetTestProgress(): void {
+    if (!this.canResetProgress) return;
     if (this.confirmingTarget || this.confirmingReset) return;
     const content = '清除本游戏的测试进度并重新开始？';
     if (WECHAT) {
@@ -219,10 +240,11 @@ export class BattleView extends Component {
   }
 
   update(dt: number): void {
-    if (this.townPreview) { this.town?.update(dt); return; }
+    if (this.onMap) { this.town?.update(dt); return; }
     this.idleTime += dt;
     if (this.layoutTest) return;
     if (this.playing) { this.syncMovingUnits(); return; }
+    if (this.battle.phase === 'ended') return;
     if (this.confirmingTarget || this.confirmingReset || this.rosterOpen) return;
     if (this.auto.enabled && this.battle.pending.length) { this.runAuto(); return; }
     const before = this.battle.round;
@@ -637,9 +659,12 @@ export class BattleView extends Component {
 
   private startPlayback(round: number, phase: string, hp: Map<string, number>, deployment: Map<string, boolean>): boolean {
     if (round === this.battle.round && phase === this.battle.phase) return false;
-    if (this.battle.phase === 'ended' || this.battle.events.some(event =>
+    if (this.battle.phase !== 'ended' && this.battle.events.some(event =>
       event.kind === 'summon' || event.kind === 'captureSuccess')) this.persistProgress();
-    if (this.battle.events.length === 0) return false;
+    if (this.battle.events.length === 0) {
+      this.finishBattle();
+      return this.battle.phase === 'ended';
+    }
     this.displayedHp = hp;
     this.displayedDeployment = deployment;
     this.displayedLeft = new Map(this.battle.units.map(unit => [unit.id, unit.left]));
@@ -729,12 +754,14 @@ export class BattleView extends Component {
   }
 
   private playNextAttack(): void {
+    if (this.onMap || this.resultSaved) return;
     const event = this.animationQueue.shift();
     if (!event) {
       this.playing = false;
       this.displayedHp = null;
       this.displayedDeployment = null;
       this.displayedLeft = null;
+      if (this.battle.phase === 'ended') { this.finishBattle(); return; }
       if (this.auto.enabled && this.battle.phase === 'command') this.runAuto();
       else this.render();
       return;
@@ -832,14 +859,14 @@ export class BattleView extends Component {
     unit: Pick<Unit, 'id' | 'name' | 'species' | 'isMutated' | 'hp' | 'maxHp'> | undefined): void {
     const y = 18;
     const card = this.rect(x, y, 192, 104, '#203A37', '#829183', 9, undefined, 215);
-    if (this.townPreview) card.addComponent(BlockInputEvents);
+    if (this.onMap) card.addComponent(BlockInputEvents);
     if (unit) {
       const portrait = new Node(`portrait-${kind}`);
       this.layer.addChild(portrait);
       this.pos(portrait, x + 32, y + 36);
       portrait.addComponent(UITransform).setContentSize(48, 48);
       portrait.on(Node.EventType.TOUCH_END, () => {
-        if (this.townPreview && (!this.enabledInHierarchy || this.town?.loading)) return;
+        if (this.onMap && (!this.enabledInHierarchy || this.town?.loading)) return;
         if (kind === 'hero') return this.openHeroPanel();
         if (this.playing || this.rosterOpen || this.summonOpen || this.confirmingTarget) return;
         this.rosterOpen = true;
@@ -866,7 +893,7 @@ export class BattleView extends Component {
       ? [
         { label: '气血', value: unit ? this.displayedHp?.get(unit.id) ?? unit.hp : 0, max: unit?.maxHp ?? 1, color: '#D95757' },
         { label: '法力', value: mana, max: mana, color: '#559DD8' },
-        { label: '愤怒', value: this.townPreview ? 0 : this.battle.heroRage, max: BATTLE_RULES.status.rageMax, color: '#EBA14F' },
+        { label: '愤怒', value: this.onMap ? 0 : this.battle.heroRage, max: BATTLE_RULES.status.rageMax, color: '#EBA14F' },
         { label: '经验', value: progress?.exp ?? 0, max: progress ? levelUpExp(progress.level) : 1, color: '#E6C95C' },
       ]
       : [
@@ -969,10 +996,10 @@ export class BattleView extends Component {
       return;
     }
     this.text(identity, 422, 151, 19, '#356456', 100);
-    const live = this.townPreview ? undefined : this.battle.pets.find(unit => unit.id === pet.id);
+    const live = this.onMap ? undefined : this.battle.pets.find(unit => unit.id === pet.id);
     const preview = petPanelPreview(pet, this.allocationPreview);
     const { maxHp, maxMana } = preview.panel;
-    const hp = `${this.townPreview ? maxHp : live?.hp ?? pet.hp}/${maxHp}`;
+    const hp = `${this.onMap ? maxHp : live?.hp ?? pet.hp}/${maxHp}`;
     const mana = `${maxMana}/${maxMana}`;
     [['气血', hp], ['法力', mana]].forEach(([name, value], i) => {
       const y = 109 + i * 48;
@@ -1026,7 +1053,7 @@ export class BattleView extends Component {
   }
 
   private renderPetSlots(selectedId: string): void {
-    const deployed = this.townPreview ? { id: this.progress.selectedPetId } : this.battle.pets.find(pet => pet.deployed && !pet.left);
+    const deployed = this.onMap ? { id: this.progress.selectedPetId } : this.battle.pets.find(pet => pet.deployed && !pet.left);
     this.progress.roster.entries.forEach((pet, i) => {
       const x = 236 + (i % 5) * 61, y = 514 + Math.floor(i / 5) * 77;
       this.rect(x, y, 52, 66, '#729586', pet.id === selectedId ? '#FFD45C' : '#9C8156', 6, () => {
@@ -1049,7 +1076,7 @@ export class BattleView extends Component {
 
   private renderPetAttributes(pet: CarriedPet): void {
     const { maxHp, maxMana, attack, defense, speed, dodge, spirit } = petPanel(pet);
-    const hp = this.townPreview ? maxHp : this.battle.pets.find(unit => unit.id === pet.id)?.hp ?? pet.hp;
+    const hp = this.onMap ? maxHp : this.battle.pets.find(unit => unit.id === pet.id)?.hp ?? pet.hp;
     const xpMax = levelUpExp(pet.level);
     const capped = pet.level === HERO_PROGRESSION.maxLevel;
     this.petInfoBar('气血', `${hp}/${maxHp}`, 202, aptitudeBarRatio(hp, 0, maxHp), '#D35657');
@@ -1117,6 +1144,76 @@ export class BattleView extends Component {
     this.selectedPetId = null;
     this.releasePrompt = undefined;
     this.animationQueue = [];
+    this.playing = false;
+    this.resultCandidate = undefined;
+    this.resultSaved = false;
+  }
+
+  private startFixedBattle(): void {
+    const town = this.town;
+    if (!this.onMap || this.returningTown || !town || town.region !== 'outskirts' || town.loading || !town.frame
+      || !this.enabledInHierarchy || this.progressReadFailed || this.detailsOpen || this.rosterOpen) return;
+    town.stop();
+    town.error = '';
+    this.returnPoint = { ...town.movement.position };
+    this.postBattle = undefined;
+    this.returnMessage = '';
+    const sample = queryParams().get('roundTripSample');
+    const fixed = ['single', 'pair', 'defeat'].includes(sample ?? '');
+    const battle = fixed
+      ? new Battle(() => 0, sample === 'pair' ? 2 : 1, 0, this.progress, () => 1,
+        () => 0.5, () => 0.5, () => 0.5, () => 1, () => 0)
+      : new Battle(Math.random, undefined, 0, this.progress);
+    if (sample === 'defeat') for (const enemy of battle.enemies) {
+      enemy.attack = 10000;
+      enemy.speed = 10000;
+    }
+    this.mapBattle = true;
+    town.root.active = false;
+    this.restartBattle(battle);
+    this.render();
+  }
+
+  private finishBattle(): void {
+    if (this.onMap || this.playing || this.battle.phase !== 'ended' || this.resultSaved) return;
+    try {
+      if (this.progressReadFailed) throw new Error('读取失败，禁止覆盖原档');
+      if (this.usesTestProgress) {
+        this.resultCandidate ??= progressSnapshot(this.progress);
+        progressIO.write(progressStorage(), this.resultCandidate);
+      }
+    } catch {
+      this.progressError = '保存失败，请重试保存；本场结果尚未保存。';
+      this.render();
+      return;
+    }
+    this.resultSaved = true;
+    this.progressError = '';
+    if (this.mapBattle) {
+      const { result, earnedExp } = this.battle;
+      this.returnMessage = result === 'victory' ? `战斗胜利 · 获得经验 ${earnedExp}`
+        : result === 'escaped' ? '整队逃离 · 无本场经验' : '战败回城 · 气血法力回满';
+      this.mapBattle = false;
+      this.town!.root.active = true;
+      this.town!.stop();
+      if (result === 'defeat') {
+        this.returningTown = true;
+        this.town!.load('town');
+      }
+      else {
+        this.town!.movement.position = { ...this.returnPoint! };
+        this.town!.update(0);
+        this.postBattle = { result, position: { ...this.returnPoint! } };
+      }
+    }
+    this.render();
+  }
+
+  private clearView(): void {
+    for (const child of [...this.node.children]) if (child.name !== 'Camera' && child !== this.town?.root) {
+      child.active = false;
+      child.destroy();
+    }
   }
 
   private openHeroPanel(): void {
@@ -1148,7 +1245,7 @@ export class BattleView extends Component {
     this.image(0, 0, CONFIG.width, CONFIG.height, this.characterBasicArt);
     const { level, exp, stats } = confirmed;
     const panel = heroPanel(stats);
-    const hero = this.townPreview ? { name: '撷灵客', hp: heroPanel(this.progress.heroProgress!.stats).maxHp } : this.battle.allies[0];
+    const hero = this.onMap ? { name: '撷灵客', hp: heroPanel(this.progress.heroProgress!.stats).maxHp } : this.battle.allies[0];
     const ink = '#4A2C1D';
     this.text('人物属性', 460, 1, 38, '#F7E8C1', 415, 1);
     this.text(hero.name, 160, 81, 26, ink, 160);
@@ -1190,7 +1287,7 @@ export class BattleView extends Component {
 
   private renderHeroPoints(confirmed: HeroProgress, showBasic: () => void, close: () => void): void {
     const ink = '#4A2C1D';
-    const hero = this.townPreview ? { name: '撷灵客', hp: heroPanel(this.progress.heroProgress!.stats).maxHp } : this.battle.allies[0];
+    const hero = this.onMap ? { name: '撷灵客', hp: heroPanel(this.progress.heroProgress!.stats).maxHp } : this.battle.allies[0];
     this.image(0, 0, CONFIG.width, CONFIG.height, this.characterPointsArt);
     this.text('人物属性', 460, 27, 38, '#F7E8C1', 415, 1);
     this.text(hero.name, 209, 112, 26, ink, 165);
@@ -1209,7 +1306,7 @@ export class BattleView extends Component {
 
     const { panel, delta } = heroPanelPreview(confirmed, this.allocationPreview);
     const rows = [
-      ['气血', 'maxHp', `${this.townPreview ? panel.maxHp : hero.hp}/${panel.maxHp}`], ['法力', 'maxMana', `${panel.maxMana}/${panel.maxMana}`],
+      ['气血', 'maxHp', `${this.onMap ? panel.maxHp : hero.hp}/${panel.maxHp}`], ['法力', 'maxMana', `${panel.maxMana}/${panel.maxMana}`],
       ['伤害', 'attack', panel.attack], ['防御', 'defense', panel.defense], ['速度', 'speed', panel.speed],
       ['躲避', 'dodge', panel.dodge], ['灵力', 'spirit', panel.spirit],
     ] as const;
@@ -1297,7 +1394,7 @@ export class BattleView extends Component {
   private renderTown(): void {
     const town = this.town!;
     if (this.detailsOpen || this.rosterOpen) town.stop();
-    for (const child of [...this.node.children]) if (child.name === 'town-ui') child.destroy();
+    this.clearView();
     const overlay = new Node('town-ui');
     this.node.addChild(overlay);
     this.layer = overlay;
@@ -1306,7 +1403,7 @@ export class BattleView extends Component {
       this.openPetPanel(this.progress.selectedPetId);
     };
     const travel = () => { town.load(town.destination); this.render(); };
-    town.draw(this.heroArt, () => !this.enabledInHierarchy || !!this.detailsOpen || this.rosterOpen || this.progressReadFailed,
+    town.draw(this.heroArt, () => !this.enabledInHierarchy || this.returningTown || !!this.detailsOpen || this.rosterOpen || this.progressReadFailed,
       place => {
         if (place.id === 'pet') openPets();
         else if (place.id === 'exit') travel();
@@ -1316,9 +1413,24 @@ export class BattleView extends Component {
         }
       });
     this.rect(20, 18, 470, 52, '#203D36', '', 10, undefined, 220).addComponent(BlockInputEvents);
-    this.text(town.message || this.progressError || (town.region === 'town' ? '城里' : '野外'), 30, 24, 24);
+    this.text(town.message || this.progressError || this.returnMessage || (town.region === 'town' ? '城里' : '野外'), 30, 24, 24);
     if (town.canRetry) this.button('重试', 540, 335, 250, 60, !town.loading, () => { town.load(); this.render(); });
     if (!town.frame || this.progressReadFailed) return;
+    if (this.returningTown) {
+      this.button('重试回城', 540, 335, 250, 60, !town.loading, () => town.load('town')).addComponent(BlockInputEvents);
+      return;
+    }
+    if (town.region === 'outskirts') {
+      this.button('固定开战（测试）', 25, 90, 270, 56, !town.loading,
+        () => this.startFixedBattle()).addComponent(BlockInputEvents);
+      this.button(this.auto.enabled ? '自动：开' : '自动：关', 25, 155, 190, 56, !town.loading, () => {
+        town.stop();
+        this.auto.toggle();
+        this.render();
+      }).addComponent(BlockInputEvents);
+      const sample = queryParams().get('roundTripSample');
+      if (sample) this.text(`验收样本：${sample}（同档）`, 25, 220, 20);
+    }
     if (town.region === 'town') {
       const pet = this.progress.roster.entries.find(p => p.id === this.progress.selectedPetId);
       const hero = this.progress.heroProgress;
@@ -1343,9 +1455,9 @@ export class BattleView extends Component {
   }
 
   private render(): void {
-    if (this.townPreview) { this.renderTown(); return; }
+    if (this.onMap) { this.renderTown(); return; }
     this.lastShownSecond = Math.ceil(this.battle.seconds);
-    for (const child of [...this.node.children]) if (child.name !== 'Camera') child.destroy();
+    this.clearView();
     this.unitNodes.clear();
     this.shadowNodes.clear();
     this.markerNodes.clear();
@@ -1414,7 +1526,7 @@ export class BattleView extends Component {
     this.renderLog();
     this.renderHeroProgress();
     if (this.usesTestProgress && !this.playing && !this.rosterOpen)
-      this.button('测试重置', 200, 104, 136, 54, true, () => this.resetTestProgress());
+      this.button('测试重置', 200, 104, 136, 54, this.canResetProgress, () => this.resetTestProgress());
     if (this.battle.phase !== 'ended') this.autoButton();
     if (!this.playing) this.button(`携带 ${this.battle.roster.entries.length}/${this.battle.roster.capacity}`,
       25, 104, 165, 54, true, () => {
@@ -1431,7 +1543,7 @@ export class BattleView extends Component {
       470, 104, 20, '#F8D98A', 360, 1);
     this.rect(1095, 119, 218, 59, '#18312F', '', 9, undefined, 205);
     this.text(this.playing ? '战斗进行中' : this.battle.phase === 'ended'
-      ? this.battle.winner === 'ally' ? '胜利' : '失败'
+      ? this.resultTitle
       : this.choosingTarget === 'attack' ? '请选择敌方目标'
         : this.choosingTarget === 'capture' ? '请选择抓取目标'
         : this.choosingTarget === 'protect' ? '请选择我方目标'
@@ -1482,12 +1594,13 @@ export class BattleView extends Component {
     if (!this.playing && this.battle.phase === 'ended') {
       this.layer = resultLayer;
       this.rect(391, 233, 540, 249, '#1e3835', '#e5cb8d', 15);
-      this.text(this.battle.winner === 'ally' ? '战斗胜利' : '战斗失败', 441, 260, 48, '#f3dfad', 440, 1);
+      this.text(this.resultTitle, 441, 260, 48, '#f3dfad', 440, 1);
       const { earnedExp, levelsGained } = this.battle;
       this.text(this.battle.heroProgress && this.battle.winner === 'ally'
         ? `本场获得经验 ${earnedExp}` : '林间遭遇暂告一段落', 470, 322, 22, '#c6dbc6', 380, 1);
       if (levelsGained) this.text(`升 ${levelsGained} 级 · 每级五项各 +1、潜能 +5`, 425, 352, 20, '#F4DC9C', 466, 1);
-      this.button('再来一场', 513, 384, 286, 69, true, () => {
+      this.button(this.resultSaved ? '再来一场' : '重试保存', 513, 384, 286, 69, true, () => {
+        if (!this.resultSaved) { this.finishBattle(); return; }
         const { session, heroRage } = this.battle;
         this.restartBattle(this.createBattle(session, heroRage));
         this.render();
