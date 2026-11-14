@@ -374,6 +374,7 @@ async function roundTripView(sample = 'single') {
   complete();
   v.town.movement.position = { x: 1500, y: 410 };
   v.town.movement.select({ x: 1600, y: 420 });
+  v.town.error = '暂时无法到达';
   v.startFixedBattle();
   return { v, complete, session: v.progress, position: { x: 1500, y: 410 } };
 }
@@ -458,6 +459,8 @@ test('kill, escape and defeat return once; captured pets survive and auto uses t
     v.auto.toggle();
     v.finishBattle();
     if (outcome === 'defeat') complete();
+    assert.equal(v.town.message, '', 'old map errors must not mask the result message');
+    assert.match(v.returnMessage, /战斗胜利.*20|整队逃离|战败回城/);
     assert.equal(v.town.region, outcome === 'defeat' ? 'town' : 'outskirts');
     assert.deepEqual(v.town.movement.position, outcome === 'defeat' ? TOWN.spawn : position);
     assert.equal(v.town.movement.target, undefined);
@@ -509,4 +512,33 @@ test('defeat cannot start another field fight when the town reload fails; retry 
   assert.equal(v.town.region, 'town');
   assert.deepEqual(v.town.movement.position, TOWN.spawn);
   assert.equal(townDisk.writes, writes);
+});
+
+test('ordinary entry cannot reset away an unsaved result, but read-failure recovery remains available', () => {
+  window.location.search = '';
+  townDisk.fail = false;
+  const v = new BattleView();
+  v.render = () => {};
+  v.start();
+  const battle = v.battle, raw = townDisk.raw;
+  battle.allies.forEach(unit => { unit.hp = 0; });
+  battle.checkWinner();
+  townDisk.fail = true;
+  v.finishBattle();
+  const candidate = v.resultCandidate;
+  let confirmations = 0;
+  window.confirm = () => { confirmations++; return false; };
+  v.resetTestProgress();
+  assert.equal(confirmations, 0);
+  assert.equal(v.battle, battle);
+  assert.equal(v.resultCandidate, candidate);
+  assert.equal(townDisk.raw, raw);
+  townDisk.fail = false;
+  townDisk.raw = '{bad';
+  const broken = new BattleView();
+  broken.render = () => {};
+  broken.start();
+  broken.resetTestProgress();
+  assert.equal(confirmations, 1);
+  delete window.confirm;
 });

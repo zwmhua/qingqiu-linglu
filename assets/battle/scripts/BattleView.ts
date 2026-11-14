@@ -210,8 +210,11 @@ export class BattleView extends Component {
     }
   }
 
+  private get canResetProgress(): boolean {
+    return !this.mapBattle && (this.progressReadFailed || this.battle?.phase !== 'ended' || this.resultSaved);
+  }
   private resetTestProgress(): void {
-    if (this.mapBattle) return;
+    if (!this.canResetProgress) return;
     if (this.confirmingTarget || this.confirmingReset) return;
     const content = '清除本游戏的测试进度并重新开始？';
     if (WECHAT) {
@@ -1151,6 +1154,7 @@ export class BattleView extends Component {
     if (!this.onMap || this.returningTown || !town || town.region !== 'outskirts' || town.loading || !town.frame
       || !this.enabledInHierarchy || this.progressReadFailed || this.detailsOpen || this.rosterOpen) return;
     town.stop();
+    town.error = '';
     this.returnPoint = { ...town.movement.position };
     this.postBattle = undefined;
     this.returnMessage = '';
@@ -1522,7 +1526,7 @@ export class BattleView extends Component {
     this.renderLog();
     this.renderHeroProgress();
     if (this.usesTestProgress && !this.playing && !this.rosterOpen)
-      this.button('测试重置', 200, 104, 136, 54, true, () => this.resetTestProgress());
+      this.button('测试重置', 200, 104, 136, 54, this.canResetProgress, () => this.resetTestProgress());
     if (this.battle.phase !== 'ended') this.autoButton();
     if (!this.playing) this.button(`携带 ${this.battle.roster.entries.length}/${this.battle.roster.capacity}`,
       25, 104, 165, 54, true, () => {

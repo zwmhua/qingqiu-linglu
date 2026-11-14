@@ -202,12 +202,14 @@ NOT_TESTED：node:test、限定 tsc、Creator/ego-browser 试玩、固定验收�
 
 上节是实施前的历史门禁记录，保留不覆盖。X2 处置：Human 于本轮明确批准完整 P2-04 单卡上限 450 行、不拆卡；在原独立工作树继续，先测试后实现，只本地提交。原 X1/X2 均已按明确授权解除；STATUS 未改，没有推送、合并或进入 P2-05。
 
-起始 SHA `a0e79aaae126326a2b3648b0e8392396942ce66c`，分支 `task/36-p2-04-round-trip`。实际业务 +159/-31 = 190 行；测试 +199/-2 = 201 行；合计 391 行，按该起始提交计算，未压缩代码或删除断言。任务卡原文哈希仍与附件一致。最终提交 SHA 和独立 QA 所审完整 SHA 在本轮交付报告提供，华周验收状态尚未完成。
+起始 SHA `a0e79aaae126326a2b3648b0e8392396942ce66c`，分支 `task/36-p2-04-round-trip`。实际业务 +164/-32 = 196 行；测试 +231/-2 = 233 行；合计 429 行，按该起始提交计算，未压缩代码或删除断言。任务卡原文哈希仍与附件一致。最终提交 SHA 和独立 QA 所审完整 SHA 在本轮交付报告提供，华周验收状态尚未完成。
+
+QA 第 1 次回修（2026-11-15）：独立静态审查 `8ac9c53d9886cb66d23a1fa585628bf24b1169d9` 提出旧地图错误遮蔽返回消息、普通入口测试重置可绕过失败候选两项 P2。分别先补失败断言（8 成功/1 失败、9 成功/1 失败），再仅修改 BattleView 清理开战前地图错误、统一重置按钮和处理入口的可用条件；保留读取失败重置恢复。未删旧断言。最终复审 SHA 见交付报告。
 
 ### 实际运行的检查
 
 - 失败用例先行：`node --test tests/battle.test.mjs tests/town-progress-integration.test.mjs`，20 成功、5 失败；失败来自未实现的明确结果及固定开战接口。新增回城加载失败负例先失败再修；逃跑提示统一也先补断言再接线。原断言保留。
-- 最终 `node --test tests/*.test.mjs`：144 成功、0 失败，退出码 0。`COCOS_TYPESCRIPT=E:/ProgramData/cocos/editors/Creator/3.8.8/resources/app.asar.unpacked/node_modules/typescript`；沿用 Creator 内置编译器及 node:test，无新依赖。
+- 最终 `node --test tests/*.test.mjs`：145 成功、0 失败，退出码 0（QA 回修后 qa1-tests-final.log）。`COCOS_TYPESCRIPT=E:/ProgramData/cocos/editors/Creator/3.8.8/resources/app.asar.unpacked/node_modules/typescript`；沿用 Creator 内置编译器及 node:test，无新依赖。
 - 限定 tsc：`node <COCOS_TYPESCRIPT>/bin/tsc --noEmit --skipLibCheck --strict --target ES2022 --module ESNext --moduleResolution node <assets/battle/logic/*.ts全部文件> assets/battle/scripts/Battle.ts assets/logic/platform.ts`，退出码 0，包含真实传递依赖。
 - 额外全视图严格检查仍报 BattleView 既有 Tween onUpdate 可选 Node 参数不匹配；对起始 SHA 的 archive 用同一 cc 声明、同一命令复核得到同一 TS2322。未排除文件来伪称全视图严格检查成功，未扩大范围修改旧动效声明。Creator 实际编译、预览和微信构建另已运行。
 - `git diff --check` 无空白错误。Creator 自动改写的三份 settings/v2/packages JSON 只有换行差异；恢复本工作树原字节，不提交配置。其他工作树和原素材未改。
@@ -236,21 +238,25 @@ NOT_TESTED：node:test、限定 tsc、Creator/ego-browser 试玩、固定验收�
 | 同候选/刷新 | 写入故障样本记录 4 次尝试、唯一序列化字符串 1 份；成功值等于最初候选。刷新经验仅增加一场，宠物只增加一只，出战 ID 不变 |
 | 回城加载失败 | 显式临时拦截当页 town Bundle 加载；战败保存后显示地图失败和重试回城，returningTown 锁定，无固定开战按钮；解除后点重试回到城里出生点 |
 | 普通入口 | 实点标题「开始游戏」进入直接战斗；人物逃跑后仍有「再来一场」，点击后新场第 1 回合、出战 ID 保留 |
+| QA 回修：旧地图错误 | 越界点击被现有寻路投影到可走区，未声称复现不可达报错；改用当页 town 加载故障产生真实「地图加载失败」，恢复加载器后固定开战并逃跑，返回正确显示「整队逃离 · 无本场经验」；旧版本先复现遮蔽，新版本已确认清理 |
+| QA 回修：重置绕过 | 普通直接战斗只注入原键 setItem 失败，逃跑后点禁用的测试重置，无确认框、仍在 ended、候选和磁盘原值不变；解除故障点重试，保存值等于同一候选，恢复「再来一场」。读取失败恢复另由集成断言覆盖 |
 
 浏览器故障注入均只存在当前页，刷新移除。证据截图/脚本、测试日志、两次构建产物在本工作树忽略目录 `temp/p2-04/` 与 `build/wechatgame/`。两次自动验收等待脚本超时后未进行第三轮同类脚本纠错；按实际画面分步操作补齐结果，未修改产品计时或断言以迎合辅助脚本。初次加载和代码更新期间出现未就绪/旧缓存页面；等待就绪并使用单页忽略缓存刷新后核对已加载最新 render 接线，没有清理全浏览器状态。
 
+QA 回修预览初次仍为旧脚本；最终重新构建后，忽略当前页缓存刷新，核对 startFixedBattle 的清错语句和 canResetProgress getter 均已加载才执行上述复测。辅助等待曾因页面 cc 尚未定义报错，增加就绪检查后解除；没有改产品计时。回修胜利消息路径有自动化断言，但该次追加浏览器击杀未结束即换入口，不计为新增胜利试玩证据；表内普通手动击杀胜为首轮实际完成记录。
+
 ### 微信包体实测
 
-同一 Creator 3.8.8、同一 settings/wechat-build.json。起始 SHA 用 git archive 解到本工作树 temp/p2-04/baseline 后重建，基线日志记录构建 Finished、产物完整（初次进程退出码未单独捕获）；最终候选构建退出码 36。按所有产物文件字节求和，主包排除整个 subpackages，总包包含 inventory，不沿用旧卡包体。
+同一 Creator 3.8.8、同一 settings/wechat-build.json。起始 SHA 用 git archive 解到本工作树 temp/p2-04/baseline 后重建，基线日志记录构建 Finished、产物完整（初次进程退出码未单独捕获）；QA 回修后最终候选构建退出码 36（qa1-build.log）。按所有产物文件字节求和，主包排除整个 subpackages，总包包含 inventory，不沿用旧卡包体。
 
 | 部分 | 本次基线字节 | 最终候选字节 | 增量 |
 | --- | ---: | ---: | ---: |
 | 主包 | 919,168 | 919,168 | 0 |
-| battle | 3,020,780 | 3,024,403 | +3,623 |
+| battle | 3,020,780 | 3,024,603 | +3,823 |
 | town | 1,923,710 | 1,923,710 | 0 |
 | outskirts | 594,500 | 594,500 | 0 |
 | inventory | 57,666 | 57,666 | 0 |
-| 总包 | 6,515,824 | 6,519,447 | +3,623 |
+| 总包 | 6,515,824 | 6,519,647 | +3,823 |
 
 主包低于 3.5 MB。没有新增资源、Bundle、Boot 依赖或构建配置。微信模拟器、真机、发布构建中 townPreview 入口均 NOT_TESTED；Creator 预览不代表上述平台已验收。180 世界单位保护距离、暗雷、掉落和正式入口切换未实现也未验证，按卡留后续。
 
