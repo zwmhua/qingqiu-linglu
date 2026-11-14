@@ -18,14 +18,17 @@ export class Node {
   static EventType = { TOUCH_START: 'start', TOUCH_END: 'end', TOUCH_CANCEL: 'cancel' };
   constructor(name) { this.name = name; }
   children = [];
+  active = true;
   handlers = {};
   addChild(node) { this.children.push(node); }
   addComponent() { return this; }
   getComponent() { return this; }
-  setContentSize() {}
+  setContentSize(width, height) { this.size = [width, height]; }
   setAnchorPoint() {}
-  setPosition() {}
-  setScale() {}
+  setPosition(x, y) { this.position = { x, y }; }
+  setScale(x, y) { this.scale = [x, y]; }
+  setSkin(name) { this.skin = name; }
+  setAnimation(track, name, loop) { this.played = [track, name, loop]; }
   circle() {}
   stroke() {}
   convertToNodeSpaceAR(p) { return p; }
@@ -36,10 +39,22 @@ export const game = {
   on(_event, callback) { globalThis.townHide = callback; },
   off() { globalThis.townHide = undefined; },
 }, Game = { EVENT_HIDE: 'hide' };
-export const assetManager = { loadBundle(name, cb) { globalThis.loadedBundle = name; globalThis.townLoad = cb; } };
+export const assetManager = { loadBundle(name, cb) {
+  globalThis.loadedBundle = name; globalThis.townLoad = cb;
+  (globalThis.bundleLoads ??= {})[name] = cb;
+} };
 export class Vec3 { constructor(x, y) { this.x = x; this.y = y; } }
+export class Rect { constructor(x, y, width, height) { Object.assign(this, { x, y, width, height }); } }
+export class Size {}
 export class Color {}
-export class SpriteFrame {}
+export class SpriteFrame { reset({ rect }) { this.rect = rect; } destroy() {} }
+export class Texture2D {
+  width = 864;
+  height = 512;
+  addRef() { return this; }
+  decRef() {}
+}
+export const sp = { Skeleton: class {}, SkeletonData: class {} };
 export const BlockInputEvents = 0, EventTouch = 0, Graphics = 0, Label = { HorizontalAlign: { CENTER: 1 } },
 Mask = { Type: { GRAPHICS_ELLIPSE: 1 } },
 UIOpacity = 0,
@@ -60,11 +75,77 @@ registerHooks({
   },
 });
 const { BattleView } = await import('../assets/battle/scripts/BattleView.ts');
+const { Texture2D } = await import('cc');
 const { SessionProgress } = await import('../assets/battle/logic/session-progress.ts');
 const { initialHero, awardExperience, adjustPotential } = await import('../assets/battle/logic/hero-progress.ts');
 const { petProgress } = await import('../assets/battle/logic/roster.ts');
 const { loadSessionProgress, saveProgress } = await import('../assets/battle/logic/local-progress.ts');
 const { OUTSKIRTS, TOWN, TOWN_PLACES } = await import('../assets/battle/logic/exploration.ts');
+
+test('town and outskirts share looping run frames, a fixed foot anchor and the same stop behavior', () => {
+  const v = new BattleView();
+  v.render = () => {};
+  v.start();
+  const view = v.town;
+  const idle = { rect: { width: 153, height: 241 } };
+  let textureLoaded;
+  const atlas = { load(path, _type, complete) {
+    assert.equal(path, 'textures/units/hero_run/texture');
+    textureLoaded = complete;
+  } };
+  const map = { load(_path, _type, complete) { complete(null, {}); } };
+  for (const region of ['town', 'outskirts']) {
+    view.load(region);
+    townLoad(null, map);
+    view.draw(idle, () => false, () => {});
+    const world = view.root.children[0];
+    const actor = world.children.findLast(child => child.name === 'town-hero');
+    assert.equal(actor.spriteFrame, idle);
+    const [, height] = actor.size;
+    if (region === 'town') {
+      assert.equal(loadedBundle, 'battle');
+      townLoad(null, atlas);
+      textureLoaded(null, new Texture2D());
+      bundleLoads.town(null, { load(path, _type, complete) {
+        assert.equal(path, 'spine/skeleton');
+        complete(null, { addRef() { return this; }, decRef() {} });
+      } });
+    }
+    const spine = world.children.findLast(child => child.name === 'town-hero-idle');
+    assert.ok(spine);
+    assert.equal(spine.active, true);
+    assert.deepEqual(spine.played, [0, 'idle', true]);
+    const { x, y } = view.movement.position;
+    assert.ok(view.movement.select({ x: x - 60, y: y - 12 }));
+    view.update(0.01);
+    assert.equal(spine.active, false);
+    const first = actor.spriteFrame;
+    assert.equal(first.rect.y, 256);
+    assert.equal(first.rect.x, 0);
+    assert.deepEqual(actor.scale, [-1, 1]);
+    assert.equal(actor.size[1], height);
+    assert.equal(actor.position.y, -view.movement.position.y - 3);
+    view.update(0.09);
+    assert.equal(actor.spriteFrame.rect.x, 144);
+    assert.equal(actor.spriteFrame.rect.y, 256);
+    view.stop();
+    assert.equal(spine.active, true);
+    assert.equal(actor.active, false);
+    assert.equal(Math.sign(spine.scale[0]), -1);
+    const scale = height * 250 / (256 * 697);
+    assert.equal(spine.scale[1], scale);
+    assert.equal(spine.position.y, -view.movement.position.y - 3 - 37 * scale);
+    assert.equal(actor.spriteFrame, idle);
+    assert.deepEqual(actor.scale, [-1, 1]);
+    const current = view.movement.position;
+    assert.ok(view.movement.select({ x: current.x - 30, y: current.y + 0.2 }));
+    view.update(0.01);
+    assert.equal(actor.spriteFrame.rect.y, 256);
+    view.update(0.25);
+    assert.equal(actor.spriteFrame, idle);
+    assert.equal(actor.position.y, -(current.y + 0.2) - 3);
+  }
+});
 
 test('real view routes town without Battle; retry and redraw keep the same progress', () => {
   const v = new BattleView();

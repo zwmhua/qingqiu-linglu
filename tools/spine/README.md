@@ -9,4 +9,4 @@ python tools/spine/convert_40_to_42b.py $src
 python tools/spine/pack_spine_atlas.py $src $out
 ```
 
-第一步生成 `$src/skeleton.42b.json`，不覆盖输入；第二步生成 `$out/skeleton.json`、`$out/skeleton.atlas` 和 `$out/skeleton.png`。打包脚本会校验 24 张图的像素，图集为单张 1024×1024 RGBA PNG。将这三个文件放在同一资源目录；本次独立预览使用 `assets/spine-test/`，项目设置需启用 Spine 4.2。
+第一步生成 `$src/skeleton.42b.json`，不覆盖输入；第二步生成 `$out/skeleton.json`、`$out/skeleton.atlas` 和 `$out/skeleton.png`。打包脚本会校验 24 张图的像素，图集为单张 1024×1024 RGBA PNG。将这三个文件放在同一资源目录；主角站立资源位于 `assets/town/spine/`，项目设置需启用 Spine 4.2。

@@ -20,6 +20,7 @@ const allyPairs = allyFront.map(pet => ({ pet, hero: {
 
 export const CONFIG = {
   width: 1334, height: 750,
+  explorationRun: { fps: 11, frames: 6, rows: 2, width: 144, height: 256, axisTolerance: 1 },
   visual: {
     petTint: { normal: '#FFFFFF', mutated: '#D49CFF' },
     unitScale: 0.5, heroHeight: 240, frogHeight: 170, enemyFlipX: true,

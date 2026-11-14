@@ -1,5 +1,6 @@
-import { assetManager, Color, EventTouch, Graphics, Label, Mask, Node, Sprite, SpriteFrame, UIOpacity, UITransform, Vec3 } from 'cc';
+import { assetManager, Color, EventTouch, Graphics, Label, Mask, Node, Rect, Size, sp, Sprite, SpriteFrame, Texture2D, UIOpacity, UITransform, Vec3 } from 'cc';
 import { cameraOrigin, MAPS, Region, TOWN_PLACES, TownMovement, TownPlace, worldPoint } from '../logic/exploration';
+import { runFacing, type RunFacing } from './run-facing';
 import { CONFIG } from './config';
 
 export class TownView {
@@ -20,8 +21,17 @@ export class TownView {
   private actor?: Node;
   private touch?: number;
   private disposed = false;
-  private elapsed = 0;
-  private facing = 1;
+  private idleFrame: SpriteFrame | null = null;
+  private actorHeight = 0;
+  private facing: RunFacing = { row: 0, flip: 1 };
+  private runTime = 0;
+  private runFrames: SpriteFrame[] = [];
+  private runTexture?: Texture2D;
+  private loadingRun = false;
+  private spineData?: sp.SkeletonData;
+  private spineNode?: Node;
+  private loadingSpine = false;
+  private spineScale = 1;
   private ripple?: Node;
   private rippleTime = 0;
   constructor(parent: Node, private changed: () => void) {
@@ -34,6 +44,7 @@ export class TownView {
   stop = (): void => {
     this.movement.stop();
     this.touch = undefined;
+    this.updateHeroArt(0);
   };
   load(region = this.region): void {
     if (this.loading || this.disposed || (this.frame && region === this.region)) return;
@@ -54,8 +65,8 @@ export class TownView {
           child.destroy();
         }
         this.actor = undefined;
+        this.spineNode = undefined;
         this.ripple = undefined;
-        this.facing = 1;
         this.region = region;
         this.frame = frame;
         this.movement = new TownMovement(MAPS[region].area);
@@ -108,10 +119,101 @@ export class TownView {
       this.changed();
     });
     const height = this.region === 'town' ? 96 : 140;
+    this.idleFrame = hero;
+    this.actorHeight = height;
     this.actor = sprite('town-hero', hero, hero ? height * hero.rect.width / hero.rect.height : height * 0.7, height);
     this.actor.getComponent(UITransform)!.setAnchorPoint(0.5, 0);
+    // Both source images use a bottom foot baseline. The exported Spine artwork
+    // occupies y=37..734 in its 768-unit canvas; run art occupies 250/256 high.
+    this.spineScale = height * 250 / (256 * 697);
+    this.createIdleSpine();
+    this.loadSpineData();
+    this.loadRunFrames();
     if (this.region === 'town') this.drawPlaces();
     this.update(0);
+  }
+  private createIdleSpine(): void {
+    if (!this.actor || !this.spineData || this.spineNode) return;
+    const node = this.spineNode = new Node('town-hero-idle');
+    this.world.addChild(node);
+    node.addComponent(UITransform).setContentSize(768, 768);
+    const skeleton = node.addComponent(sp.Skeleton);
+    skeleton.premultipliedAlpha = false;
+    skeleton.skeletonData = this.spineData;
+    skeleton.setSkin('default');
+    skeleton.loop = true;
+    skeleton.setAnimation(0, 'idle', true);
+    this.updateHeroArt(0);
+  }
+  private loadSpineData(): void {
+    if (this.loadingSpine || this.spineData) return;
+    this.loadingSpine = true;
+    const complete = (error: Error | null, data?: sp.SkeletonData) => {
+      this.loadingSpine = false;
+      if (this.disposed) return;
+      if (error || !data) { console.warn('主角 Spine 加载失败', error); return; }
+      data.addRef();
+      this.spineData = data;
+      this.createIdleSpine();
+    };
+    assetManager.loadBundle('town', (error, bundle) => {
+      if (this.disposed) return;
+      if (error) complete(error);
+      else bundle.load('spine/skeleton', sp.SkeletonData, complete);
+    });
+  }
+  private loadRunFrames(): void {
+    if (this.loadingRun || this.runTexture) return;
+    this.loadingRun = true;
+    const { frames, rows, width, height } = CONFIG.explorationRun;
+    const complete = (error: Error | null, texture?: Texture2D) => {
+      this.loadingRun = false;
+      if (this.disposed) return;
+      if (error || !texture || texture.width !== width * frames || texture.height !== height * rows) {
+        console.warn('主角跑步图集加载失败', error);
+        return;
+      }
+      texture.addRef();
+      this.runTexture = texture;
+      this.runFrames = Array.from({ length: frames * rows }, (_, i) => {
+        const frame = new SpriteFrame();
+        frame.packable = false;
+        frame.reset({
+          texture,
+          rect: new Rect(i % frames * width, Math.floor(i / frames) * height, width, height),
+          originalSize: new Size(width, height),
+        });
+        return frame;
+      });
+    };
+    assetManager.loadBundle('battle', (error, bundle) => {
+      if (this.disposed) return;
+      if (error) complete(error);
+      else bundle.load('textures/units/hero_run/texture', Texture2D, complete);
+    });
+  }
+  private updateHeroArt(dt: number): void {
+    if (!this.actor) return;
+    const { fps, frames } = CONFIG.explorationRun;
+    this.runTime = this.movement.target ? (this.runTime + dt) % (frames / fps) : 0;
+    const index = this.facing.row * frames + Math.floor(this.runTime * fps);
+    const frame = (this.movement.target && this.runFrames[index]) || this.idleFrame;
+    const image = this.actor.getComponent(Sprite)!;
+    if (image.spriteFrame !== frame) {
+      image.spriteFrame = frame;
+      const width = frame ? this.actorHeight * frame.rect.width / frame.rect.height : this.actorHeight * 0.7;
+      this.actor.getComponent(UITransform)!.setContentSize(width, this.actorHeight);
+    }
+    this.actor.setScale(this.facing.flip, 1, 1);
+    const moving = !!this.movement.target;
+    if (this.spineNode) {
+      this.spineNode.active = !moving;
+      this.spineNode.setScale(this.facing.flip * this.spineScale, this.spineScale, 1);
+      const { x, y } = this.movement.position;
+      this.spineNode.setPosition(x - this.facing.flip * 389 * this.spineScale,
+        -y - 3 - 37 * this.spineScale);
+    }
+    this.actor.active = moving || !this.spineNode;
   }
   private drawPlaces(): void {
     for (const place of TOWN_PLACES) {
@@ -146,22 +248,19 @@ export class TownView {
   }
   private get size() { return MAPS[this.region]; }
   update(dt: number): void {
-    const beforeX = this.movement.position.x;
+    const { position, target } = this.movement;
     this.movement.update(dt);
-    this.elapsed += dt;
     const { x, y } = this.movement.position;
+    if (target && (x !== position.x || y !== position.y)) {
+      const { axisTolerance } = CONFIG.explorationRun;
+      const axis = (distance: number) => Math.abs(distance) <= axisTolerance ? 0 : distance;
+      this.facing = runFacing(axis(target.x - position.x), axis(target.y - position.y), this.facing);
+    }
     this.origin = cameraOrigin(this.movement.position, this.size, CONFIG);
     this.world.setPosition(-CONFIG.width / 2 - this.origin.x, CONFIG.height / 2 + this.origin.y);
     this.labels.setPosition(this.world.position);
-    if (this.region === 'town') {
-      if (x !== beforeX) this.facing = x < beforeX ? -1 : 1;
-      const bob = this.movement.target ? Math.abs(Math.sin(this.elapsed * 14)) * 4 : 0;
-      this.actor?.setPosition(x, -y - 3 + bob);
-      this.actor?.setScale(this.facing, 1, 1);
-    } else {
-      this.actor?.setPosition(x, -y - 3);
-      this.actor?.setScale(1, 1 + (this.movement.target ? Math.sin(this.elapsed * 12) * 0.015 : 0), 1);
-    }
+    this.actor?.setPosition(x, -y - 3);
+    this.updateHeroArt(dt);
     if (this.ripple?.active) {
       const progress = Math.min(1, (this.rippleTime += dt) / 0.5);
       const scale = 0.8 + progress * 0.9;
@@ -173,5 +272,8 @@ export class TownView {
   dispose(): void {
     this.disposed = true;
     this.stop();
+    for (const frame of this.runFrames) frame.destroy();
+    this.runTexture?.decRef();
+    this.spineData?.decRef();
   }
 }
