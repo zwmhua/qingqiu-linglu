@@ -149,9 +149,10 @@ export class BattleView extends Component {
     const session = previous ?? new SessionProgress(initialHero());
     const params = queryParams();
     if (PREVIEW && params.get('mutationSample') === '1' && this.devPreview)
-      return new Battle(previous ? () => 0.9 : () => 0, 1, rage, session, () => 1,
+      return new Battle(previous ? () => 0.9 : () => 0, 1, rage, session, () => 0,
         Math.random, Math.random, Math.random, () => 0);
-    if (PREVIEW && params.get('babySample') === '1' && this.devPreview) return new Battle(() => 0, 1, rage, session);
+    if (PREVIEW && params.get('babySample') === '1' && this.devPreview)
+      return new Battle(() => 0, 1, rage, session, () => 0, Math.random, Math.random, Math.random, () => 1);
     return new Battle(Math.random, undefined, rage, session);
   }
 

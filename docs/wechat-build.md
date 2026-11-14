@@ -1,6 +1,24 @@
 # 微信小游戏构建
 
-## P2-06 本地交付（qa，2026-11-15）
+## P2-06 自然遭遇变异回修（2026-11-15）
+
+华周在首轮本地交付 `6f5a54cc5564eb941880d57d845c9e57a72a20f2` 后明确修正规则：先按 5% 判 0 级宝宝，仅宝宝再按 25% 判变异；1～5 级野生不抽变异。总体概率分别为普通野生 95%、普通宝宝 3.75%、变异宝宝 1.25%。抓取不重抽等级或身份，变异宝宝可正常升级。存档读取与迁移校验未增加“变异必须宝宝”限制，已有变异野生个体仍原样保留。
+
+继续在干净 task39 工作树进行 Human 回修，fetch 后 origin/main 仍为 `8674c5db14505500b2e9187c1a72d488a0db5303`。修改 Battle 的身份分支、BattleView 固定预览及相关 mutation/mutation-tint/wild-encounter/town-progress-integration/progress-migration 回归；相关测试范围以本轮 Human 指令为准。整卡相对起始业务与测试累计增删 **607 行 / 700 行**，未压代码、未删除有效断言。技能仍只生成、保存和显示说明，战斗效果按 P2-07～09 接入。
+
+- 测试先行：`temp/p2-06/mutation-red.log` 实跑 38 项，26 成功、12 失败，捕获旧实现对野生抽变异、5%/25% 条件边界和固定变异预览的错误。受击调色回归原先依赖变异野生，按新规则把生成输入改为宝宝，保留受击后身份与调色断言。
+- 最终全量：`mutation-all-final.log` 实跑 **162 项成功、0 失败、0 跳过，退出 0**；`mutation-tsc.log` 限定纯逻辑及真实传递依赖 tsc 退出 0。
+- 新增持久化用例实际捕获变异宝宝，升到 1 级后仍为宝宝/变异、潜能 +5；分别读取 v3/v4 的变异宝宝与历史变异野生，比较除技能迁移字段外的完整个体资料不变。
+- 首轮浏览器发现 Creator 仍提供旧编译代码（普通野生仍变异），该轮明确不计修复验收；停止本卡预览并重新构建后再验。旧样本保留，亦可核对新版不会清洗其历史变异身份。
+- 本轮 Creator 3.8.8 两平台构建均退出 36、日志 Finished：`mutation-web-mobile.log` / `mutation-wechat.log`。最终 Web battle 3,035,011、总包 8,446,535；微信 battle 3,034,844、总包 6,529,888 字节。比首轮交付各增 3 字节，比 P2-05 基线各增 8,204 字节；主包和其余分包均不变，微信主包仍 919,168 字节。
+- 最终正式 Web 构建无参数入口实点标题进城，读取既有 v4，devPreview=false、无错误，截图 `mutation-formal-town.png`。本轮真实手机、微信模拟器与真机仍 NOT_TESTED。
+- ego-browser 在独立 `localhost:18387` 源实点出城、发起自然生成战斗、抓取、结算与刷新；未覆盖正式 `127.0.0.1:18386` 或首轮迁移样本源的数据。`mutation-browser-03.mjs` 使用依次消费的随机序列（耗尽后为 0）：`[0,0,1,0]` → 1 级普通野生，`[0,0,0,1]` → 0 级普通宝宝，`[0,0,0,0]` → 0 级变异宝宝；实际身份分别精确断言为 `[1,false,false]`、`[0,true,false]`、`[0,true,true]`，截图 `mutation-wild.png` / `mutation-baby.png` / `mutation-mutated-baby.png`。
+- 普通宝宝与变异宝宝均实际点抓取并由宠物防御完成回合。变异宝宝 `caught-3` 保留 0 级、宝宝/变异及 `regen` 技能；刷新后主档原始字符串完全相同，资质页显示「宝宝·变异」、0 级与「回血」，截图 `mutation-refresh.png` / `mutation-handoff.png`。同档 `caught-1` 为旧编译产生的 1 级变异野生，新版读取后仍保持该身份，没有清洗历史个体。
+- `mutation-browser-04.mjs` 实开固定 `mutationSample=1` / `babySample=1`，分别断言为 0 级变异宝宝 / 0 级普通宝宝，截图 `fixed-mutationSample.png` / `fixed-babySample.png`；两种独立战斗预览均未改写主档，随后已返回抓获宝宝的面板供 Human 试玩。
+- 无参数正式入口：`http://127.0.0.1:18386/`。本轮保留档样本：`http://localhost:18387/?scene=3ca2435e-bec8-4656-9bf9-63cfaadc18b7&devPreview=1`；固定变异宝宝：`http://localhost:18387/?scene=66ba6897-199f-4cf3-acc4-a475045cdfa8&devPreview=1&battlePreview=1&mutationSample=1`，换为 `babySample=1` 得普通宝宝。样本依赖本机运行中的 Creator 预览；正式构建不开放这些开发参数。
+- 本次修补另作本地提交，独立 QA 静态审查须绑定该最终完整 SHA，结论随交付答复及 `temp/p2-06/qa-mutation-final.md` 留存。原工作区和素材保留，不推送、不合并；STATUS 建议仍为 Human 试玩接收 P2-06 后转 P2-07 技能战斗效果接入。
+
+## P2-06 首轮本地交付（qa，2026-11-15，历史证据）
 
 任务：技能数据、旧宠迁移与点数口径。起始 `8674c5db14505500b2e9187c1a72d488a0db5303`，分支 `task/39-p2-06-skills`，目录 `C:/Users/hua/cocos/Project/qingqiu-linglu-task39`。最终候选以本节所在本地提交及交付答复的完整 SHA 为准，独立 QA 必须审该 SHA；不自动推送、合并或修改 STATUS。下方开工 X2/测试错误为历史停止记录，Human 已明确批准扩白与修正断言后恢复。本卡完整范围特批 700 行，卡序仍为 16 张。
 

@@ -114,3 +114,26 @@ test('original panel rules reject mismatches, captured IDs survive and v4 valida
   storage.setItem(key, progressSnapshot(session));
   assert.deepEqual(new ProgressLoader().load(storage).roster.entries.at(-1).skillIds, ids);
 });
+
+test('captured mutated babies level normally and existing mutated wild saves remain unchanged', () => {
+  const session = new SessionProgress(initialHero());
+  const battle = new Battle(() => 0, 1, 0, session, () => 0, () => 0, () => 0, () => 0, () => 0);
+  const generated = battle.enemies[0];
+  battle.command('hero', 'capture', generated.id);
+  battle.command('pet', 'defend');
+  const caught = session.roster.entries.at(-1);
+  assert.deepEqual([caught.level, caught.isBaby, caught.isMutated], [0, true, true]);
+  assert.deepEqual(caught.skillIds, generated.skillIds);
+  session.roster.awardExperience(new Set([caught.id]), 10);
+  assert.deepEqual([caught.level, caught.isBaby, caught.isMutated, caught.potential], [1, true, true, 5]);
+  for (const isBaby of [true, false]) for (const version of [3, 4]) {
+    const saved = JSON.parse(progressSnapshot(session));
+    saved.version = version;
+    saved.pets.at(-1).isBaby = isBaby;
+    if (version === 3) saved.pets.forEach(p => { delete p.skillIds; });
+    const restored = new ProgressLoader().load(disk(saved), () => 0).roster.entries.at(-1);
+    const { skill: _old, skillIds: _skills, ...expected } = saved.pets.at(-1);
+    const { skill: _restoredOld, skillIds: _restoredSkills, ...actual } = restored;
+    assert.deepEqual(actual, expected);
+  }
+});

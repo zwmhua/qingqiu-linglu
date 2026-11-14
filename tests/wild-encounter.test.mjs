@@ -57,16 +57,16 @@ test('count and independent species selection honor exact boundaries without a g
     [['maomaochong', 5], ['tingwa', 1], ['pangui', 3]]);
 });
 
-test('each ordinary level has a 20% interval and baby and mutation rolls are independent', () => {
+test('each ordinary level has a 20% interval and mutation is conditional on baby identity', () => {
   for (const [index, low] of [0, 0.2, 0.4, 0.6, 0.8].entries()) {
     for (const roll of [low, low + 0.199999]) {
       assert.equal(make(1, sequence(0, roll)).enemies[0].level, index + 1);
     }
   }
   const battle = make(3, sequence(0, 1 / 3, 0.8, 2 / 3),
-    sequence(0.049999, 0.05, 0), sequence(0.249999, 0, 0.25));
+    sequence(0.049999, 0.05, 0), sequence(0.249999, 0.25));
   assert.deepEqual(battle.enemies.map(unit => [unit.level, unit.combatLevel, unit.isBaby, unit.isMutated]),
-    [[0, 1, true, true], [5, 5, false, true], [0, 1, true, false]]);
+    [[0, 1, true, true], [5, 5, false, false], [0, 1, true, false]]);
 });
 
 test('all three enemy panels use the confirmed level 0, 1 and 5 values', () => {
@@ -97,7 +97,7 @@ test('all species reuse two aptitude rolls per stat, baby ranges, growth precisi
         assert.deepEqual(Object.values(wild.aptitudes), ranges.map(([min, max]) => {
           const low = isBaby ? Math.ceil((min + max) / 2) : min;
           const mean = Math.round(((first ? max : low) + (second ? max : low)) / 2);
-          return first ? Math.round(mean * 1.18) : mean;
+          return isBaby && first ? Math.round(mean * 1.18) : mean;
         }));
         const expectedGrowth = growthRange[second ? 2 : Number(isBaby)];
         assert.equal(wild.growth, expectedGrowth);
@@ -164,7 +164,7 @@ for (const [species, , speciesRoll, low, high] of speciesCases) {
           sequence(isMutated ? 0 : 1, 1));
         const [wild] = first.enemies;
         assert.deepEqual([wild.species, wild.level, wild.isBaby, wild.isMutated],
-          [species, level, isBaby, isMutated]);
+          [species, level, isBaby, isBaby && isMutated]);
         assert.deepEqual(panel(wildCombat(species, level)), expectedPanel);
         assert.deepEqual(panel(wild), expectedPanel);
 

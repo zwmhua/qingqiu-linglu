@@ -26,27 +26,32 @@ test('mutation boundary is exactly 25% and boosts all six without a cap', () => 
   assert.equal(mutateAptitudes({ ...highs, attack: 999 }, 1.18).attack, 1179);
 });
 
-test('each wild encounter rolls mutation once, independently of baby identity', () => {
-  const values = [0, 0.25, 0.249999];
-  let rolls = 0;
-  const battle = new Battle(() => 0.5, 3, 0, undefined,
-    () => rolls === 1 ? 1 : 0, () => 0, () => 0, () => 0,
-    () => values[rolls++]);
-  assert.equal(rolls, 3);
-  assert.deepEqual(battle.enemies.map(enemy => [enemy.isBaby, enemy.isMutated]),
-    [[true, true], [false, false], [true, true]]);
-  for (const enemy of battle.enemies) {
+test('only the 5% babies consume a 25% mutation roll after their identity roll', () => {
+  for (const babyRoll of [0, 0.049999, 0.05, 1]) for (const mutationRoll of [0, 0.249999, 0.25, 1]) {
+    const order = [], isBaby = babyRoll < 0.05;
+    const battle = new Battle(() => 0.5, 1, 0, undefined,
+      () => { order.push('baby'); return babyRoll; }, () => 0, () => 0, () => 0,
+      () => { order.push('mutation'); return mutationRoll; });
+    const enemy = battle.enemies[0];
+    assert.deepEqual(order, isBaby ? ['baby', 'mutation'] : ['baby']);
+    assert.deepEqual([enemy.level, enemy.isBaby, enemy.isMutated], [isBaby ? 0 : 1, isBaby, isBaby && mutationRoll < 0.25]);
     const base = generateAptitudes(!!enemy.isBaby, () => 0);
     assert.deepEqual(enemy.aptitudes, enemy.isMutated
       ? mutateAptitudes(base, MUTATION_CONFIG.multiplier) : base);
+    assert.deepEqual(battle.roster.entries.map(pet => pet.isMutated), [false, false]);
   }
-  assert.deepEqual(battle.roster.entries.map(pet => pet.isMutated), [false, false]);
+  for (const level of [1, 2, 3, 4, 5]) {
+    const encounter = [0, (level - 1) / 5];
+    const battle = new Battle(() => 0, 1, 0, undefined, () => 1, () => 0, () => 0, () => 0,
+      () => assert.fail('ordinary wild must not roll mutation'), () => encounter.shift());
+    assert.deepEqual([battle.enemies[0].level, battle.enemies[0].isMutated], [level, false]);
+  }
 });
 
 test('capture copies encountered mutation; success, failure and downed targets never reroll', () => {
   for (const [captureRoll, downed, expectedCount] of [[0, false, 3], [1, false, 2], [0, true, 2]]) {
     let rolls = 0;
-    const battle = new Battle(() => captureRoll, 1, 0, undefined, () => 1,
+    const battle = new Battle(() => captureRoll, 1, 0, undefined, () => 0,
       () => 0, () => 0, () => 0, () => { if (++rolls > 1) throw new Error('mutation rerolled'); return 0; });
     const wild = battle.enemies[0];
     assert.equal(wild.isMutated, true);
@@ -70,7 +75,7 @@ test('capture copies encountered mutation; success, failure and downed targets n
 
 test('redirected capture keeps the new wild target mutation without reroll', () => {
   let rolls = 0;
-  const battle = new Battle(() => 0, 2, 0, undefined, () => 1,
+  const battle = new Battle(() => 0, 2, 0, undefined, () => 0,
     () => 0, () => 0, () => 0, () => { rolls++; return rolls === 2 ? 0 : 0.25; });
   battle.command('hero', 'capture', battle.enemies[0].id);
   battle.enemies[0].hp = 0;
@@ -106,7 +111,7 @@ test('baby mutation keeps growth, base stats and combat values through summon an
   let nextRolls = 0;
   const next = new Battle(() => 0.5, 1, 0, battle.roster, () => 1,
     () => 0, () => 0, () => 0, () => { nextRolls++; return 1; });
-  assert.equal(nextRolls, 1);
+  assert.equal(nextRolls, 0);
   assert.deepEqual(next.roster.entries[2].aptitudes, caught.aptitudes);
   assert.equal(next.summonTargets().find(pet => pet.id === caught.id).isMutated, true);
   assert.equal(next.roster.entries[0].isMutated, false);

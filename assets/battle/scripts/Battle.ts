@@ -105,7 +105,7 @@ export class Battle {
       const species = pickWildSpecies(encounterRandom());
       const wild = WILD_SPECIES[species];
       const isBaby = isBabyEncounter(babyRandom(), BABY_CONFIG.encounterRate);
-      const isMutated = isMutation(mutationRandom(), MUTATION_CONFIG.rate);
+      const isMutated = isBaby && isMutation(mutationRandom(), MUTATION_CONFIG.rate);
       const level = isBaby ? BABY_CONFIG.level : pickWildLevel(encounterRandom());
       const aptitudes = generateAptitudes(isBaby, aptitudeRandom, wild.aptitudes);
       this.enemies.push({ id: `enemy-${i}`, name: isBaby ? `${wild.name}宝宝` : `野外${wild.name}`,

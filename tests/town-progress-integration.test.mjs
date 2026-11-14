@@ -728,6 +728,16 @@ test('startup retries migration with the same candidate before creating a playab
   } finally { Object.assign(townDisk, original); }
 });
 
+test('fixed mutation preview generates a level-zero baby and normal baby preview never mutates', () => {
+  for (const sample of ['mutationSample', 'babySample']) {
+    window.location.search = `?devPreview=1&battlePreview=1&${sample}=1`;
+    const v = new BattleView();
+    const battle = v.createBattle();
+    assert.deepEqual(battle.enemies.map(p => [p.level, p.isBaby, p.isMutated]), [[0, true, sample === 'mutationSample']]);
+  }
+  window.location.search = '?devPreview=1';
+});
+
 test('skill slots open only owned skills and close on switching pets', () => {
   const v = new BattleView(), labels = [], actions = [];
   v.render = () => {};

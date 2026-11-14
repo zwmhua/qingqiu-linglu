@@ -20,7 +20,7 @@ test('pet tint is determined only by mutation identity', () => {
 
 test('a hit leaves captured mutation identity and its recovery tint intact', () => {
   let roll = 0;
-  const battle = new Battle(() => roll, 2, 0, undefined, () => 1,
+  const battle = new Battle(() => roll, 2, 0, undefined, () => 0,
     () => 0, () => 0, () => 0, () => 0);
   battle.command('hero', 'capture', 'enemy-0');
   battle.command('pet', 'defend');
