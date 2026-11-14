@@ -1448,13 +1448,11 @@ export class BattleView extends Component {
       const sample = this.devPreview ? queryParams().get('roundTripSample') : null;
       if (sample) this.text(`验收样本：${sample}（同档）`, 25, 220, 20);
     }
-    if (town.region === 'town') {
-      const pet = this.progress.roster.entries.find(p => p.id === this.progress.selectedPetId);
-      const hero = this.progress.heroProgress;
-      const maxHp = hero ? heroPanel(hero.stats).maxHp : BATTLE_RULES.hero.hp;
-      this.statusCard('pet', 906, pet && { ...pet, hp: pet.maxHp });
-      this.statusCard('hero', 1102, { id: 'hero', name: BATTLE_RULES.hero.name, hp: maxHp, maxHp });
-    }
+    const pet = this.progress.roster.entries.find(p => p.id === this.progress.selectedPetId);
+    const hero = this.progress.heroProgress;
+    const maxHp = hero ? heroPanel(hero.stats).maxHp : BATTLE_RULES.hero.hp;
+    this.statusCard('pet', 906, pet && { ...pet, hp: pet.maxHp });
+    this.statusCard('hero', 1102, { id: 'hero', name: BATTLE_RULES.hero.name, hp: maxHp, maxHp });
     const entries = ['人物', '宠物', '背包·未开放', '合宠·未开放', town.region === 'town' ? '出城' : '回城'];
     entries.forEach((name, i) => {
       const enabled = !town.loading && (i < 2 || i === 4);

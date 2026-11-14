@@ -45,16 +45,16 @@ NOT_TESTED：node:test、限定及全视图 tsc、ego-browser、无参数正式�
 
 ## P2-05 本地开发交付（2026-11-15，qa）
 
-华周本轮明确解除上节 X2：完整范围上限 400 行、不拆卡，在现有独立工作树继续，先测试后实现；实际超限仍须停止。原附件未改，新的授权记录在本节。分支 `task/38-p2-05-dark-encounters`，起始 SHA `5d93387ecb654d0a174701aea5720d67cf311743`；最终提交及独立 QA 所审完整 SHA 以交付消息和 `temp/p2-05/qa-final.md` 回执为准。STATUS 未改，未推送或合并。
+华周本轮明确解除上节 X2：完整范围上限 400 行、不拆卡，在现有独立工作树继续，先测试后实现；实际超限仍须停止。原附件未改，新的授权记录在本节。分支 `task/38-p2-05-dark-encounters`，起始 SHA `5d93387ecb654d0a174701aea5720d67cf311743`；含头像修补的最终提交及独立 QA 所审完整 SHA 以交付消息和 `temp/p2-05/qa-repair-final.md` 回执为准。STATUS 未改，未推送或合并。
 
 ### 实现与运行检查
 
 - 正式 Boot → Battle.scene → 同档城镇，无查询参数；保留原存档键、v3 格式、Boot 加载边界及全部资源。坏档或读取抛错锁定地图操作，不创建 SessionProgress/Battle，不写回。
 - `OUTSKIRTS.encounter` 配置 180 保护、60 间隔、10% 概率。`EncounterDistance.advance()` 只消费实际路径段；`WalkMovement.update()` 在首命中点截断并清路径；TownView 先更新人物和镜头，再调用原地图开战入口。成功换图、胜/抓胜/逃回场重新保护，地图加载失败保留来源和计数。
 - 自动状态沿用会话最新选择；开面板、后台、禁用、切图及战斗阻断移动，关闭/返回不续走。保持 P2-04 动画后保存、同字符串重试、战败回城失败锁及一次结算。
-- 本卡业务 +89/-21 = 110，测试 +194/-11 = 205，合计 **315 行**，低于 400。文档、原样卡片、忽略的构建与验收产物另计。
+- 含头像修补的本卡业务 +94/-28 = 122，测试 +234/-11 = 245，合计 **367 行**，低于 400。文档、原样卡片、忽略的构建与验收产物另计；首轮 315 行为修补前记录。
 - 先运行新增失败用例，再实现：`node --test tests/outskirts-exploration.test.mjs tests/town-pathfinding.test.mjs tests/town-progress-integration.test.mjs`，原失败日志 `temp/p2-05/red-tests.log`。后台目标及十进制帧边界另有先失败后修复日志 `foreground-red.log`、`fractional-red.log`。
-- 最终 `node --test tests/*.test.mjs`：149 项成功、0 失败、0 跳过，日志 `tests.log`。环境 `COCOS_TYPESCRIPT=E:/ProgramData/cocos/editors/Creator/3.8.8/resources/app.asar.unpacked/node_modules/typescript`，没有新增依赖或改有效断言。
+- 头像修补后 `node --test tests/*.test.mjs`：150 项成功、0 失败、0 跳过，日志 `repair-tests.log`（首轮 `tests.log` 为 149 项）。环境 `COCOS_TYPESCRIPT=E:/ProgramData/cocos/editors/Creator/3.8.8/resources/app.asar.unpacked/node_modules/typescript`，没有新增依赖或改有效断言。
 - 限定 tsc：`node <COCOS_TYPESCRIPT>/bin/tsc --noEmit --skipLibCheck --strict --target ES2022 --module ESNext --moduleResolution node <assets/battle/logic/*.ts全部文件> assets/battle/scripts/Battle.ts assets/battle/scripts/walkable-path.ts assets/logic/platform.ts`，退出码 0，真实传递依赖包含在内。
 - 额外全视图严格 tsc 使用同一 Creator cc/cc.env 声明及 `--experimentalDecorators`。候选与起始 SHA archive 均只有 Tween onUpdate 可选 Node 参数的同一 TS2322；未修改白名单外的动效或声明来掩盖基线问题，不声称全视图严格检查成功。
 - 开发回修留痕：保留旧 PREVIEW 显式条件并增加开发开关，以保留旧样本共用经验路径的源断言；后台迟到目标由 hide/show 阻挡；0.1×2400 的舍入漏检以 1e-9 世界单位容差修复。业务问题和复现均记入 `docs/bugs.md`，尚无 QA 打回回修。
@@ -79,22 +79,22 @@ NOT_TESTED：node:test、限定及全视图 tsc、ego-browser、无参数正式�
 
 ### 最终构建与同口径包体
 
-同一 Creator 3.8.8、仓库原有两份构建配置；基线为起始 SHA 的 `git archive` 独立副本。基线 Web/微信和最终候选 Web/微信均退出 36。最终日志为 `final2-web-mobile.log`、`final2-wechat.log`，测量为 `package-bytes-final.json`；按所有产物文件字节求和，非上传压缩大小。微信主包排除整个 subpackages；Web 的主包口径为排除 battle/town/outskirts/inventory 四个 Bundle 后的其余全部文件（含引擎、main、internal）。
+同一 Creator 3.8.8、仓库原有两份构建配置；基线为起始 SHA 的 `git archive` 独立副本。基线 Web/微信和头像修补后的最终候选 Web/微信均退出 36。最终日志为 `repair-web-mobile.log`、`repair-wechat.log`，测量为 `repair-package-bytes.json`；首轮 final2 日志仍保留。按所有产物文件字节求和，非上传压缩大小。微信主包排除整个 subpackages；Web 的主包口径为排除 battle/town/outskirts/inventory 四个 Bundle 后的其余全部文件（含引擎、main、internal）。
 
 | 平台/目录 | 基线字节 | 最终字节 | 增量 |
 | --- | ---: | ---: | ---: |
 | Web 主包口径 | 2,835,648 | 2,835,648 | 0 |
-| Web battle | 3,024,770 | 3,026,829 | +2,059 |
+| Web battle | 3,024,770 | 3,026,807 | +2,037 |
 | Web town | 1,923,710 | 1,923,710 | 0 |
 | Web outskirts | 594,500 | 594,500 | 0 |
 | Web inventory | 57,666 | 57,666 | 0 |
-| Web 总包 | 8,436,294 | 8,438,353 | +2,059 |
+| Web 总包 | 8,436,294 | 8,438,331 | +2,037 |
 | 微信主包 | 919,168 | 919,168 | 0 |
-| 微信 battle | 3,024,603 | 3,026,662 | +2,059 |
+| 微信 battle | 3,024,603 | 3,026,640 | +2,037 |
 | 微信 town | 1,923,710 | 1,923,710 | 0 |
 | 微信 outskirts | 594,500 | 594,500 | 0 |
 | 微信 inventory | 57,666 | 57,666 | 0 |
-| 微信总包 | 6,519,647 | 6,521,706 | +2,059 |
+| 微信总包 | 6,519,647 | 6,521,684 | +2,037 |
 
 微信主包低于 3.5 MB 停止线。未改构建配置、场景、UUID 或资源。Creator 自动改写的 engine.json 经规范化字节核对只有换行变化，恢复本轮生成的换行差异，不纳入提交。
 
@@ -103,6 +103,24 @@ NOT_TESTED：node:test、限定及全视图 tsc、ego-browser、无参数正式�
 最终输入复核：ego 的鼠标操作在按下与抬起之间触发页面 visibilitychange → Cocos hide，实际调用 stopTown 清触点（`browser-22/23.log`），导致该次点地被正确取消；两轮等待未解除后没有继续重复等待脚本或修改保护规则。改用浏览器协议触摸输入实际点地，发布包走到 `(800.069393,399.556382)`、保护 0、余数 21.226157，无 visibility 事件（`browser-25/26.log`、`final-touch-walked.png`）。这是桌面浏览器模拟触摸，不是手机实机结论。
 
 最终预览重新确认修复代码已加载，并实际触摸完成「出城 → 保护内分段停步 → 打开/关闭宠物面板 → 继续行走 → 首次命中 → 自动战胜回图」。命中和返回同为 `(779.999762,374.760843)`，镜头 `(112.999762,0)`；胜后 180/0、无目标（`browser-27.log`、`final-preview-240.png`、`final-preview-return.png`）。最终 TownView 严格 tsc 退出 0（`tsc-town-final.log`）。
+
+### 华周反馈：出城头像消失修补（2026-11-15）
+
+首轮本地提交 `23ee459106fb0f0c5b5e284b80e0e257e4c3e525` 后，华周要求城野复用现有状态卡，并沿用整卡 400 行上限。回修原因是 `renderTown()` 只在 town 区域调用状态卡；现去掉区域限制，保留状态卡原坐标、同一 SessionProgress、原头像面板回调和 BlockInputEvents。没有增加存档写入或新 UI。
+
+先新增集成测试，实际得到 12 成功、1 失败，失败信息为 `outskirts must show both portraits`（`repair-red.log`）；再修改实现。新用例覆盖城镇→野外→城镇、原 HUD 父节点与坐标、原人物/宠物入口、同一进度和无额外保存。全量结果 150/150；纯逻辑及 TownView 限定严格 tsc 均退出 0（`repair-tsc.log`、`repair-tsc-town.log`）。有效旧测试未删。两平台重新构建及最新包体已更新到上表。
+
+本轮在同一 ego TaskSpace 32 使用真实浏览器触摸输入，未直接调用产品方法代替点击，未替换随机源或存档。正式 Web 发布包完成头像与滚屏交互，显式 single 开发样本完成战胜回场：
+
+| 验收 | 实际结果与本地证据（`temp/p2-05/`） |
+| --- | --- |
+| 出城显示 | 正式标题进城后点出城，人物与出战 pet 两张头像及状态条可见，均有 SpriteFrame、父节点为 town-ui。`repair-browser-02.log`、`repair-formal-field.png` |
+| 滚屏固定 | 走到 `(700.060719,374.760843)`，镜头原点从 0 移到 `33.060719`；两头像局部坐标始终为 `(271,321)`、`(467,321)`，显示位置不随世界层移动。`repair-browser-03.log`、`repair-formal-scrolled.png` |
+| 原面板与不穿透 | 先后实点宠物及人物头像，打开对应原属性面板；再点面板区域并关闭。选中宠物为当前出战 pet，位置、保护余量 `19.939103` 均不变，目标为空，同一 progress 对象未替换。`repair-formal-pet-panel.png`、`repair-formal-hero-panel.png`、`repair-browser-03.log` |
+| 战胜回野外 | 显式开发样本实际走满 240 触发一场，开自动战胜后回 `(779.999978,374.897521)`、镜头 `112.999978`，180/0 且停步。两头像恢复在原位置，分别点击仍打开原面板且不移动。`repair-browser-04/05.log`、`repair-victory-return.png` |
+| 回城 | 正式包和样本战后均实点回城，回 `(690,443)`，两张状态卡仍可见，同一进度保留。`repair-formal-return-town.png`、`repair-post-battle-town.png`、`repair-browser-04/05.log` |
+
+本轮修补属于华周试玩反馈，未发生 QA 打回。整卡实际 367/400 行；文档补丁曾因匹配不到标题而整体未应用，按真实标题重作后完成，未改产品代码或断言绕过工具错误。最终提交后由独立 QA 对新完整 SHA 重新静态审查，回执保存在 `qa-repair-final.md`，旧 `qa-final.md` 仅对应修补前 SHA。Web 手机、微信模拟器和微信真机仍为下节 NOT_TESTED，Human 最终试玩未代签。
 
 ### 华周试玩入口与确定性样本
 
@@ -117,7 +135,7 @@ NOT_TESTED：node:test、限定及全视图 tsc、ego-browser、无参数正式�
 - **Web 手机实体浏览器：NOT_TESTED**；上述为桌面 ego 上的 web-mobile 构建及 Creator 预览，不冒充手机实操。
 - **微信开发者工具模拟器：NOT_TESTED；微信真机：NOT_TESTED**。本轮实际运行微信构建，不上传、不发布。
 - 原生后台切换的 browser 实操 **NOT_TESTED**：切换标签的尝试读到 `document.hidden=false`，未取得后台证据；node:test 已调用真实 hide/show 接线，验证禁止消费和恢复停步。组件禁用/多触点、战败城图失败重试、pair 样本的本轮浏览器逐项实操未追加；对应自动化与 P2-04 断言保留并运行。
-- 独立 QA 仅对最终完整 SHA 做只读静态审查，不跑测试或独立用例。最终回执与 SHA 见交付消息及忽略目录下 `qa-final.md`；Human 最终试玩仍待华周完成。
+- 独立 QA 仅对最终完整 SHA 做只读静态审查，不跑测试或独立用例。含头像修补的最终回执与 SHA 见交付消息及忽略目录下 `qa-repair-final.md`；Human 最终试玩仍待华周完成。
 - STATUS 建议（本轮不写入）：华周验收后记录「P2-05 暗雷与场景正式闭环（qa）完成，验收 SHA：____」；下一步 P2-06，另行发卡。
 
 使用 Cocos Creator 3.8.8。设计分辨率为 1334×750，构建方向为横屏，AppID 为 `wx2b83dfd606e96e59`。构建配置保存在 `settings/wechat-build.json`。

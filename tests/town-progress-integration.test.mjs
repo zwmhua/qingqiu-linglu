@@ -240,6 +240,46 @@ test('town panel callbacks use correct IDs, preserve failed writes and persist c
   assert.deepEqual(restored.roster.entries.map(p => p.id), ['pet']);
 });
 
+test('town and outskirts share fixed portraits and the original progress panel entries', () => {
+  const v = new BattleView();
+  v.render = () => {};
+  v.start();
+  v.enabledInHierarchy = true;
+  const session = v.progress, writes = townDisk.writes;
+  v.town.frame = {};
+  v.town.loading = false;
+  v.town.draw = () => {};
+  const blockers = [];
+  v.rect = (x, y, w, h) => ({ addComponent() { blockers.push([x, y, w, h]); } });
+  v.button = () => ({ addComponent() {} });
+  v.text = v.unitColor = v.petArt = () => {};
+  for (const region of ['town', 'outskirts', 'town']) {
+    v.town.region = region;
+    v.rosterOpen = false;
+    v.detailsOpen = null;
+    v.renderTown();
+    const pet = v.layer.children.find(node => node.name === 'portrait-pet');
+    const hero = v.layer.children.find(node => node.name === 'portrait-hero');
+    assert.ok(pet && hero, `${region} must show both portraits`);
+    assert.equal(pet.parent.name, 'town-ui');
+    assert.equal(hero.parent, pet.parent);
+    assert.deepEqual(pet.position, { x: 271, y: 321 });
+    assert.deepEqual(hero.position, { x: 467, y: 321 });
+    assert.ok(blockers.some(rect => String(rect) === '906,18,192,104'));
+    assert.ok(blockers.some(rect => String(rect) === '1102,18,192,104'));
+    pet.handlers.end();
+    assert.equal(v.rosterOpen, true);
+    assert.equal(v.selectedPetId, session.selectedPetId);
+    assert.equal(v.mapBlocked, true);
+    v.rosterOpen = false;
+    hero.handlers.end();
+    assert.equal(v.detailsOpen, 'hero');
+    assert.equal(v.mapBlocked, true);
+    assert.equal(v.progress, session);
+  }
+  assert.equal(townDisk.writes, writes);
+});
+
 test('outskirts loading is atomic, ignores stale callbacks, and round trips without a save', () => {
   const v = new BattleView();
   v.render = () => {};
