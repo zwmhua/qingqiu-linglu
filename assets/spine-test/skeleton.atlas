@@ -1,0 +1,126 @@
+skeleton.png
+size: 1024, 1024
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+pma: false
+staff
+  bounds: 4, 4, 121, 374
+  offsets: 486, 191, 768, 768
+  rotate: false
+  index: -1
+back_hair
+  bounds: 133, 4, 287, 263
+  offsets: 197, 471, 768, 768
+  rotate: false
+  index: -1
+front_hair
+  bounds: 428, 4, 261, 255
+  offsets: 260, 473, 768, 768
+  rotate: false
+  index: -1
+handwear-r
+  bounds: 697, 4, 133, 203
+  offsets: 205, 261, 768, 768
+  rotate: false
+  index: -1
+bottomwear
+  bounds: 4, 386, 204, 192
+  offsets: 269, 180, 768, 768
+  rotate: false
+  index: -1
+hair_ribbon
+  bounds: 216, 386, 172, 182
+  offsets: 171, 508, 768, 768
+  rotate: false
+  index: -1
+face
+  bounds: 396, 386, 145, 151
+  offsets: 328, 478, 768, 768
+  rotate: false
+  index: -1
+handwear-l
+  bounds: 549, 386, 138, 151
+  offsets: 400, 311, 768, 768
+  rotate: false
+  index: -1
+topwear
+  bounds: 695, 386, 182, 137
+  offsets: 260, 359, 768, 768
+  rotate: false
+  index: -1
+foot_r
+  bounds: 885, 386, 79, 102
+  offsets: 277, 37, 768, 768
+  rotate: false
+  index: -1
+foot_l
+  bounds: 4, 586, 94, 89
+  offsets: 381, 52, 768, 768
+  rotate: false
+  index: -1
+leg_r
+  bounds: 106, 586, 79, 85
+  offsets: 291, 117, 768, 768
+  rotate: false
+  index: -1
+leg_l
+  bounds: 193, 586, 75, 81
+  offsets: 370, 121, 768, 768
+  rotate: false
+  index: -1
+ears
+  bounds: 276, 586, 41, 40
+  offsets: 311, 498, 768, 768
+  rotate: false
+  index: -1
+eyewhite-r
+  bounds: 325, 586, 35, 31
+  offsets: 378, 519, 768, 768
+  rotate: false
+  index: -1
+eyewhite-l
+  bounds: 368, 586, 17, 29
+  offsets: 439, 521, 768, 768
+  rotate: false
+  index: -1
+eyelash-r
+  bounds: 393, 586, 48, 28
+  offsets: 369, 527, 768, 768
+  rotate: false
+  index: -1
+irides-l
+  bounds: 449, 586, 13, 28
+  offsets: 441, 522, 768, 768
+  rotate: false
+  index: -1
+irides-r
+  bounds: 470, 586, 20, 27
+  offsets: 392, 520, 768, 768
+  rotate: false
+  index: -1
+eyelash-l
+  bounds: 498, 586, 23, 25
+  offsets: 440, 532, 768, 768
+  rotate: false
+  index: -1
+mouth
+  bounds: 529, 586, 30, 22
+  offsets: 407, 488, 768, 768
+  rotate: false
+  index: -1
+eyebrow-r
+  bounds: 567, 586, 60, 15
+  offsets: 373, 557, 768, 768
+  rotate: false
+  index: -1
+eyebrow-l
+  bounds: 635, 586, 18, 14
+  offsets: 447, 558, 768, 768
+  rotate: false
+  index: -1
+nose
+  bounds: 661, 586, 11, 14
+  offsets: 431, 512, 768, 768
+  rotate: false
+  index: -1
