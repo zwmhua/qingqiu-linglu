@@ -101,11 +101,19 @@ export class WalkMovement {
     this.target = route[0];
     return true;
   }
-  update(dt: number): void {
+  update(dt: number, intercept?: (distance: number) => number | undefined): void {
     if (!this.target || !Number.isFinite(dt) || dt <= 0) return;
     let step = TOWN.speed * dt;
     while (this.target && step > 0) {
       const length = distance(this.position, this.target);
+      const travelled = Math.min(step, length);
+      const hit = travelled > 0 ? intercept?.(travelled) : undefined;
+      if (hit !== undefined) {
+        this.position = { x: this.position.x + (this.target.x - this.position.x) * hit / length,
+          y: this.position.y + (this.target.y - this.position.y) * hit / length };
+        this.stop();
+        return;
+      }
       if (step >= length) {
         this.position = this.target;
         step -= length;

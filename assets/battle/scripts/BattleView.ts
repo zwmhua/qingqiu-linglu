@@ -64,7 +64,8 @@ export class BattleView extends Component {
   private battle!: Battle;
   private town?: TownView;
   private townSession?: SessionProgress;
-  private townPreview = PREVIEW && queryParams().get('townPreview') === '1';
+  private devPreview = PREVIEW && queryParams().get('devPreview') === '1';
+  private townPreview = !(this.devPreview && queryParams().get('battlePreview') === '1');
   private mapBattle = false;
   private returningTown = false;
   private returnPoint?: { x: number; y: number };
@@ -79,6 +80,9 @@ export class BattleView extends Component {
   private get progress(): SessionProgress { return this.townSession ?? this.battle.session; }
   private get inBattle(): boolean { return !this.onMap && (this.battle.phase !== 'ended' || !this.resultSaved); }
   private stopTown = (): void => { this.town?.stop(); };
+  private mapHidden = false;
+  private hideMap = (): void => { this.mapHidden = true; this.stopTown(); };
+  private showMap = (): void => { this.mapHidden = false; };
   private confirmHeroPoints(draft: HeroProgress): boolean {
     if (this.inBattle) return false;
     const persist = (next: HeroProgress) => saveProgress(progressStorage(), this.progress, next);
@@ -96,7 +100,7 @@ export class BattleView extends Component {
   }
   private progressError = '';
   private progressReadFailed = false;
-  private layoutTest = queryParams().get('layout') === '10v10';
+  private layoutTest = this.devPreview && queryParams().get('layout') === '10v10';
   private choosingTarget: TargetMode | null = null;
   private lastShownSecond = -1;
   private layer!: Node;
@@ -135,21 +139,23 @@ export class BattleView extends Component {
 
   private get usesTestProgress(): boolean {
     const params = queryParams();
-    return this.townPreview || !this.layoutTest && !(PREVIEW && (params.get('mutationSample') === '1' || params.get('babySample') === '1'));
+    return this.townPreview || !this.layoutTest && !(this.devPreview && (params.get('mutationSample') === '1' || params.get('babySample') === '1'));
   }
 
   private createBattle(previous?: SessionProgress, rage = 0): Battle {
     const session = previous ?? new SessionProgress(initialHero());
     const params = queryParams();
-    if (PREVIEW && params.get('mutationSample') === '1')
+    if (PREVIEW && params.get('mutationSample') === '1' && this.devPreview)
       return new Battle(previous ? () => 0.9 : () => 0, 1, rage, session, () => 1,
         Math.random, Math.random, Math.random, () => 0);
-    if (PREVIEW && params.get('babySample') === '1') return new Battle(() => 0, 1, rage, session);
+    if (PREVIEW && params.get('babySample') === '1' && this.devPreview) return new Battle(() => 0, 1, rage, session);
     return new Battle(Math.random, undefined, rage, session);
   }
 
   onEnable(): void {
-    game.on(Game.EVENT_HIDE, this.stopTown);
+    this.showMap();
+    game.on(Game.EVENT_HIDE, this.hideMap);
+    game.on(Game.EVENT_SHOW, this.showMap);
     // The canvas survives the redraw that replaces the pressed button.
     if (WECHAT) {
       wx.onTouchEnd(this.stopPotentialRepeat);
@@ -160,7 +166,8 @@ export class BattleView extends Component {
   }
 
   onDisable(): void {
-    game.off(Game.EVENT_HIDE, this.stopTown);
+    game.off(Game.EVENT_HIDE, this.hideMap);
+    game.off(Game.EVENT_SHOW, this.showMap);
     this.stopTown();
     if (WECHAT) {
       wx.offTouchEnd(this.stopPotentialRepeat);
@@ -179,7 +186,7 @@ export class BattleView extends Component {
       try { saved = loadSessionProgress(progressStorage()); }
       catch {
         this.progressReadFailed = true;
-        this.progressError = '本地进度读取失败，可使用测试重置。';
+        this.progressError = '本地进度读取失败，原档已保留，请重新加载。';
       }
     }
     if (this.townPreview) {
@@ -189,7 +196,8 @@ export class BattleView extends Component {
       this.town = new TownView(this.node, () => {
         if (this.town?.region === 'town' && !this.town.loading) this.returningTown = false;
         this.render();
-      });
+      }, () => this.startFixedBattle());
+      if (this.devPreview && queryParams().get('encounterSample') === '1') this.town.encounterRandom = () => 0;
       this.town.load();
       this.render();
       return;
@@ -211,7 +219,7 @@ export class BattleView extends Component {
   }
 
   private get canResetProgress(): boolean {
-    return !this.mapBattle && (this.progressReadFailed || this.battle?.phase !== 'ended' || this.resultSaved);
+    return this.devPreview && !this.mapBattle && (this.progressReadFailed || this.battle?.phase !== 'ended' || this.resultSaved);
   }
   private resetTestProgress(): void {
     if (!this.canResetProgress) return;
@@ -240,7 +248,11 @@ export class BattleView extends Component {
   }
 
   update(dt: number): void {
-    if (this.onMap) { this.town?.update(dt); return; }
+    if (this.onMap) {
+      if (this.mapBlocked) this.stopTown();
+      else this.town?.update(dt);
+      return;
+    }
     this.idleTime += dt;
     if (this.layoutTest) return;
     if (this.playing) { this.syncMovingUnits(); return; }
@@ -1151,14 +1163,14 @@ export class BattleView extends Component {
 
   private startFixedBattle(): void {
     const town = this.town;
-    if (!this.onMap || this.returningTown || !town || town.region !== 'outskirts' || town.loading || !town.frame
+    if (!this.onMap || this.mapHidden || this.returningTown || !town || town.region !== 'outskirts' || town.loading || !town.frame
       || !this.enabledInHierarchy || this.progressReadFailed || this.detailsOpen || this.rosterOpen) return;
     town.stop();
     town.error = '';
     this.returnPoint = { ...town.movement.position };
     this.postBattle = undefined;
     this.returnMessage = '';
-    const sample = queryParams().get('roundTripSample');
+    const sample = this.devPreview ? queryParams().get('roundTripSample') : null;
     const fixed = ['single', 'pair', 'defeat'].includes(sample ?? '');
     const battle = fixed
       ? new Battle(() => 0, sample === 'pair' ? 2 : 1, 0, this.progress, () => 1,
@@ -1201,6 +1213,7 @@ export class BattleView extends Component {
         this.town!.load('town');
       }
       else {
+        this.town!.encounters.reset();
         this.town!.movement.position = { ...this.returnPoint! };
         this.town!.update(0);
         this.postBattle = { result, position: { ...this.returnPoint! } };
@@ -1391,6 +1404,10 @@ export class BattleView extends Component {
     if (this.progressError) this.text(this.progressError, 36, 274, 16, '#F4DC9C', 345);
   }
 
+  private get mapBlocked(): boolean {
+    return !this.enabledInHierarchy || this.mapHidden || this.returningTown || !!this.detailsOpen || this.rosterOpen || this.progressReadFailed;
+  }
+
   private renderTown(): void {
     const town = this.town!;
     if (this.detailsOpen || this.rosterOpen) town.stop();
@@ -1403,7 +1420,7 @@ export class BattleView extends Component {
       this.openPetPanel(this.progress.selectedPetId);
     };
     const travel = () => { town.load(town.destination); this.render(); };
-    town.draw(this.heroArt, () => !this.enabledInHierarchy || this.returningTown || !!this.detailsOpen || this.rosterOpen || this.progressReadFailed,
+    town.draw(this.heroArt, () => this.mapBlocked,
       place => {
         if (place.id === 'pet') openPets();
         else if (place.id === 'exit') travel();
@@ -1421,14 +1438,14 @@ export class BattleView extends Component {
       return;
     }
     if (town.region === 'outskirts') {
-      this.button('固定开战（测试）', 25, 90, 270, 56, !town.loading,
+      if (this.devPreview) this.button('固定开战（测试）', 25, 90, 270, 56, !town.loading,
         () => this.startFixedBattle()).addComponent(BlockInputEvents);
       this.button(this.auto.enabled ? '自动：开' : '自动：关', 25, 155, 190, 56, !town.loading, () => {
         town.stop();
         this.auto.toggle();
         this.render();
       }).addComponent(BlockInputEvents);
-      const sample = queryParams().get('roundTripSample');
+      const sample = this.devPreview ? queryParams().get('roundTripSample') : null;
       if (sample) this.text(`验收样本：${sample}（同档）`, 25, 220, 20);
     }
     if (town.region === 'town') {
@@ -1525,7 +1542,7 @@ export class BattleView extends Component {
     this.layer = interfaceLayer;
     this.renderLog();
     this.renderHeroProgress();
-    if (this.usesTestProgress && !this.playing && !this.rosterOpen)
+    if (this.devPreview && this.usesTestProgress && !this.playing && !this.rosterOpen)
       this.button('测试重置', 200, 104, 136, 54, this.canResetProgress, () => this.resetTestProgress());
     if (this.battle.phase !== 'ended') this.autoButton();
     if (!this.playing) this.button(`携带 ${this.battle.roster.entries.length}/${this.battle.roster.capacity}`,

@@ -4,12 +4,13 @@
 - 入口场景：`assets/boot/Boot.scene` 加载本地 `battle` Asset Bundle，加载完成后由玩家进入 `assets/battle/scenes/Battle.scene`。
 - 战斗规则：`assets/battle/scripts/Battle.ts`，不依赖 Cocos UI；可调玩法规则和纯逻辑放在 `assets/battle/logic/`，表现和站位参数放在 `assets/battle/scripts/config.ts`。浏览器与微信的查询及存储接口保留在 `assets/logic/platform.ts`。
 - 共用进度：P2-02A 的 `SessionProgress` 持有人物、携带、出战 ID 和抓取编号；`local-progress.ts` 使用原键和 v3 格式读写，加点/放生成功保存后才提交内存。
-- 显示与交互：`BattleView.ts` 默认创建战斗界面。Creator 开发预览 `townPreview=1` 在地图上直接使用同一进度，仅点野外「固定开战（测试）」才创建 `Battle`；人物/宠物面板复用原绘制及事务入口。正式标题仍进战斗，P2-05 才切正式入口。
+- 显示与交互：P2-05 的 `BattleView.ts` 默认读取原键 v3 进度进入城镇，读档失败锁定并提示保留原档。Boot 和 Battle.scene 加载边界不变；人物/宠物面板复用原绘制及事务入口。正式地图仅移动遇怪，未开启功能仍显示未开放。
 - P2-04 结算：Battle 明确给出 victory/defeat/escaped，人物逃跑在原离场时点整队撤离；原 checkWinner 的 ended 保护只发一次经验。动画播完才用原 v3 格式序列化完整候选，保存失败留场重试同一字符串，成功后回原世界位置或战败回城；待保存不能加点/放生/重置绕过。非终结抓宠仍按原时点保存。
-- 地图与战斗复用同一 SessionProgress、TownView 根节点和世界位置；战斗期间隐藏地图，清理瞬态层时保留地图与 Camera。战败城图加载失败锁定回城重试。自动状态复用当前 AutoCommands 最新值，不持久化；一次战后上下文只供 P2-05 后续接入，不实现 180 距离保护或暗雷。
-- 城镇：`TownView.ts` 从 `town` Bundle 加载 1672×941 斜俯视街图，复用 1334×750 视口、世界层跟随、镜头夹边和 180 单位/秒直线移动。`exploration.ts` 配置出生点、街道与广场凸区及五个地点。点击地点标签打开原功能或显示未开放。地面波纹、人物翻转与颠动只影响显示。开面板、后台/失焦、禁用、销毁清目标，UI 阻断地图触摸。
-- 野外：`townPreview=1` 通过出城和回城切换 `TownView` 的区域。野外图保留在 `outskirts`，以 750 高度等比铺到约 2665.25 宽。镜头夹边移动世界层，HUD 与面板留在视口层。点击经视口换算为世界坐标，整条线段须被凸区并集覆盖。
-- 城野切换先清目标，成功加载后替换地图节点和出生位置，失败保留来源地图。两处共用同一个 `SessionProgress`，位置和区域只在会话中使用。首区怪物池引用现有遭遇配置，P2-04 接固定战斗往返，随机触发留 P2-05。
+- 地图与战斗复用同一 SessionProgress、TownView 根节点和世界位置；战斗期间隐藏地图，清理瞬态层时保留地图与 Camera。战败城图加载失败锁定回城重试。自动状态复用当前 AutoCommands 最新值，不持久化。胜利、抓胜、逃跑成功回原位停步，重新给予 180 距离保护；战败回城。
+- 城镇：`TownView.ts` 从 `town` Bundle 加载 1672×941 斜俯视街图，复用 1334×750 视口、世界层跟随、镜头夹边和 180 单位/秒移动。`walkable-path.ts` 沿用现有 A* 路径规划，逐段校验并行走；`exploration.ts` 配置出生点和地点。点击地点标签打开原功能或显示未开放。波纹、人物翻转与动画只影响显示。开面板、后台/失焦、禁用、销毁清目标，UI 阻断地图触摸。
+- 野外：正式出城和回城切换 `TownView` 的区域。3344×941 野外图保留在 `outskirts`，以 750 高度等比铺到约 2665.25 宽。镜头夹边移动世界层，HUD 与面板留在视口层。点击经视口换算为世界坐标，每个路径段须被凸区并集覆盖。
+- 城野切换先清目标，成功加载后替换地图节点、出生位置和距离状态，失败保留来源地图与计数。位置、区域、保护和抽取余数只在会话中使用。`EncounterDistance` 先消耗 180 保护，再每 60 距离按 10% 判定；`WalkMovement.update()` 对每个实际段调用截断接口，首命中清路径、丢弃剩余位移。TownView 更新人物和镜头后才通知 BattleView 开战，怪物使用现有生成器。
+- 开发样本必须同时满足 Creator `PREVIEW` 和 `devPreview=1`。`encounterSample=1` 固定当前预览的距离抽取为命中，仍须走满保护和间隔；`roundTripSample=single|pair|defeat` 固定遭遇输入，同档保存。旧直接战斗另需 `battlePreview=1`。发布构建不启用上述样本、固定开战或测试重置；正式入口无查询参数。
 - 资源边界：城图及原 UUID 留 `assets/town/`；人物、面板和城镇脚本留 `battle`，Boot 不静态引用地图，town 不反向依赖 battle 脚本。不新增分包、存档键或规则迁移。
 - 美术：`assets/battle/textures/` 下的背景、角色、汀蛙和玉石按钮；场景通过 SpriteFrame 引用素材。保留对应 `.meta` 文件以维持资源 UUID。
 - 验证：`tests/` 用 node:test 检查规则、存档兼容和站位。浏览器预览由 Cocos Creator 打开场景后启动。

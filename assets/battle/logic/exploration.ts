@@ -39,6 +39,7 @@ export const TOWN_PLACES = [
 export type TownPlace = typeof TOWN_PLACES[number];
 
 export const OUTSKIRTS = {
+  encounter: { protection: 180, interval: 60, probability: 0.1 },
   width: 3344 * 750 / 941, height: 750, spawn: { x: 540, y: 375 },
   // The near bank bends southeast below the bridge. Every polygon is clockwise.
   regions: [
@@ -50,6 +51,36 @@ export const OUTSKIRTS = {
   pool: { species: speciesKeys, levels: wildLevels, counts: BATTLE_RULES.encounter,
     baby: BABY_CONFIG, mutation: MUTATION_CONFIG },
 };
+
+export class EncounterDistance {
+  protection = 0;
+  remainder = 0;
+  private readonly rules: typeof OUTSKIRTS.encounter;
+  constructor(rules = OUTSKIRTS.encounter) { this.rules = rules; this.reset(); }
+  reset(): void {
+    this.protection = this.rules.protection;
+    this.remainder = 0;
+  }
+  // Returns the distance to the first hit within this segment, or no hit.
+  advance(distance: number, random = Math.random): number | undefined {
+    if (!Number.isFinite(distance) || distance < 0) throw new Error('无效的探索距离');
+    let travelled = Math.min(this.protection, distance);
+    this.protection -= travelled;
+    distance -= travelled;
+    while (distance > 0) {
+      const step = Math.min(distance, this.rules.interval - this.remainder);
+      travelled += step;
+      distance -= step;
+      this.remainder += step;
+      // Decimal frame steps can leave a threshold a few ulps short.
+      if (this.remainder >= this.rules.interval - 1e-9) {
+        this.remainder = 0;
+        if (random() < this.rules.probability) return travelled;
+      }
+    }
+    return undefined;
+  }
+}
 
 const townArea = { spawn: TOWN.spawn, regions: [TOWN.vertices, ...townStreets] };
 export const MAPS = {

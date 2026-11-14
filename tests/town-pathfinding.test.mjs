@@ -14,6 +14,35 @@ const ring = { width: 120, height: 120, spawn: { x: 10, y: 60 }, regions: [
   rect(0, 40, 40, 80), rect(80, 40, 120, 80),
 ] };
 
+test('segment interception stops at the same corner-route point across frame sizes', async () => {
+  const { EncounterDistance } = await import('../assets/battle/logic/exploration.ts');
+  const run = (dt, interval) => {
+    const move = new WalkMovement(ring);
+    const counter = new EncounterDistance({ protection: 0, interval, probability: 0.1 });
+    const sequence = [0.9, 0];
+    const lengths = [];
+    assert.ok(move.select({ x: 110, y: 60 }));
+    for (let frame = 0; move.target && frame < 1000; frame++) move.update(dt, length => {
+      lengths.push(length);
+      return counter.advance(length, () => sequence.shift());
+    });
+    const stopped = { ...move.position };
+    move.update(100);
+    assert.deepEqual(move.position, stopped);
+    assert.equal(move.destination, undefined);
+    assert.deepEqual(sequence, []);
+    return { stopped, lengths };
+  };
+  const large = run(10, 40), small = run(0.01, 40);
+  assert.ok(large.lengths.length > 1, 'the frame traverses a bend before hitting');
+  assert.ok(Math.hypot(large.stopped.x - small.stopped.x, large.stopped.y - small.stopped.y) < 1e-9);
+  const move = new WalkMovement(ring);
+  move.select({ x: 20, y: 60 });
+  move.update(10, length => length);
+  assert.deepEqual(move.position, { x: 20, y: 60 });
+  assert.equal(move.target, undefined, 'a hit exactly on a segment end also clears the route');
+});
+
 test('A* avoids a blocked center, smooths the route and projects an invalid click', () => {
   const route = planPath(ring.spawn, { x: 110, y: 60 }, ring);
   assert.ok(route && route.length > 1);

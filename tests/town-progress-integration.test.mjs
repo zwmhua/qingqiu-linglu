@@ -8,7 +8,7 @@ globalThis.townDisk = { raw: null, writes: 0, fail: false, getItem() { return th
   this.writes++;
   this.raw = raw;
 } };
-globalThis.window = { location: { search: '?townPreview=1' }, URLSearchParams };
+globalThis.window = { location: { search: '?devPreview=1' }, URLSearchParams };
 const cc = `export const _decorator = { ccclass: () => x => x, property: () => () => {} };
 export const sys = { isBrowser: true, localStorage: globalThis.townDisk };
 export const view = { setDesignResolutionSize() {} };
@@ -40,9 +40,9 @@ export class Node {
   }
 }
 export const game = {
-  on(_event, callback) { globalThis.townHide = callback; },
-  off() { globalThis.townHide = undefined; },
-}, Game = { EVENT_HIDE: 'hide' };
+  on(event, callback) { globalThis[event === 'hide' ? 'townHide' : 'townShow'] = callback; },
+  off(event) { globalThis[event === 'hide' ? 'townHide' : 'townShow'] = undefined; },
+}, Game = { EVENT_HIDE: 'hide', EVENT_SHOW: 'show' };
 export const assetManager = { loadBundle(name, cb) {
   globalThis.loadedBundle = name; globalThis.townLoad = cb;
   (globalThis.bundleLoads ??= {})[name] = cb;
@@ -348,19 +348,22 @@ test('outskirts loading is atomic, ignores stale callbacks, and round trips with
   assert.equal(townDisk.raw, raw);
 });
 
-test('the ordinary entry still creates a battle from the saved session', () => {
+test('ordinary entry reads the saved session into town without writing or creating Battle', () => {
   window.location.search = '';
+  const raw = townDisk.raw, writes = townDisk.writes;
   const v = new BattleView();
   v.render = () => {};
   v.start();
-  assert.ok(v.battle.enemies.length > 0);
-  assert.equal(v.town, undefined);
-  assert.equal(v.battle.session.selectedPetId, loadSessionProgress(townDisk).selectedPetId);
+  assert.equal(v.battle, undefined);
+  assert.deepEqual(v.town.movement.position, TOWN.spawn);
+  assert.equal(v.progress.selectedPetId, loadSessionProgress(townDisk).selectedPetId);
+  assert.equal(townDisk.raw, raw);
+  assert.equal(townDisk.writes, writes);
 });
 
 async function roundTripView(sample = 'single') {
   const { Node } = await import('cc');
-  window.location.search = `?townPreview=1&roundTripSample=${sample}`;
+  window.location.search = `?devPreview=1&roundTripSample=${sample}`;
   townDisk.raw = null;
   townDisk.fail = false;
   const v = new BattleView();
@@ -431,6 +434,8 @@ test('map victory waits for playback, retries the identical snapshot, and blocks
   assert.equal(movement.target, undefined);
   assert.equal(v.progress, session);
   assert.equal(loadSessionProgress(townDisk).roster.entries.length, 3);
+  assert.equal(v.town.encounters.protection, 180);
+  assert.equal(v.town.encounters.remainder, 0);
   assert.equal(loadSessionProgress(townDisk).selectedPetId, session.selectedPetId);
 });
 
@@ -464,6 +469,7 @@ test('kill, escape and defeat return once; captured pets survive and auto uses t
     assert.equal(v.town.region, outcome === 'defeat' ? 'town' : 'outskirts');
     assert.deepEqual(v.town.movement.position, outcome === 'defeat' ? TOWN.spawn : position);
     assert.equal(v.town.movement.target, undefined);
+    assert.equal(v.town.encounters.protection, 180);
     assert.equal(loadSessionProgress(townDisk).selectedPetId, 'caught-1');
     assert.equal(loadSessionProgress(townDisk).roster.entries.length, 3);
     if (outcome === 'defeat') { v.town.load('outskirts'); complete(); }
@@ -514,8 +520,8 @@ test('defeat cannot start another field fight when the town reload fails; retry 
   assert.equal(townDisk.writes, writes);
 });
 
-test('ordinary entry cannot reset away an unsaved result, but read-failure recovery remains available', () => {
-  window.location.search = '';
+test('explicit legacy preview cannot reset away an unsaved result, but read-failure recovery remains available', () => {
+  window.location.search = '?devPreview=1&battlePreview=1';
   townDisk.fail = false;
   const v = new BattleView();
   v.render = () => {};
@@ -541,4 +547,110 @@ test('ordinary entry cannot reset away an unsaved result, but read-failure recov
   broken.resetTestProgress();
   assert.equal(confirmations, 1);
   delete window.confirm;
+});
+
+test('real movement opens one battle after 240, preserves counters across blockers and resets after return', () => {
+  window.location.search = '?devPreview=1&encounterSample=1&roundTripSample=single';
+  townDisk.raw = null;
+  const v = new BattleView();
+  v.enabledInHierarchy = true;
+  v.render = () => {};
+  v.start();
+  const complete = () => townLoad(null, { load(_path, _type, cb) { cb(null, {}); } });
+  complete();
+  const t = v.town, writes = townDisk.writes;
+  t.movement.select({ x: 850, y: 443 });
+  v.update(10);
+  assert.equal(t.encounters.protection, 180, 'town movement never counts');
+  t.load('outskirts');
+  townLoad(new Error('failed'));
+  assert.equal(t.region, 'town');
+  t.load('outskirts');
+  complete();
+  t.movement.select({ x: 1100, y: 375 });
+  v.update(1);
+  assert.equal(t.encounters.protection, 0);
+  v.update(0.25);
+  assert.equal(t.encounters.remainder, 45);
+  for (const block of ['detailsOpen', 'rosterOpen', 'returningTown']) {
+    v[block] = block === 'detailsOpen' ? 'hero' : true;
+    v.update(10);
+    assert.equal(t.encounters.remainder, 45);
+    assert.equal(t.movement.target, undefined);
+    v[block] = block === 'detailsOpen' ? null : false;
+    v.update(10);
+    assert.equal(t.encounters.remainder, 45);
+    t.movement.select({ x: 1100, y: 375 });
+  }
+  v.onEnable();
+  townHide();
+  t.movement.select({ x: 1100, y: 375 });
+  v.update(10);
+  assert.equal(t.encounters.remainder, 45);
+  townShow();
+  v.update(10);
+  assert.equal(t.movement.target, undefined, 'foreground return does not resume a hidden target');
+  v.onDisable();
+  v.onEnable();
+  t.movement.select({ x: 1100, y: 375 });
+  v.auto.toggle();
+  v.update(10);
+  assert.equal(v.mapBattle, true);
+  assert.deepEqual(t.movement.position, { x: 780, y: 375 });
+  assert.equal(t.origin.x, 113, 'camera reaches the encounter point before switching');
+  assert.deepEqual(v.returnPoint, t.movement.position);
+  assert.equal(t.movement.target, undefined);
+  assert.equal(townDisk.writes, writes);
+  const b = v.battle;
+  v.startFixedBattle();
+  assert.equal(v.battle, b);
+  v.auto.toggle();
+  b.enemies.forEach(enemy => { enemy.hp = 0; });
+  b.checkWinner();
+  v.finishBattle();
+  assert.equal(t.encounters.protection, 180);
+  assert.equal(t.encounters.remainder, 0);
+  assert.equal(v.auto.enabled, false);
+  t.movement.select({ x: 1100, y: 375 });
+  v.update(0.5);
+  assert.equal(t.encounters.protection, 90);
+  t.load('town');
+  v.update(10);
+  townLoad(new Error('failed return'));
+  assert.equal(t.region, 'outskirts');
+  assert.equal(t.encounters.protection, 90, 'failed map load retains counters');
+  t.load('town');
+  complete();
+  t.load('outskirts');
+  complete();
+  assert.equal(t.encounters.protection, 180, 'only a successful field entry resets protection');
+  const raw = townDisk.raw;
+  window.location.search = '';
+  const refresh = new BattleView();
+  refresh.render = () => {};
+  refresh.start();
+  assert.deepEqual(refresh.town.movement.position, TOWN.spawn);
+  assert.equal(townDisk.raw, raw);
+  assert.equal(refresh.auto.enabled, false);
+});
+
+test('sample parameters require explicit development mode; bad saves stay unchanged', () => {
+  window.location.search = '?roundTripSample=single&encounterSample=1&battlePreview=1&layout=10v10';
+  const v = new BattleView();
+  v.render = () => {};
+  v.start();
+  assert.equal(v.devPreview, false);
+  assert.equal(v.layoutTest, false);
+  assert.equal(v.onMap, true);
+  assert.equal(v.canResetProgress, false);
+  townDisk.raw = '{bad';
+  const writes = townDisk.writes, broken = new BattleView();
+  broken.render = () => {};
+  broken.start();
+  broken.persistProgress();
+  assert.equal(broken.townSession, undefined);
+  assert.equal(broken.battle, undefined);
+  assert.match(broken.progressError, /读取失败/);
+  assert.equal(townDisk.raw, '{bad');
+  assert.equal(townDisk.writes, writes);
 });

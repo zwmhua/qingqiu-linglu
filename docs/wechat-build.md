@@ -1,5 +1,125 @@
 # 微信小游戏构建
 
+## P2-05 开工复估与 X2（2026-11-15，历史停止记录）
+
+本节只记录本卡开工检查，不代表实现、自测或试玩验收完成。用户本轮明确要求保留原工作区及素材，在干净独立工作树开发，单卡业务与测试增删仍按 300 行门槛。
+
+- 已执行 `git fetch origin main`；最新远端为 `5d93387ecb654d0a174701aea5720d67cf311743`，与策划基线一致。`git merge-base --is-ancestor a2b5b9a751543dca785e7a06051ea22ded9829b8 origin/main` 返回 0，STATUS 记录 P2-04 已合入。
+- 原目录在 `task/26-boot-subpackage`，有 `assets/battle/logic.meta` 修改及未跟踪美术。按本轮明确授权保留，未清理、覆盖或切分支。已列出现有 worktree；未复用其它任务目录。
+- 新分支 `task/38-p2-05-dark-encounters`，独立目录 `C:/Users/hua/cocos/Project/qingqiu-linglu-task38`，起始 HEAD 为上述完整 SHA。创建后 `git status --short` 无输出。
+- 附件原样复制到 `docs/cards/card-P2-05.md`；两份 SHA-256 同为 `7B95DF006DBEC6F088F04EBA2BAD3C7C5932B1F3D9B910B1FC33DF9FC2B1990E`。
+- 已读最新主线 AGENTS、ARCHITECTURE、卡片、相关设计及真实调用链。旧工作区的阶段一文件不作为本卡执行基线。
+- 两张 JPG 与 meta 均存在：城镇 `town_qingqiu_streets`，meta 尺寸 1672×941、UUID `a89cf5e7-55a5-49f0-9b04-c1cb71cff9c1`；野外 `map_qingqiu_outskirts_wide`，3344×941、UUID `d7908920-076d-4b75-99ab-4ce7f3577b0c`。TownView 引用匹配；各自目录声明 town/outskirts Bundle。仅静态核对，尚未证明运行加载或滚屏显示正常。
+
+### 按实际调用链复估
+
+下表是相对起始提交的预估增删总和，不是新增行数或实测 diff；文档不计。已考虑复用 P2-04 的结果保存与回场测试，不重写 Battle、存储、Boot、资源或构建配置。
+
+| 白名单文件 | 预计增删 | 必要工作 |
+| --- | ---: | --- |
+| `assets/battle/logic/exploration.ts` | 36–44 | 区域遇怪参数、保护和余数状态、逐阈值判定及首命中距离，保留浮点边界语义 |
+| `assets/battle/scripts/walkable-path.ts` | 20–26 | 在现有逐段 while 中提交实际步长；段中/段末命中均停止并丢弃剩余路径，保留原调用方式 |
+| `assets/battle/scripts/TownView.ts` | 28–36 | 成功换区才重设状态，移动阻挡与真实段回调，位置及镜头更新后通知开战，战后重置入口 |
+| `assets/battle/scripts/BattleView.ts` | 66–84 | 无参数同档进城、显式开发路径隔离、读档失败锁定和提示、移动开战与固定开战共用接线、回场保护、开发控件收敛 |
+| **业务合计** | **150–190** | 不改生成器、存档键或格式 |
+| `tests/outskirts-exploration.test.mjs` | 36–44 | 0/1 概率、180/240 边界、小数余数、多个阈值先失败后命中及帧切分等价 |
+| `tests/town-pathfinding.test.mjs` | 30–38 | 真实多段拐弯大/小帧命中同点、段末命中、清路径及余下位移丢弃 |
+| `tests/town-progress-integration.test.mjs` | 104–128 | 更新有意变化的启动预期及开发入口夹具；补实际移动开战、单场锁和位置/镜头顺序、面板/后台计数保留、加载失败与成功初始化、旧档刷新/坏档保护；在原结果测试中补回场保护断言 |
+| `tests/boot.test.mjs` | 0 | 现有两平台 Boot/Battle 场景及分包配置断言可继续复用 |
+| **测试合计** | **170–210** | 保留现有保存失败、同候选重试、捕获进度、自动最新选择及败回城失败断言 |
+| **总计** | **320–400** | **超过 300 行，触发 X2** |
+
+估算差异的具体依据：`WalkMovement.update()`（起始版第 104 行）直接在循环内改位置，尚无消费距离或截断接口；`TownView.update()`（第 282 行）只能看到整帧前后位置，不能用两点距离覆盖绕行。必须增加逐段截断的逻辑和测试。
+
+现有集成夹具 `roundTripView()`（第 361 行）直接指定位置再调用 `startFixedBattle()`，能证明回场却不能证明移动触发、保护计数和镜头完成后的单次开战。可复用夹具与 P2-04 断言，但新增移动路径验收仍需独立断言。`BattleView` 的 `townPreview` 同时决定地图模式与开发入口，`usesTestProgress` 又决定读写；不能只把地图开关改成 true 就视为完成入口隔离。集成测试第 351 行和第 517 行还明确依赖无参数直接战斗，需要保留各自有效验证目标并调整入口，替换行的增删均计入预算。
+
+### 门禁与后续建议
+
+X2 留痕（2026-11-15，Asia/Shanghai）：完整范围复估业务 150–190、测试 170–210，合计 320–400，超过项目 300 行上限；停止在新增测试和产品实现前，未压缩代码、删除断言或自行放宽门槛。实际业务/测试改动均为 +0/-0。
+
+建议交华周决定：维持主卡编号，将 P2-05 内部分两次授权交付，先完成纯距离判定、逐段移动截断及真实地图开发预览接线，再完成正式入口/开发隔离、同档安全与完整验收；两步各自复估且各不超过 300，第一步不得记整卡完成。另一选择是明确批准完整范围单卡 400 行上限；这仍是估算上界，实际超限继续按 X2 停止。未自行执行任一选择。
+
+本轮只落原卡和本节门禁记录，尚未提交，无最终候选或 QA 所审 SHA。未推送、合并或修改 STATUS。待后续完整验收时，STATUS 建议条目为「P2-05 暗雷与场景正式闭环（qa），填写华周实际验收 SHA；验收后下一步 P2-06」，目前不得登记已完成。
+
+NOT_TESTED：node:test、限定及全视图 tsc、ego-browser、无参数正式试玩入口、确定性遇怪样本、Web/微信构建与同口径包体增量、Web 手机实操、微信模拟器、微信真机、独立静态 QA。原因是实施前 X2 停止，未产生本卡功能候选；历史 P2-04 的运行证据不作为本卡结果。
+
+## P2-05 本地开发交付（2026-11-15，qa）
+
+华周本轮明确解除上节 X2：完整范围上限 400 行、不拆卡，在现有独立工作树继续，先测试后实现；实际超限仍须停止。原附件未改，新的授权记录在本节。分支 `task/38-p2-05-dark-encounters`，起始 SHA `5d93387ecb654d0a174701aea5720d67cf311743`；最终提交及独立 QA 所审完整 SHA 以交付消息和 `temp/p2-05/qa-final.md` 回执为准。STATUS 未改，未推送或合并。
+
+### 实现与运行检查
+
+- 正式 Boot → Battle.scene → 同档城镇，无查询参数；保留原存档键、v3 格式、Boot 加载边界及全部资源。坏档或读取抛错锁定地图操作，不创建 SessionProgress/Battle，不写回。
+- `OUTSKIRTS.encounter` 配置 180 保护、60 间隔、10% 概率。`EncounterDistance.advance()` 只消费实际路径段；`WalkMovement.update()` 在首命中点截断并清路径；TownView 先更新人物和镜头，再调用原地图开战入口。成功换图、胜/抓胜/逃回场重新保护，地图加载失败保留来源和计数。
+- 自动状态沿用会话最新选择；开面板、后台、禁用、切图及战斗阻断移动，关闭/返回不续走。保持 P2-04 动画后保存、同字符串重试、战败回城失败锁及一次结算。
+- 本卡业务 +89/-21 = 110，测试 +194/-11 = 205，合计 **315 行**，低于 400。文档、原样卡片、忽略的构建与验收产物另计。
+- 先运行新增失败用例，再实现：`node --test tests/outskirts-exploration.test.mjs tests/town-pathfinding.test.mjs tests/town-progress-integration.test.mjs`，原失败日志 `temp/p2-05/red-tests.log`。后台目标及十进制帧边界另有先失败后修复日志 `foreground-red.log`、`fractional-red.log`。
+- 最终 `node --test tests/*.test.mjs`：149 项成功、0 失败、0 跳过，日志 `tests.log`。环境 `COCOS_TYPESCRIPT=E:/ProgramData/cocos/editors/Creator/3.8.8/resources/app.asar.unpacked/node_modules/typescript`，没有新增依赖或改有效断言。
+- 限定 tsc：`node <COCOS_TYPESCRIPT>/bin/tsc --noEmit --skipLibCheck --strict --target ES2022 --module ESNext --moduleResolution node <assets/battle/logic/*.ts全部文件> assets/battle/scripts/Battle.ts assets/battle/scripts/walkable-path.ts assets/logic/platform.ts`，退出码 0，真实传递依赖包含在内。
+- 额外全视图严格 tsc 使用同一 Creator cc/cc.env 声明及 `--experimentalDecorators`。候选与起始 SHA archive 均只有 Tween onUpdate 可选 Node 参数的同一 TS2322；未修改白名单外的动效或声明来掩盖基线问题，不声称全视图严格检查成功。
+- 开发回修留痕：保留旧 PREVIEW 显式条件并增加开发开关，以保留旧样本共用经验路径的源断言；后台迟到目标由 hide/show 阻挡；0.1×2400 的舍入漏检以 1e-9 世界单位容差修复。业务问题和复现均记入 `docs/bugs.md`，尚无 QA 打回回修。
+
+### ego-browser 逐项证据
+
+使用独立 ego TaskSpace 32。正式 Web 发布构建地址 `http://127.0.0.1:18385/`，静态服务为本工作树 `build/web-mobile`。测试在本机浏览器进行，不代表手机实体触摸或微信平台验收。没有把人工编造的进度写入存储；两个本地来源的进度均由实际开始、战斗与抓宠产生，原用户浏览器及素材未清理。
+
+| 验收点 | 实际观察与证据（均在 `temp/p2-05/`） |
+| --- | --- |
+| 正式无参数标题进城 | 实点开始后城镇出生 `(690,443)`，`dev=false`，未创建 Battle；出城只有自动和养成/回城按钮，没有固定开战/样本控件。`browser-13/15/16.log`、`formal-town.png`、`formal-field-state.png`、`formal-title-ready.png` |
+| 城内走动与首次保护 | 城内走到 `(842.5978,467.6814)` 不计数；出城 `(540,375)` 为 180/0。走到约 `(659.6162,375.0689)` 保护余 60.383744，尚无战斗。`browser-04/05.log` |
+| 宠物面板阻挡 | 在保护内开面板、点击遮罩、关闭后位置和保护均不变，目标清空。`browser-06.log`、`protected-pet-panel.png` |
+| 实际 240 距离命中 | 再次点地，首次命中 `(779.999980,375.068881)`，镜头原点 `(112.999980,0)`，清目标、开一场。小数是 CSS 点击落点造成，两段合计 240。`browser-06.log`、`first-240-encounter.png` |
+| 自动与胜利 | 野外开自动后进场实际出手；胜利回原位停步并重设 180/0。第二场中关闭自动，回图及下一场均关。`browser-07/08/09.log`、`auto-victory-return.png` |
+| 逃跑返回 | 整队逃跑后回 `(1259.999980,375.068881)`，无本场经验、180/0，自动保持关。`browser-09.log`、`escaped-return.png` |
+| 抓胜、保存失败和重试 | 当前页面仅对原键的 setItem 注入抛错；抓最后一只后留结果页、旧快照不变；失败重试候选相同，恢复原方法并点重试后保存字符串精确等于候选，回原位，三只宠物保留。`browser-10/11.log`、`capture-save-failed.png`、`capture-retry-return.png` |
+| 战败与刷新 | defeat 样本实际击败全队后回城；人物面板气血 60/60、法力 36/36，三只宠物与经验保留；刷新从城镇出生且自动关。`browser-11/12.log`、`defeat-town.png`、`defeat-hero-panel.png` |
+| 正式读档失败 | 在页面启动前拦截读取返回坏 JSON，不改磁盘原档；正式标题进入后显示读取失败、Session/Battle 均无、写入计数 0、原始字符串不变。移除注入并刷新后正常读取原进度。`browser-17.log`、`formal-bad-read-locked.png` |
+| 地图加载失败 | 单次拦截 outskirts 加载失败，留城镇并显示重试提示；再次点出城成功，保护 180/0。`browser-18.log`、`outskirts-load-failed.png` |
+| 滚屏与边缘 | 仅当前开发页把随机输入临时设为 0.99，沿岸走到 `(2264.3631,589.9457)`，镜头夹在右端 `1331.249734`；HUD 固定，画面不露白。刷新取消输入替换，不改变区域配置或存档。`browser-18/19.log`、`outskirts-right-edge.png` |
+
+### 最终构建与同口径包体
+
+同一 Creator 3.8.8、仓库原有两份构建配置；基线为起始 SHA 的 `git archive` 独立副本。基线 Web/微信和最终候选 Web/微信均退出 36。最终日志为 `final2-web-mobile.log`、`final2-wechat.log`，测量为 `package-bytes-final.json`；按所有产物文件字节求和，非上传压缩大小。微信主包排除整个 subpackages；Web 的主包口径为排除 battle/town/outskirts/inventory 四个 Bundle 后的其余全部文件（含引擎、main、internal）。
+
+| 平台/目录 | 基线字节 | 最终字节 | 增量 |
+| --- | ---: | ---: | ---: |
+| Web 主包口径 | 2,835,648 | 2,835,648 | 0 |
+| Web battle | 3,024,770 | 3,026,829 | +2,059 |
+| Web town | 1,923,710 | 1,923,710 | 0 |
+| Web outskirts | 594,500 | 594,500 | 0 |
+| Web inventory | 57,666 | 57,666 | 0 |
+| Web 总包 | 8,436,294 | 8,438,353 | +2,059 |
+| 微信主包 | 919,168 | 919,168 | 0 |
+| 微信 battle | 3,024,603 | 3,026,662 | +2,059 |
+| 微信 town | 1,923,710 | 1,923,710 | 0 |
+| 微信 outskirts | 594,500 | 594,500 | 0 |
+| 微信 inventory | 57,666 | 57,666 | 0 |
+| 微信总包 | 6,519,647 | 6,521,706 | +2,059 |
+
+微信主包低于 3.5 MB 停止线。未改构建配置、场景、UUID 或资源。Creator 自动改写的 engine.json 经规范化字节核对只有换行变化，恢复本轮生成的换行差异，不纳入提交。
+
+辅助工具记录：首次预览资源就绪前截图超时，等就绪后解除；一次等待自动回场超时，随后实际观察其自然完成，没有缩短产品动画。小数边界修复后的首次重建与打开的编辑器共用工程时未能推进，已停止本轮自建的预览/构建进程并串行重建，第二轮两平台均成功；只对验收页忽略缓存，未清理浏览器配置或存档。正式页实测 `EncounterDistance` 以 0.1×2400 在 240 处命中，确认最终修复已加载（`browser-20.log`）。
+
+最终输入复核：ego 的鼠标操作在按下与抬起之间触发页面 visibilitychange → Cocos hide，实际调用 stopTown 清触点（`browser-22/23.log`），导致该次点地被正确取消；两轮等待未解除后没有继续重复等待脚本或修改保护规则。改用浏览器协议触摸输入实际点地，发布包走到 `(800.069393,399.556382)`、保护 0、余数 21.226157，无 visibility 事件（`browser-25/26.log`、`final-touch-walked.png`）。这是桌面浏览器模拟触摸，不是手机实机结论。
+
+最终预览重新确认修复代码已加载，并实际触摸完成「出城 → 保护内分段停步 → 打开/关闭宠物面板 → 继续行走 → 首次命中 → 自动战胜回图」。命中和返回同为 `(779.999762,374.760843)`，镜头 `(112.999762,0)`；胜后 180/0、无目标（`browser-27.log`、`final-preview-240.png`、`final-preview-return.png`）。最终 TownView 严格 tsc 退出 0（`tsc-town-final.log`）。
+
+### 华周试玩入口与确定性样本
+
+- 无参数正式入口：`http://127.0.0.1:18385/`，点击「开始游戏」进城；点「出城」后正常按 10% 遇怪。本机 HTTP 服务已启动，跨设备需另行配置可访问地址，本次未开放外网。
+- 最终 Creator 开发预览：`http://127.0.0.1:7456/?scene=66ba6897-199f-4cf3-acc4-a475045cdfa8&devPreview=1&encounterSample=1&roundTripSample=single`。早期证据使用 7459，最终重新启动预览使用 7456；不同端口是不同浏览器存储来源，不搬运或覆盖两处资料。
+- 在设计视口 1334×750 下点右下「出城」约 `(1215,706)`；从野外出生 `(540,375)` 点地 `(660,375)`，在保护内停步；打开宠物面板后关闭，人物应仍停着。再点 `(1100,375)`，累计实际路程 240 后在约 `(780,375)` 首次遇怪。屏幕缩放会有亚像素差异，实际世界路程仍为 240。
+- `encounterSample=1` 只在当前显式 Creator 预览中令检查必命中，仍保留 180 保护和 60 阈值；移除该参数即恢复 10%。`roundTripSample` 可换 `pair` 或 `defeat`，分别为两敌或必败遭遇；只改遭遇输入，不初始化覆盖旧档，不把参数入档。
+- 野外开自动再走动，战斗中点取消，回图后下一场应沿用关；胜/抓胜/逃成功返回命中点停步，败回城且满血法力。正式发布构建忽略这些开发参数。
+
+### 未测项与交接边界
+
+- **Web 手机实体浏览器：NOT_TESTED**；上述为桌面 ego 上的 web-mobile 构建及 Creator 预览，不冒充手机实操。
+- **微信开发者工具模拟器：NOT_TESTED；微信真机：NOT_TESTED**。本轮实际运行微信构建，不上传、不发布。
+- 原生后台切换的 browser 实操 **NOT_TESTED**：切换标签的尝试读到 `document.hidden=false`，未取得后台证据；node:test 已调用真实 hide/show 接线，验证禁止消费和恢复停步。组件禁用/多触点、战败城图失败重试、pair 样本的本轮浏览器逐项实操未追加；对应自动化与 P2-04 断言保留并运行。
+- 独立 QA 仅对最终完整 SHA 做只读静态审查，不跑测试或独立用例。最终回执与 SHA 见交付消息及忽略目录下 `qa-final.md`；Human 最终试玩仍待华周完成。
+- STATUS 建议（本轮不写入）：华周验收后记录「P2-05 暗雷与场景正式闭环（qa）完成，验收 SHA：____」；下一步 P2-06，另行发卡。
+
 使用 Cocos Creator 3.8.8。设计分辨率为 1334×750，构建方向为横屏，AppID 为 `wx2b83dfd606e96e59`。构建配置保存在 `settings/wechat-build.json`。
 
 ## 本地构建

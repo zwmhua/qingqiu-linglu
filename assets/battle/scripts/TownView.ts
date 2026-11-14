@@ -1,6 +1,6 @@
 import { assetManager, Color, EventTouch, Graphics, Label, Mask, Node, Rect, Size, sp, Sprite, SpriteFrame, sys, Texture2D, UIOpacity, UITransform, Vec3 } from 'cc';
 import { browserParams } from '../../logic/platform';
-import { cameraOrigin, MAPS, Region, TOWN, TOWN_PLACES, TownPlace, worldPoint } from '../logic/exploration';
+import { cameraOrigin, EncounterDistance, MAPS, Region, TOWN, TOWN_PLACES, TownPlace, worldPoint } from '../logic/exploration';
 import { runFacing, type RunFacing } from './run-facing';
 import { WalkMovement } from './walkable-path';
 import { CONFIG, WALKABLE_CONFIG } from './config';
@@ -16,6 +16,9 @@ export class TownView {
   private readonly labels = new Node('town-labels');
   movement = new WalkMovement(walkAreas.town, WALKABLE_CONFIG.cell);
   region: Region = 'town';
+  readonly encounters = new EncounterDistance();
+  encounterRandom = Math.random;
+  private blocked = () => false;
   private origin = { x: 0, y: 0 };
   private request = 0;
   private loadError = '';
@@ -42,7 +45,7 @@ export class TownView {
   private spineScale = 1;
   private ripple?: Node;
   private rippleTime = 0;
-  constructor(parent: Node, private changed: () => void) {
+  constructor(parent: Node, private changed: () => void, private encounter = () => {}) {
     parent.addChild(this.root);
     this.root.addComponent(UITransform).setContentSize(CONFIG.width, CONFIG.height);
     this.root.addComponent(Mask);
@@ -79,6 +82,7 @@ export class TownView {
         this.region = region;
         this.frame = frame;
         this.movement = new WalkMovement(walkAreas[region], WALKABLE_CONFIG.cell);
+        this.encounters.reset();
       }
       this.changed();
     };
@@ -89,6 +93,7 @@ export class TownView {
     });
   }
   draw(hero: SpriteFrame | null, blocked: () => boolean, activatePlace: (place: TownPlace) => void): void {
+    this.blocked = blocked;
     if (!this.frame || this.actor) return;
     const sprite = (name: string, frame: SpriteFrame | null, w: number, h: number) => {
       const node = new Node(name);
@@ -281,8 +286,14 @@ export class TownView {
   private get size() { return MAPS[this.region]; }
   update(dt: number): void {
     if (!this.root.active) return;
+    if (this.loading || this.disposed || this.blocked()) { this.stop(); return; }
     const { position, target } = this.movement;
-    this.movement.update(dt);
+    let encountered = false;
+    this.movement.update(dt, distance => {
+      const hit = this.region === 'outskirts' ? this.encounters.advance(distance, this.encounterRandom) : undefined;
+      encountered = hit !== undefined;
+      return hit;
+    });
     const { x, y } = this.movement.position;
     if (target && (x !== position.x || y !== position.y)) {
       const { axisTolerance } = CONFIG.explorationRun;
@@ -301,6 +312,7 @@ export class TownView {
       this.ripple.getComponent(UIOpacity)!.opacity = Math.round((1 - progress) * 255);
       this.ripple.active = progress < 1;
     }
+    if (encountered) this.encounter();
   }
   dispose(): void {
     this.disposed = true;
