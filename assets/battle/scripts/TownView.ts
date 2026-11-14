@@ -1,13 +1,20 @@
-import { assetManager, Color, EventTouch, Graphics, Label, Mask, Node, Rect, Size, sp, Sprite, SpriteFrame, Texture2D, UIOpacity, UITransform, Vec3 } from 'cc';
-import { cameraOrigin, MAPS, Region, TOWN, TOWN_PLACES, TownMovement, TownPlace, worldPoint } from '../logic/exploration';
+import { assetManager, Color, EventTouch, Graphics, Label, Mask, Node, Rect, Size, sp, Sprite, SpriteFrame, sys, Texture2D, UIOpacity, UITransform, Vec3 } from 'cc';
+import { browserParams } from '../../logic/platform';
+import { cameraOrigin, MAPS, Region, TOWN, TOWN_PLACES, TownPlace, worldPoint } from '../logic/exploration';
 import { runFacing, type RunFacing } from './run-facing';
-import { CONFIG } from './config';
+import { WalkMovement } from './walkable-path';
+import { CONFIG, WALKABLE_CONFIG } from './config';
+
+const walkAreas = {
+  town: { ...MAPS.town, spawn: TOWN.spawn, regions: WALKABLE_CONFIG.townRegions },
+  outskirts: MAPS.outskirts,
+};
 
 export class TownView {
   readonly root = new Node('town');
   private readonly world = new Node('map-world');
   private readonly labels = new Node('town-labels');
-  movement = new TownMovement();
+  movement = new WalkMovement(walkAreas.town, WALKABLE_CONFIG.cell);
   region: Region = 'town';
   private origin = { x: 0, y: 0 };
   private request = 0;
@@ -71,7 +78,7 @@ export class TownView {
         this.ripple = undefined;
         this.region = region;
         this.frame = frame;
-        this.movement = new TownMovement(MAPS[region].area);
+        this.movement = new WalkMovement(walkAreas[region], WALKABLE_CONFIG.cell);
       }
       this.changed();
     };
@@ -95,6 +102,19 @@ export class TownView {
     const size = this.size;
     const map = sprite('town-map', this.frame, size.width, size.height);
     map.setPosition(size.width / 2, -size.height / 2);
+    if (browserParams(sys.isBrowser, typeof window === 'undefined' ? undefined : window)
+      .get(WALKABLE_CONFIG.debugQuery) === '1') {
+      const overlay = new Node('walkable-overlay');
+      this.world.addChild(overlay);
+      const paint = overlay.addComponent(Graphics);
+      paint.fillColor = new Color(45, 205, 85, 85);
+      for (const region of walkAreas[this.region].regions) {
+        paint.moveTo(region[0].x, -region[0].y);
+        for (const point of region.slice(1)) paint.lineTo(point.x, -point.y);
+        paint.close();
+        paint.fill();
+      }
+    }
     const movement = this.movement;
     const unavailable = () => this.loading || this.disposed || movement !== this.movement || blocked();
     map.on(Node.EventType.TOUCH_START, (e: EventTouch) => {
@@ -109,7 +129,6 @@ export class TownView {
       const local = this.root.getComponent(UITransform)!.convertToNodeSpaceAR(new Vec3(p.x, p.y));
       const point = worldPoint(local, this.origin, CONFIG);
       if (this.region === 'town') {
-        this.showRipple(point.x, point.y);
         const place = TOWN_PLACES.find(p => Math.abs(point.x - p.x) <= 74 && Math.abs(point.y - p.y) <= 42);
         if (place) {
           this.stop();
@@ -117,7 +136,8 @@ export class TownView {
           return;
         }
       }
-      this.error = this.movement.select(point) ? '' : '不能直达';
+      this.error = this.movement.select(point) ? '' : '暂时无法到达';
+      if (this.movement.destination) this.showRipple(this.movement.destination.x, this.movement.destination.y);
       this.changed();
     });
     const height = this.region === 'town' ? 96 : 140;

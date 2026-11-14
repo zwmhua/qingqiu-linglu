@@ -257,15 +257,20 @@ test('outskirts loading is atomic, ignores stale callbacks, and round trips with
     getID: () => id,
     getUILocation: () => ({ x: x - 667 - view.origin.x, y: 375 + view.origin.y - y }),
   });
-  map.handlers.start(touch(1, 800));
+  map.handlers.start(touch(1, 700, 450));
   map.handlers.start(touch(2, 850));
   map.handlers.end(touch(2, 850));
   assert.equal(view.movement.target, undefined);
-  map.handlers.end(touch(1, 800));
-  assert.deepEqual(view.movement.target, { x: 800, y: 500 });
+  map.handlers.end(touch(1, 700, 450));
+  assert.deepEqual(view.movement.target, { x: 700, y: 450 });
   assert.equal(view.ripple.active, true);
   view.update(0.5);
   assert.equal(view.ripple.active, false);
+  map.handlers.start(touch(5, 800, 500));
+  map.handlers.end(touch(5, 800, 500));
+  assert.ok(Math.hypot(view.movement.destination.x - 800, view.movement.destination.y - 500) < 20);
+  assert.notDeepEqual(view.movement.destination, { x: 800, y: 500 });
+  assert.deepEqual(view.ripple.position, { x: view.movement.destination.x, y: -view.movement.destination.y });
   for (const place of TOWN_PLACES) {
     const event = touch(4, place.x, place.y);
     map.handlers.start(event);
