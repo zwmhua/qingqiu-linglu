@@ -20,7 +20,7 @@ test('fixed encounter, combat, capture and experience match the 3f64cb5 baseline
   const battle = new Battle(cycle(0.6, 0.1, 0.8, 0.15, 0.4), undefined, 0, undefined,
     cycle(0.02, 0.8), cycle(0.1, 0.9, 0.4, 0.7), cycle(0.2, 0.8, 0.4),
     cycle(0.03, 0.25, 0.48, 0.67, 0.96), cycle(0.1, 0.9), cycle(0.4, 0.85, 0.64),
-    { hero: initialHero(), petRandom: cycle(0.05, 0.31) });
+    { hero: initialHero(), petRandom: cycle(0.05, 0.31) }, () => 0);
 
   assert.deepEqual(battle.enemies.map(({ species, level, isBaby, isMutated }) =>
     [species, level, isBaby, isMutated]), [['pangui', 0, true, true], ['maomaochong', 4, false, false]]);
@@ -37,7 +37,7 @@ test('fixed encounter, combat, capture and experience match the 3f64cb5 baseline
   const captured = battle.roster.entries.at(-1);
   assert.deepEqual(captured, {
     id: 'caught-1', species: 'pangui', name: '磐龟宝宝', hp: 45, maxHp: 59, level: 0,
-    attack: 12, defense: 14, speed: 10, skill: undefined, isBaby: true,
+    attack: 12, defense: 14, speed: 10, skill: undefined, skillIds: ['armor', 'reflect'], isBaby: true,
     aptitudes: { attack: 1090, defense: 1095, stamina: 4089, mana: 1369, dodge: 1500, speed: 958 },
     growth: 0.907, baseStats: { constitution: 10, mana: 10, strength: 10, endurance: 10, agility: 10 },
     isMutated: true, origin: 'captured', sourceEnemyId: 'enemy-0', exp: 0, potential: 0,
@@ -52,7 +52,7 @@ test('fixed encounter, combat, capture and experience match the 3f64cb5 baseline
     stats: { constitution: 11, mana: 11, strength: 11, endurance: 11, agility: 11 },
   });
   assert.deepEqual(battle.roster.entries.map(({ id, level, exp, potential }) => [id, level, exp, potential]),
-    [['pet', 2, 6, 5], ['pet-2', 2, 0, 0], ['caught-1', 0, 0, 0]]);
+    [['pet', 2, 6, 0], ['pet-2', 2, 0, 0], ['caught-1', 0, 0, 0]]);
 });
 
 test('old v1 and v2 snapshots read as v3 with the same progress and formal pet panel', () => {
@@ -73,10 +73,12 @@ test('old v1 and v2 snapshots read as v3 with the same progress and formal pet p
       version: 3, hero, selectedPetId,
       pets: pets.map(pet => ({ ...pet, exp: 0, potential: 0, hp: 66, maxHp: 66, attack: 13, defense: 16, speed: 13 })),
     });
-    const session = loadSessionProgress({ getItem: key => storage.get(key) ?? null });
+    const session = loadSessionProgress({ getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) });
     assert.deepEqual(session.heroProgress, hero);
     assert.equal(session.selectedPetId, selectedPetId);
-    assert.deepEqual(session.roster.entries, readProgress({ getItem: () => raw }).pets);
-    assert.equal(storage.get('qingqiu-linglu:test-progress'), raw);
+    assert.deepEqual(session.roster.entries.map(({ skillIds, skill, ...pet }) => pet),
+      readProgress({ getItem: () => raw }).pets.map(({ skill, ...pet }) => pet));
+    assert.equal(storage.get(`qingqiu-linglu:test-progress:backup:v${version}`), raw);
+    assert.equal(JSON.parse(storage.get('qingqiu-linglu:test-progress')).version, 4);
   }
 });

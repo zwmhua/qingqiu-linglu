@@ -18,7 +18,8 @@ import type { HeroProgress, LevelProgress } from '../logic/hero-progress';
 import { HERO_PROGRESSION, adjustPotential, heroPanel, heroPanelPreview, initialHero, levelUpExp } from '../logic/hero-progress';
 import { HoldRepeat } from '../logic/hold-repeat';
 import { browserParams, progressIO, wechatStorage } from '../../logic/platform';
-import { loadSessionProgress, progressSnapshot, resetProgress, saveProgress } from '../logic/local-progress';
+import { ProgressLoader, progressSnapshot, resetProgress, saveProgress } from '../logic/local-progress';
+import { PET_SKILLS, SKILL_POOLS, skillDescription } from '../logic/pet-skills';
 import type { TargetMode } from '../logic/targeting';
 
 const { ccclass, property } = _decorator;
@@ -100,6 +101,8 @@ export class BattleView extends Component {
   }
   private progressError = '';
   private progressReadFailed = false;
+  private readonly progressLoader = new ProgressLoader();
+  private skillOpen?: string;
   private layoutTest = this.devPreview && queryParams().get('layout') === '10v10';
   private choosingTarget: TargetMode | null = null;
   private lastShownSecond = -1;
@@ -182,16 +185,22 @@ export class BattleView extends Component {
 
   start(): void {
     let saved: SessionProgress | null = null;
+    this.progressReadFailed = false;
+    this.progressError = '';
     if (this.usesTestProgress) {
-      try { saved = loadSessionProgress(progressStorage()); }
-      catch {
+      try { saved = this.progressLoader.load(progressStorage()); }
+      catch (error) {
         this.progressReadFailed = true;
-        this.progressError = '本地进度读取失败，原档已保留，请重新加载。';
+        this.progressError = `本地进度读取失败，原档已保留：${error instanceof Error ? error.message : String(error)}`;
+        this.townPreview = true;
       }
     }
     if (this.townPreview) {
       this.townSession = saved ?? (this.progressReadFailed ? undefined : new SessionProgress(initialHero()));
-      if (this.townSession && !saved) this.persistProgress();
+      if (this.townSession && !saved) {
+        this.persistProgress();
+        if (this.progressError) { this.townSession = undefined; this.progressReadFailed = true; }
+      }
       view.setDesignResolutionSize(CONFIG.width, CONFIG.height, ResolutionPolicy.SHOW_ALL);
       this.town = new TownView(this.node, () => {
         if (this.town?.region === 'town' && !this.town.loading) this.returningTown = false;
@@ -216,6 +225,12 @@ export class BattleView extends Component {
     } catch {
       this.progressError = '本地进度保存失败。';
     }
+  }
+
+  private retryProgress(): void {
+    this.town?.dispose();
+    this.town = undefined;
+    this.start();
   }
 
   private get canResetProgress(): boolean {
@@ -952,6 +967,7 @@ export class BattleView extends Component {
   }
 
   private openPetPanel(id: string): void {
+    this.skillOpen = undefined;
     this.selectedPetId = id;
     this.petPanelPage = 'basic';
     this.render();
@@ -962,6 +978,7 @@ export class BattleView extends Component {
     const aptitude = this.petPanelPage === 'aptitude';
     const ink = '#4A2C1D';
     const open = (page: typeof this.petPanelPage) => {
+      this.skillOpen = undefined;
       this.stopPotentialRepeat();
       if (page === 'points' && this.petPanelPage !== 'points') this.petReturnPage = this.petPanelPage;
       if (page !== 'points') this.allocationPreview = undefined;
@@ -969,6 +986,7 @@ export class BattleView extends Component {
       this.render();
     };
     const close = () => {
+      this.skillOpen = undefined;
       this.stopPotentialRepeat();
       this.rosterOpen = false;
       this.selectedPetId = null;
@@ -1069,6 +1087,7 @@ export class BattleView extends Component {
     this.progress.roster.entries.forEach((pet, i) => {
       const x = 236 + (i % 5) * 61, y = 514 + Math.floor(i / 5) * 77;
       this.rect(x, y, 52, 66, '#729586', pet.id === selectedId ? '#FFD45C' : '#9C8156', 6, () => {
+        this.skillOpen = undefined;
         this.selectedPetId = pet.id;
         this.render();
       });
@@ -1114,6 +1133,34 @@ export class BattleView extends Component {
     });
     this.petInfoBar('成长', pet.growth.toFixed(3), 409, aptitudeBarRatio(pet.growth, growth.min, growth.max),
       pet.isMutated && pet.growth > growth.max ? overflow : '#A07DCB');
+    this.renderPetSkills(pet);
+  }
+
+  private renderPetSkills(pet: CarriedPet): void {
+    for (let i = 0; i < 12; i++) {
+      const id = i < 8 ? pet.skillIds?.[i] : undefined;
+      const x = 595 + i % 4 * 106, y = 468 + Math.floor(i / 4) * 66;
+      this.rect(x, y, 96, 58, '#E9D9B7', '#93734D', 6, id ? () => {
+        this.skillOpen = id;
+        this.render();
+      } : undefined).addComponent(BlockInputEvents);
+      this.text(id ? PET_SKILLS[id].name : i < 8 ? '空' : '锁定', x, y + 14, 20, '#4A2C1D', 96, 1);
+      if (id && SKILL_POOLS[pet.species].innate.includes(id)) this.text('天生', x + 55, y, 12, '#38652A', 40);
+    }
+    if (!this.skillOpen || !pet.skillIds?.includes(this.skillOpen)) return;
+    const id = this.skillOpen;
+    this.rect(0, 0, 1334, 750, '#101E1C', '', 0, undefined, 150).addComponent(BlockInputEvents);
+    this.rect(370, 205, 594, 310, '#F9EFD9', '#93734D', 12).addComponent(BlockInputEvents);
+    this.rect(394, 231, 82, 65, '#E9D9B7', '#93734D', 6);
+    this.text(PET_SKILLS[id].name, 395, 250, 20, '#4A2C1D', 80, 1);
+    this.text(PET_SKILLS[id].name, 496, 236, 28, '#4A2C1D', 360);
+    const lines = skillDescription(id, pet.species).split('\n').flatMap(line => line.match(/.{1,23}/gu) ?? []);
+    lines.forEach((line, i) => this.text(line, 394, 312 + i * 28, 21, '#4A2C1D', 548));
+    this.rect(889, 219, 60, 52, '#E9D9B7', '#93734D', 6, () => {
+      this.skillOpen = undefined;
+      this.render();
+    });
+    this.text('关闭', 889, 231, 20, '#4A2C1D', 60, 1);
   }
 
   private renderPetPointsPreview({ panel, delta }: ReturnType<typeof petPanelPreview>, hp: string, mana: string): void {
@@ -1432,7 +1479,12 @@ export class BattleView extends Component {
     this.rect(20, 18, 470, 52, '#203D36', '', 10, undefined, 220).addComponent(BlockInputEvents);
     this.text(town.message || this.progressError || this.returnMessage || (town.region === 'town' ? '城里' : '野外'), 30, 24, 24);
     if (town.canRetry) this.button('重试', 540, 335, 250, 60, !town.loading, () => { town.load(); this.render(); });
-    if (!town.frame || this.progressReadFailed) return;
+    if (this.progressReadFailed) {
+      this.button('重试读取/迁移', 490, 335, 350, 60, true, () => this.retryProgress()).addComponent(BlockInputEvents);
+      this.text(this.progressError, 120, 410, 20, '#F4DC9C', 1100);
+      return;
+    }
+    if (!town.frame) return;
     if (this.returningTown) {
       this.button('重试回城', 540, 335, 250, 60, !town.loading, () => town.load('town')).addComponent(BlockInputEvents);
       return;

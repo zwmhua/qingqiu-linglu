@@ -4,9 +4,10 @@ import type { BaseStats } from './base-stats';
 import { awardExperience } from './hero-progress';
 import { WILD_SPECIES } from './wild-encounter';
 import { petCombat } from './pet-panel';
+import { distributePoints } from './base-stats';
 import type { WildSpecies } from './wild-encounter';
 
-type PetStats = Pick<Unit, 'id' | 'name' | 'species' | 'hp' | 'maxHp' | 'level' | 'attack' | 'defense' | 'speed' | 'skill' | 'isBaby' | 'isMutated' | 'aptitudes' | 'growth' | 'baseStats'>;
+type PetStats = Pick<Unit, 'id' | 'name' | 'species' | 'hp' | 'maxHp' | 'level' | 'attack' | 'defense' | 'speed' | 'skill' | 'skillIds' | 'isBaby' | 'isMutated' | 'aptitudes' | 'growth' | 'baseStats'>;
 export type CarriedPet = PetStats & {
   species: WildSpecies;
   isBaby: boolean; aptitudes: Aptitudes; growth: number; baseStats: BaseStats;
@@ -26,10 +27,10 @@ export class Roster {
 
   constructor(capacity: number, initial: ReadonlyArray<PetStats>, previous?: RosterState) {
     this.capacity = capacity;
-    this.entries = previous ? previous.entries.map(pet => ({ ...pet, aptitudes: { ...pet.aptitudes }, baseStats: { ...pet.baseStats }, hp: pet.maxHp }))
+    this.entries = previous ? previous.entries.map(pet => ({ ...pet, skillIds: [...(pet.skillIds ?? [])], aptitudes: { ...pet.aptitudes }, baseStats: { ...pet.baseStats }, hp: pet.maxHp }))
       : initial.map(pet => ({ id: pet.id, name: pet.name, species: pet.species ?? 'tingwa', hp: pet.hp, maxHp: pet.maxHp,
         level: pet.level, attack: pet.attack, defense: pet.defense, speed: pet.speed,
-        skill: pet.skill, isBaby: false, aptitudes: this.requireAptitudes(pet),
+        skillIds: [...(pet.skillIds ?? [])], isBaby: false, aptitudes: this.requireAptitudes(pet),
         growth: this.requireGrowth(pet), baseStats: this.requireBaseStats(pet),
         isMutated: false, origin: 'initial' as const, exp: 0, potential: 0 }));
     const highestId = this.entries.reduce((highest, pet) =>
@@ -42,10 +43,14 @@ export class Roster {
     for (const pet of this.entries) pet.hp = pet.maxHp;
   }
 
-  awardExperience(participants: ReadonlySet<string>, earned: number): void {
+  awardExperience(participants: ReadonlySet<string>, earned: number, random = Math.random): void {
     for (const pet of this.entries) {
       if (!participants.has(pet.id)) continue;
       const next = awardExperience(petProgress(pet), earned);
+      if (!pet.isBaby) {
+        distributePoints(next.stats, next.potential - pet.potential, random);
+        next.potential = pet.potential;
+      }
       const leveled = next.level !== pet.level;
       Object.assign(pet, { level: next.level, exp: next.exp, potential: next.potential, baseStats: next.stats });
       if (leveled) Object.assign(pet, petCombat(pet));
@@ -91,7 +96,7 @@ export class Roster {
     const pet: CarriedPet = { id: `caught-${this.captureId++}`, species,
       name: enemy.isBaby ? enemy.name : WILD_SPECIES[species].name, hp: enemy.hp,
       maxHp: enemy.maxHp, level: enemy.level, attack: enemy.attack, defense: enemy.defense,
-      speed: enemy.speed, skill: enemy.skill, isBaby: !!enemy.isBaby,
+      speed: enemy.speed, skill: enemy.skill, skillIds: [...(enemy.skillIds ?? [])], isBaby: !!enemy.isBaby,
       aptitudes: this.requireAptitudes(enemy),
       growth: this.requireGrowth(enemy),
       baseStats: this.requireBaseStats(enemy),

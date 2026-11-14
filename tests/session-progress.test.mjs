@@ -52,6 +52,9 @@ test('non-battle allocation and release save first, and bad data cannot initiali
   const hero = { level: 1, exp: 0, potential: 5, stats };
   const original = new SessionProgress(hero, undefined, undefined, () => 0);
   const pet = original.roster.entries[0];
+  const largest = Object.keys(pet.baseStats).sort((a, b) => pet.baseStats[b] - pet.baseStats[a])[0];
+  pet.baseStats[largest] -= 5;
+  pet.potential = 5; // Existing wild-pet balance remains manually allocatable.
   original.roster.awardExperience(new Set([pet.id]), 20);
   const strength = pet.baseStats.strength;
   const heroDraft = adjustPotential(hero, hero, 'constitution', 1);

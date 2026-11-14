@@ -215,6 +215,9 @@ test('town panel callbacks use correct IDs, preserve failed writes and persist c
   v.render = () => {};
   v.townSession = new SessionProgress(awardExperience(initialHero(), 10), undefined, undefined, () => 0);
   const session = v.progress, pet = session.roster.entries[1];
+  const largest = Object.keys(pet.baseStats).sort((a, b) => pet.baseStats[b] - pet.baseStats[a])[0];
+  pet.baseStats[largest] -= 5;
+  pet.potential = 5;
   session.roster.awardExperience(new Set([pet.id]), 30);
   saveProgress(townDisk, session);
   const before = townDisk.raw;
@@ -693,4 +696,66 @@ test('sample parameters require explicit development mode; bad saves stay unchan
   assert.match(broken.progressError, /读取失败/);
   assert.equal(townDisk.raw, '{bad');
   assert.equal(townDisk.writes, writes);
+});
+
+test('startup retries migration with the same candidate before creating a playable session', () => {
+  const source = new SessionProgress(initialHero());
+  saveProgress(townDisk, source);
+  const saved = JSON.parse(townDisk.raw);
+  saved.version = 3;
+  saved.pets.forEach(p => { delete p.skillIds; });
+  const raw = JSON.stringify(saved), values = new Map([['qingqiu-linglu:test-progress', raw]]), attempts = [];
+  const original = { getItem: townDisk.getItem, setItem: townDisk.setItem };
+  let fail = true;
+  townDisk.getItem = key => values.get(key) ?? null;
+  townDisk.setItem = (key, value) => {
+    if (key.endsWith('test-progress')) { attempts.push(value); if (fail) throw Error('migration failed'); }
+    values.set(key, value);
+  };
+  try {
+    const v = new BattleView();
+    v.render = () => {};
+    v.start();
+    assert.equal(v.townSession, undefined);
+    assert.equal(v.mapBlocked, true);
+    assert.match(v.progressError, /migration failed/);
+    fail = false;
+    v.retryProgress();
+    assert.ok(v.townSession);
+    assert.equal(v.progressReadFailed, false);
+    assert.equal(attempts.length, 2);
+    assert.equal(attempts[0], attempts[1]);
+  } finally { Object.assign(townDisk, original); }
+});
+
+test('skill slots open only owned skills and close on switching pets', () => {
+  const v = new BattleView(), labels = [], actions = [];
+  v.render = () => {};
+  v.text = value => labels.push(value);
+  v.rect = (_x, _y, _w, _h, _fill, _border, _radius, click) => {
+    if (click) actions.push(click);
+    return { addComponent() {} };
+  };
+  const pet = { species: 'pangui', skillIds: ['armor'] };
+  v.renderPetSkills(pet);
+  assert.equal(actions.length, 1);
+  assert.equal(labels.filter(s => s === '空').length, 7);
+  assert.equal(labels.filter(s => s === '锁定').length, 4);
+  actions[0]();
+  assert.equal(v.skillOpen, 'armor');
+  v.renderPetSkills(pet);
+  assert.ok(labels.some(s => s.includes('天生技能')));
+  actions.at(-1)();
+  assert.equal(v.skillOpen, undefined);
+  actions[0]();
+  v.openPetPanel('pet-2');
+  assert.equal(v.skillOpen, undefined);
+  v.townSession = new SessionProgress(initialHero());
+  v.drawPetPortrait = () => {};
+  actions.length = 0;
+  v.skillOpen = 'armor';
+  v.renderPetSlots('pet');
+  actions[1]();
+  assert.equal(v.selectedPetId, 'pet-2');
+  assert.equal(v.skillOpen, undefined);
 });

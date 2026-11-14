@@ -7,9 +7,10 @@ import { petCombat } from './pet-panel';
 import type { HeroProgress } from './hero-progress';
 import type { CarriedPet } from './roster';
 import { SessionProgress } from './session-progress';
+import { generateSkills, validSkills } from './pet-skills';
 
 import { progressIO, type ProgressStorage } from '../../logic/platform';
-const VERSION = 3;
+const VERSION = 4;
 type Snapshot = { version: number; hero: HeroProgress; pets: CarriedPet[]; selectedPetId: string; nextCapturedId?: number };
 
 const inRange = (n: number, low: number, high: number) => Number.isInteger(n) && n >= low && n <= high;
@@ -35,22 +36,43 @@ export function readProgress(storage: ProgressStorage, capacity: number = BATTLE
   const raw = progressIO.read(storage);
   if (raw === null) return null;
   const saved: Snapshot = JSON.parse(raw);
+  return validateSnapshot(saved, capacity);
+}
+
+function onlyKeys(value: object, allowed: string[]): void {
+  if (!value || typeof value !== 'object' || Object.keys(value).some(key => !allowed.includes(key)))
+    throw new Error('存档包含不兼容字段，原档已保留');
+}
+
+function validateSnapshot(saved: Snapshot, capacity: number = BATTLE_RULES.maxCarriedPets): Snapshot {
+  onlyKeys(saved, ['version', 'hero', 'pets', 'selectedPetId', 'nextCapturedId']);
   const hero = saved?.hero;
   const { maxLevel, initialStat, statPerLevel, potentialPerLevel } = HERO_PROGRESSION;
   const minimum = initialStat + (hero?.level ?? 0) * statPerLevel;
   const budget = (hero?.level ?? 0) * potentialPerLevel;
-  if (![1, 2, VERSION].includes(saved?.version) || !hero || !inRange(hero.level, 0, maxLevel)
+  if (![1, 2, 3, VERSION].includes(saved?.version) || !hero || !inRange(hero.level, 0, maxLevel)
     || !inRange(hero.exp, 0, hero.level === maxLevel ? 0 : levelUpExp(hero.level) - 1)
     || !inRange(hero.potential, 0, budget)
     || !BASE_STAT_KEYS.every(key => inRange(hero.stats?.[key], minimum, minimum + budget))
     || BASE_STAT_KEYS.reduce((spent, key) => spent + hero.stats[key] - minimum, hero.potential) !== budget
-    || !Array.isArray(saved.pets) || saved.pets.length < (saved.version === VERSION ? 1 : 2) || saved.pets.length > capacity
+    || !Array.isArray(saved.pets) || saved.pets.length < (saved.version >= 3 ? 1 : 2) || saved.pets.length > capacity
     || (saved.nextCapturedId !== undefined && (!Number.isSafeInteger(saved.nextCapturedId) || saved.nextCapturedId < 1)))
     throw new Error('本地测试进度损坏或版本不兼容');
   if (saved.version === 1 && !saved.pets.every(pet => pet && inRange(pet.level, 0, 5) && pet.isBaby === (pet.level === 0)))
     throw new Error('旧版召唤兽进度损坏');
   const pets = saved.version === 1 ? saved.pets.map(pet => ({ ...pet, exp: 0, potential: 0 })) : saved.pets;
-  const legacy = saved.version !== VERSION;
+  const legacy = saved.version < 3;
+  onlyKeys(hero, ['level', 'exp', 'potential', 'stats']);
+  onlyKeys(hero.stats, [...BASE_STAT_KEYS]);
+  for (const pet of pets) {
+    onlyKeys(pet, ['id', 'name', 'species', 'hp', 'maxHp', 'level', 'attack', 'defense', 'speed', 'skill',
+      'isBaby', 'isMutated', 'aptitudes', 'growth', 'baseStats', 'origin', 'sourceEnemyId', 'exp', 'potential',
+      ...(saved.version === VERSION ? ['skillIds'] : [])]);
+    onlyKeys(pet.aptitudes, [...APTITUDE_KEYS]);
+    onlyKeys(pet.baseStats, [...BASE_STAT_KEYS]);
+    if (saved.version === VERSION ? pet.skill !== undefined || !validSkills(pet.species, pet.skillIds)
+      : pet.skill !== undefined && pet.skill !== '露珠弹') throw new Error('存档技能不兼容，原档已保留');
+  }
   if (!pets.every(pet => validPet(pet, legacy))) throw new Error('召唤兽进度损坏');
   const ids = pets.map(pet => pet.id);
   if (new Set(ids).size !== ids.length || !ids.includes(saved.selectedPetId)
@@ -59,14 +81,40 @@ export function readProgress(storage: ProgressStorage, capacity: number = BATTLE
         && pet.species === 'tingwa' && !pet.isBaby && !pet.isMutated
       : pet.origin === 'captured' && (!legacy || index >= 2) && /^caught-[1-9]\d*$/.test(pet.id)))
     throw new Error('本地携带名单或出战选择无效');
-  return { ...saved, version: VERSION,
+  return { ...saved, version: saved.version === VERSION ? VERSION : 3,
     pets: pets.map(pet => ({ ...pet, ...(legacy ? petCombat(pet) : {}), skill: pet.skill })) };
 }
 
 export function loadSessionProgress(storage: ProgressStorage): SessionProgress | null {
-  const saved = readProgress(storage);
-  return saved ? new SessionProgress(saved.hero, { entries: saved.pets, nextCapturedId: saved.nextCapturedId },
-    saved.selectedPetId) : null;
+  return new ProgressLoader().load(storage);
+}
+
+export class ProgressLoader {
+  private pending?: { raw: string; candidate: string };
+
+  load(storage: ProgressStorage, random = Math.random): SessionProgress | null {
+    const raw = progressIO.read(storage);
+    if (this.pending && raw !== this.pending.raw) throw new Error('主档已变化，请重新加载');
+    if (raw === null) return null;
+    let saved = validateSnapshot(JSON.parse(raw));
+    if (saved.version < VERSION) {
+      const backupKey = `qingqiu-linglu:test-progress:backup:v${JSON.parse(raw).version}`;
+      const backup = storage.getItem(backupKey);
+      if (backup !== null && backup !== raw) throw new Error('旧档备份冲突，请保留档案并联系华周');
+      if (backup === null) storage.setItem(backupKey, raw);
+      if (!this.pending) {
+        saved = { ...saved, version: VERSION, pets: saved.pets.map(({ skill: _old, ...pet }) =>
+          ({ ...pet, skillIds: generateSkills(pet.species, pet.isMutated, random) })) };
+        validateSnapshot(saved);
+        this.pending = { raw, candidate: JSON.stringify(saved) };
+      }
+      if (progressIO.read(storage) !== raw) throw new Error('主档已变化，请重新加载');
+      progressIO.write(storage, this.pending.candidate);
+      saved = validateSnapshot(JSON.parse(this.pending.candidate));
+      this.pending = undefined;
+    }
+    return new SessionProgress(saved.hero, { entries: saved.pets, nextCapturedId: saved.nextCapturedId }, saved.selectedPetId);
+  }
 }
 
 export function saveProgress(storage: ProgressStorage, progress: Pick<SessionProgress, 'heroProgress' | 'roster' | 'selectedPetId'>,
@@ -81,7 +129,8 @@ export function progressSnapshot(progress: Pick<SessionProgress, 'heroProgress' 
     nextCapturedId: progress.roster.nextCapturedId,
     pets: roster.map(pet => {
       const entry = updatedPet?.id === pet.id ? updatedPet : pet;
-      return { ...entry, hp: entry.maxHp };
+      const { skill: _old, ...current } = entry;
+      return { ...current, hp: entry.maxHp };
     }) };
   return JSON.stringify(saved);
 }

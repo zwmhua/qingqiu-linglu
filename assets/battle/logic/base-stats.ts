@@ -11,7 +11,11 @@ export function generateBaseStats(level: number, random: () => number): BaseStat
   const stats = Object.fromEntries(BASE_STAT_KEYS.map(key =>
     [key, BASE_STATS_CONFIG.minPerStat])) as BaseStats;
   const remaining = baseStatTotal(level) - BASE_STAT_KEYS.length * BASE_STATS_CONFIG.minPerStat;
-  for (let i = 0; i < remaining; i++) {
+  return distributePoints(stats, remaining, random);
+}
+
+export function distributePoints(stats: BaseStats, count: number, random: () => number): BaseStats {
+  for (let i = 0; i < count; i++) {
     const roll = random();
     if (!Number.isFinite(roll) || roll < 0 || roll > 1) throw new Error('基础属性随机值无效');
     stats[BASE_STAT_KEYS[Math.min(BASE_STAT_KEYS.length - 1, Math.floor(roll * BASE_STAT_KEYS.length))]]++;

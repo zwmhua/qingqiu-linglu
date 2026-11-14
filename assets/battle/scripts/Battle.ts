@@ -6,6 +6,7 @@ import { BABY_CONFIG, effectiveLevel, isBabyEncounter } from '../logic/baby';
 import { generateAptitudes } from '../logic/aptitude';
 import { generateGrowth } from '../logic/growth';
 import { generateBaseStats } from '../logic/base-stats';
+import { generateSkills } from '../logic/pet-skills';
 import type { Aptitudes } from '../logic/aptitude';
 import type { BaseStats } from '../logic/base-stats';
 import { MUTATION_CONFIG, isMutation, mutateAptitudes } from '../logic/mutation';
@@ -23,7 +24,7 @@ export type Unit = {
   growth?: number;
   baseStats?: BaseStats;
   hp: number; maxHp: number; attack: number; defense: number; speed: number;
-  defending: boolean; left: boolean; deployed: boolean; skill?: string;
+  defending: boolean; left: boolean; deployed: boolean; skill?: string; skillIds?: string[];
 };
 type Order = { actor: Unit; command: Command; target?: string };
 export type AttackEvent = {
@@ -68,12 +69,12 @@ export class Battle {
     baseStatsRandom: () => number = Math.random, mutationRandom: () => number = Math.random,
     // Fixed-count previews and legacy fixtures retain level-one Tingwa unless given an encounter source.
     encounterRandom: () => number = count === undefined ? random : () => 0,
-    progression?: { hero: HeroProgress; selectedPetId?: string; petRandom?: () => number }) {
+    progression?: { hero: HeroProgress; selectedPetId?: string; petRandom?: () => number }, skillRandom = Math.random) {
     this.random = random;
     this.heroRage = Math.max(0, Math.min(BATTLE_RULES.status.rageMax, initialRage));
     this.session = previousRoster instanceof SessionProgress ? previousRoster
       : new SessionProgress(progression?.hero, previousRoster, progression?.selectedPetId,
-        progression?.petRandom, aptitudeRandom, growthRandom, baseStatsRandom);
+        progression?.petRandom, aptitudeRandom, growthRandom, baseStatsRandom, skillRandom);
     const progress = this.heroProgress;
     const stats = progress ? heroPanel(progress.stats) : undefined;
     const hero = BATTLE_RULES.hero;
@@ -90,6 +91,7 @@ export class Battle {
       aptitudes: pet.aptitudes,
       growth: pet.growth,
       baseStats: pet.baseStats,
+      skillIds: [...(pet.skillIds ?? [])],
       isMutated: pet.isMutated,
       hp: pet.maxHp, maxHp: pet.maxHp, attack: pet.attack, defense: pet.defense,
       speed: pet.speed, skill: pet.skill, defending: false, left: false, deployed: pet.id === this.selectedPetId,
@@ -111,6 +113,7 @@ export class Battle {
         aptitudes: isMutated ? mutateAptitudes(aptitudes, MUTATION_CONFIG.multiplier) : aptitudes,
         growth: generateGrowth(isBaby, growthRandom, wild.growth),
         baseStats: generateBaseStats(level, baseStatsRandom),
+        skillIds: generateSkills(species, isMutated, skillRandom),
         ...wildCombat(species, level), defending: false, left: false, deployed: true });
     }
     const { enemyBaseExp, enemyLevelExp } = HERO_PROGRESSION;

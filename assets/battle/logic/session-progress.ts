@@ -6,6 +6,7 @@ import { confirmPotential, type HeroProgress, type LevelProgress } from './hero-
 import { petCombat } from './pet-panel';
 import { petProgress, Roster, type CarriedPet, type RosterState } from './roster';
 import { pickWildLevel } from './wild-encounter';
+import { generateSkills } from './pet-skills';
 
 export class SessionProgress {
   readonly roster: Roster;
@@ -14,7 +15,7 @@ export class SessionProgress {
 
   constructor(heroProgress?: HeroProgress, previous?: RosterState, selectedPetId?: string,
     petRandom = Math.random, aptitudeRandom = Math.random, growthRandom = Math.random,
-    baseStatsRandom = Math.random) {
+    baseStatsRandom = Math.random, skillRandom = Math.random) {
     this.heroProgress = heroProgress;
     this.selectedPetId = selectedPetId ?? previous?.entries[0]?.id ?? INITIAL_PET_IDS[0];
     const frog = BATTLE_RULES.frog;
@@ -22,7 +23,7 @@ export class SessionProgress {
       const level = heroProgress ? pickWildLevel(petRandom()) : frog.level;
       const traits = { level, aptitudes: generateAptitudes(false, aptitudeRandom),
         growth: generateGrowth(false, growthRandom), baseStats: generateBaseStats(level, baseStatsRandom) };
-      return { id, name: frog.name, species: 'tingwa' as const, skill: frog.innateSkill, ...traits, ...petCombat(traits) };
+      return { id, name: frog.name, species: 'tingwa' as const, skillIds: generateSkills('tingwa', false, skillRandom), ...traits, ...petCombat(traits) };
     });
     this.roster = new Roster(BATTLE_RULES.maxCarriedPets, pets, previous);
   }

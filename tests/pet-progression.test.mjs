@@ -19,6 +19,27 @@ const make = ({ count = 1, previous, selectedPetId, babies = [], roll = 0 } = {}
 const points = pet => Object.values(pet.baseStats).reduce((sum, value) => sum + value, 0);
 const panel = pet => [pet.maxHp, pet.attack, pet.defense, pet.speed];
 const state = pet => [pet.level, pet.exp, pet.potential];
+test('wild upgrades invest only new points while babies and heroes retain allocatable points', () => {
+  const battle = make({ babies: [0] });
+  orders(battle, 'capture', 'enemy-0');
+  const [wild, , baby] = battle.roster.entries;
+  wild.baseStats.constitution -= 3;
+  wild.potential = 3;
+  const before = { ...wild.baseStats };
+  battle.roster.awardExperience(new Set([wild.id, baby.id]), 60, () => 0);
+  assert.equal(wild.potential, 3);
+  assert.equal(wild.baseStats.constitution, before.constitution + 12);
+  assert.equal(wild.baseStats.strength, before.strength + 2);
+  assert.equal(baby.potential, 15);
+  for (const pet of [wild, baby]) {
+    assert.equal(points(pet) + pet.potential, 50 + 10 * pet.level);
+    assert.deepEqual(panel(pet), panel({ ...pet, ...petPanel(pet) }));
+  }
+  battle.roster.awardExperience(new Set([wild.id, baby.id]), 10000, () => 1);
+  assert.equal(wild.potential, 3);
+  assert.equal(baby.potential, 100);
+  for (const pet of [wild, baby]) assert.equal(points(pet) + pet.potential, 250);
+});
 function orders(battle, hero, target, petCommand = 'defend') {
   battle.command('hero', hero, target);
   battle.command(battle.selectedPetId, petCommand, target);
@@ -50,7 +71,7 @@ test('baby allocation preview uses rounded formal stats and clears on cancel', (
 });
 
 test('level 13 Tingwa uses all seven formal stats after loading an old panel', () => {
-  const pets = make().roster.entries.map(pet => ({ ...pet, ...wildCombat(pet.species, pet.level) }));
+  const pets = make().roster.entries.map(({ skillIds, ...pet }) => ({ ...pet, ...wildCombat(pet.species, pet.level) }));
   const frog = { ...wildCombat('tingwa', 13), id: 'caught-1', name: '汀蛙', species: 'tingwa', level: 13,
     aptitudes: { attack: 1033, defense: 815, stamina: 2375, mana: 1124, dodge: 967, speed: 1259 },
     growth: 0.903, baseStats: { constitution: 22, mana: 29, strength: 83, endurance: 20, agility: 26 },
@@ -81,7 +102,7 @@ test('preview and normal battles share the once-per-victory pet experience path'
   assert.equal(battle.earnedExp, 38);
   assert.deepEqual(state(battle.heroProgress), [2, 8, 10]);
   for (let i = 0; i < 2; i++) {
-    assert.deepEqual([first, unused, baby, captured].map(state), [[2, 18, 5], [1, 0, 0], [2, 8, 10], [3, 0, 0]]);
+    assert.deepEqual([first, unused, baby, captured].map(state), [[2, 18, 0], [1, 0, 0], [2, 8, 10], [3, 0, 0]]);
     battle.checkWinner();
   }
   const loss = make();
@@ -165,13 +186,15 @@ test('legacy pet records restore unchanged with zero experience and potential', 
   saveProgress(storage, battle);
   const legacy = JSON.parse(raw);
   legacy.version = 2;
+  legacy.pets.forEach(pet => { delete pet.skillIds; });
   for (const pet of legacy.pets) Object.assign(pet, wildCombat(pet.species, pet.level));
   raw = JSON.stringify(legacy);
-  assert.deepEqual(readProgress(storage).pets, battle.roster.entries);
+  const expected = battle.roster.entries.map(({ skillIds, ...pet }) => ({ ...pet, skill: undefined }));
+  assert.deepEqual(readProgress(storage).pets, expected);
   legacy.version = 1;
   for (const pet of legacy.pets) { delete pet.exp; delete pet.potential; }
   raw = JSON.stringify(legacy);
-  assert.deepEqual(readProgress(storage).pets, battle.roster.entries);
+  assert.deepEqual(readProgress(storage).pets, expected);
 });
 
 test('all three temporary panels keep their coefficients through level 20', () => {
