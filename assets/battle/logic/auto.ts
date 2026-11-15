@@ -20,9 +20,12 @@ export class AutoCommands {
   issue(battle: Battle): void {
     if (!this.enabled || battle.phase === 'ended') return;
     for (const actor of [...battle.pending]) {
-      const order = nextAutoOrder(battle.lastCommands.get(actor.id)?.command, battle.enemies, this.random);
-      const autoAttack = order.command === 'attack' && actor.id !== 'hero' && activeSpells(actor.skillIds).length > 0;
-      battle.command(actor.id, autoAttack ? 'autoAttack' : order.command, order.target);
+      const saved = battle.session.autoOrders.get(actor.id);
+      const previous = saved?.command ?? battle.lastCommands.get(actor.id)?.command;
+      const order = nextAutoOrder(previous, battle.enemies, this.random);
+      const autoAttack = saved?.skillId || (!saved && order.command === 'attack' &&
+        actor.id !== 'hero' && activeSpells(actor.skillIds).length > 0);
+      battle.command(actor.id, autoAttack ? 'autoAttack' : order.command, order.target, saved?.skillId, true);
     }
   }
 }

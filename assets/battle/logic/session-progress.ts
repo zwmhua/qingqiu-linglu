@@ -10,6 +10,7 @@ import { generateSkills } from './pet-skills';
 
 export class SessionProgress {
   readonly roster: Roster;
+  readonly autoOrders = new Map<string, { command: 'attack' | 'defend' | 'spell'; skillId?: string }>();
   selectedPetId: string;
   heroProgress?: HeroProgress;
 

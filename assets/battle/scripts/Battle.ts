@@ -171,7 +171,7 @@ export class Battle {
     return this.allies.filter(u => u.id !== actorId && u.deployed && u.hp > 0 && !u.left && !reserved.has(u.id));
   }
 
-  command(actorId: string, command: Command, target?: string, skillId?: string): void {
+  command(actorId: string, command: Command, target?: string, skillId?: string, automatic = false): void {
     if (this.phase !== 'command') throw new Error('当前不能下达指令');
     const actor = this.allies.find(u => u.id === actorId && u.deployed && u.hp > 0 && !u.left);
     if (!actor || this.commands.has(actorId)) throw new Error('单位不能接收指令');
@@ -185,10 +185,11 @@ export class Battle {
       && !this.enemies.some(u => u.id === target && inBattle(u))) {
       throw new Error('攻击需要存活目标');
     }
-    if (command === 'spell') {
-      if (actor.id === 'hero' || !skillId || !activeSpells(actor.skillIds).includes(skillId))
+    const chosenSpell = command === 'spell' || command === 'autoAttack' ? skillId : undefined;
+    if (command === 'spell' || chosenSpell !== undefined) {
+      if (actor.id === 'hero' || !chosenSpell || !activeSpells(actor.skillIds).includes(chosenSpell))
         throw new Error('未学会该灵术');
-      if (actor.mana < PET_SKILLS[skillId].params.mana) throw new Error('法力不足');
+      if (command === 'spell' && actor.mana < PET_SKILLS[chosenSpell].params.mana) throw new Error('法力不足');
     }
     if (command === 'capture') {
       if (actor.id !== 'hero') throw new Error('只有撷灵客才能抓取');
@@ -202,7 +203,9 @@ export class Battle {
         throw new Error('保护需要其他存活的我方目标');
       }
     }
-    this.commands.set(actorId, { command, target, ...(command === 'spell' && { skillId }) });
+    if (!automatic && (command === 'attack' || command === 'defend' || command === 'spell'))
+      this.session.autoOrders.set(actorId, { command, skillId: chosenSpell });
+    this.commands.set(actorId, { command, target, ...(chosenSpell !== undefined && { skillId: chosenSpell }) });
     if (this.pending.length === 0) this.resolve();
   }
 
@@ -357,8 +360,9 @@ export class Battle {
       }
       const targets = (turn.actor.side === 'ally' ? this.enemies : this.allies).filter(inBattle);
       const chosenTarget = targets.find(u => u.id === turn.target);
-      let skillId = turn.command === 'autoAttack' && turn.actor.id !== 'hero'
-        ? firstAffordableSpell(turn.actor) : turn.skillId;
+      let skillId = turn.skillId;
+      if (!skillId && turn.command === 'autoAttack' && turn.actor.id !== 'hero')
+        skillId = firstAffordableSpell(turn.actor);
       if (skillId && turn.actor.mana < PET_SKILLS[skillId].params.mana) {
         this.log.push(`${turn.actor.name} 法力不足，改为普攻。`);
         skillId = undefined;

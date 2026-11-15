@@ -8,7 +8,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 } });
 const { Battle } = await import('../assets/battle/scripts/Battle.ts');
 const { AutoCommands, nextAutoOrder } = await import('../assets/battle/logic/auto.ts');
-const fight = () => new Battle(() => 0.5, 3, 0, undefined, () => 1,
+const fight = session => new Battle(() => 0.5, 3, 0, session, () => 1,
   undefined, undefined, undefined, undefined, undefined, undefined, () => 0);
 
 test('first-round auto issues both attacks immediately with injected random targets', () => {
@@ -81,4 +81,75 @@ test('auto keeps hero defense, picks the first learned affordable spell and fall
   assert.equal(battle.lastCommands.get('hero').command, 'defend');
   assert.ok(battle.attackEvents.some(e => e.actorId === pet.id && e.targetId === 'enemy-1'));
   assert.equal(rolls.length, 0);
+});
+
+function longFight(session) {
+  const battle = fight(session);
+  battle.allies[0].hp = 900;
+  for (const enemy of battle.enemies) enemy.hp = enemy.maxHp = 900;
+  return battle;
+}
+
+test('confirmed fireball survives exhaustion and a new fight until replaced by a manual attack', () => {
+  const first = longFight(), pet = first.pets[0];
+  pet.skillIds = first.roster.entries[0].skillIds = ['thunder', 'fireball'];
+  pet.mana = 10;
+  first.roster.entries[0].baseStats.mana = 10;
+  first.command('hero', 'defend');
+  first.command(pet.id, 'spell', 'enemy-0', 'fireball');
+
+  const auto = new AutoCommands(() => 0.99);
+  auto.toggle();
+  auto.issue(first);
+  const spell = first.events.find(e => e.kind === 'spell');
+  assert.deepEqual([spell?.skillId, spell?.targets[0].targetId, pet.mana], ['fireball', 'enemy-2', 0]);
+  auto.issue(first);
+  assert.ok(first.attackEvents.some(e => e.actorId === pet.id && e.targetId === 'enemy-2'));
+  assert.ok(first.log.some(line => line.includes('法力不足，改为普攻')));
+
+  first.command('hero', 'flee');
+  auto.issue(first);
+  assert.equal(first.result, 'escaped');
+  const next = longFight(first.session);
+  auto.issue(next);
+  assert.equal(next.lastCommands.get('hero').command, 'defend');
+  assert.equal(next.events.find(e => e.kind === 'spell')?.skillId, 'fireball');
+
+  auto.toggle();
+  next.command('hero', 'defend');
+  next.command(pet.id, 'attack', 'enemy-0');
+  next.enemies[2].hp = 0;
+  auto.toggle();
+  auto.issue(next);
+  assert.ok(next.attackEvents.some(e => e.actorId === pet.id && e.targetId === 'enemy-1'));
+  assert.ok(!next.events.some(e => e.kind === 'spell' && e.actorId === pet.id));
+});
+
+test('summoning and protection are one-shot and each pet keeps its own confirmed order', () => {
+  const b = longFight(), [pet, reserve] = b.pets;
+  pet.skillIds = ['thunder', 'fireball'];
+  reserve.skillIds = ['waterarrow'];
+  pet.mana = reserve.mana = 15;
+  b.allies[0].speed = 200;
+  const auto = new AutoCommands(() => 0);
+  b.command('hero', 'defend');
+  b.command(pet.id, 'spell', 'enemy-0', 'fireball');
+
+  b.command('hero', 'summon', reserve.id);
+  auto.toggle(); auto.issue(b);
+  auto.issue(b);
+  assert.equal(b.lastCommands.get('hero').command, 'defend');
+  assert.equal(b.events.find(e => e.kind === 'spell' && e.actorId === reserve.id)?.skillId, 'waterarrow');
+
+  auto.toggle();
+  b.command('hero', 'protect', reserve.id);
+  b.command(reserve.id, 'defend');
+  b.command('hero', 'summon', pet.id);
+  auto.toggle(); auto.issue(b); auto.issue(b);
+  assert.equal(b.lastCommands.get('hero').command, 'defend');
+  assert.equal(b.events.find(e => e.kind === 'spell' && e.actorId === pet.id)?.skillId, 'fireball');
+
+  b.command('hero', 'summon', reserve.id);
+  auto.issue(b); auto.issue(b);
+  assert.equal(b.lastCommands.get(reserve.id).command, 'defend');
 });
