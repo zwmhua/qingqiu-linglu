@@ -8,6 +8,7 @@ import { petProgress, Roster, type CarriedPet, type RosterState } from './roster
 import { pickWildLevel } from './wild-encounter';
 import { generateSkills } from './pet-skills';
 import type { Inventory, DropMode } from './inventory';
+import { applyBook, bookPlan } from './skill-books';
 
 export class SessionProgress {
   readonly roster: Roster;
@@ -61,6 +62,30 @@ export class SessionProgress {
     persist(updated);
     Object.assign(pet, updated);
     return true;
+  }
+
+  prepareSkillBook(inBattle: boolean, id: string, item: string) {
+    const find = () => this.roster.entries.find(pet => pet.id === id);
+    const plan = bookPlan(find(), item, this.inventory, inBattle);
+    const originalSkills = JSON.stringify(find()!.skillIds);
+    let consumed = false;
+    return { rate: plan.rate, execute: (nowInBattle: boolean,
+      persist: (pet: CarriedPet, inventory: Inventory) => void, random = Math.random) => {
+      if (consumed) return;
+      consumed = true;
+      const pet = find();
+      const current = bookPlan(pet, item, this.inventory, nowInBattle);
+      if (JSON.stringify(pet!.skillIds) !== originalSkills) throw new Error('技能已变化，请重新确认');
+      const result = applyBook(pet!.skillIds!, current, random);
+      const updated = { ...pet!, skillIds: result.skillIds };
+      const inventory = { ...this.inventory, [item]: this.inventory[item] - 1 };
+      persist(updated, inventory);
+      Object.assign(pet!, updated);
+      this.inventory = inventory;
+      const order = this.autoOrders.get(id);
+      if (order?.command === 'spell' && order.skillId === result.replaced) this.autoOrders.delete(id);
+      return result;
+    } };
   }
 
   releasePet(inBattle: boolean, id: string, persist: (pets: CarriedPet[]) => void): boolean {

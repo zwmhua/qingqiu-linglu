@@ -6,7 +6,7 @@ export const INVENTORY_CONFIG = { pageSize: 20, stackLimit: 99 } as const;
 export const BOOK_IDS = Object.keys(PET_SKILLS).map(id => `book:${id}`);
 export const ITEMS: Record<string, { name: string; description: string }> = Object.fromEntries([
   ...Object.entries(PET_SKILLS).map(([id, skill]) => [`book:${id}`, {
-    name: `${skill.name}技能书`, description: `记载${skill.name}的技能书，后续可用于打书。目前仅可查看。`,
+    name: `${skill.name}技能书`, description: `城野选宠打书，消耗一本${skill.name}书。`,
   }]),
   ['rejuvenation', { name: '还童露', description: '用于后续灵宠还童，目前仅可查看。' }],
   ['mutation-rejuvenation', { name: '变异还童露', description: '用于后续变异灵宠还童，目前仅可查看。' }],

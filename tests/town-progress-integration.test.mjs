@@ -987,3 +987,53 @@ test('skill slots open only owned skills and close on switching pets', () => {
   assert.equal(v.selectedPetId, 'pet-2');
   assert.equal(v.skillOpen, undefined);
 });
+
+test('skill book view confirms on maps, cancels without work and guards stale callbacks and changed context', async () => {
+  const { v, session, complete } = await roundTripView();
+  v.mapBattle = false;
+  const pet = session.roster.entries[0];
+  pet.skillIds = ['crit']; session.inventory = { 'book:thunder': 3 };
+  const labels = [], actions = new Map();
+  v.text = text => labels.push(text);
+  v.rect = () => ({ addComponent() {} });
+  v.button = (text, _x, _y, _w, _h, enabled, callback) => {
+    if (enabled) actions.set(text, callback);
+    return { addComponent() {} };
+  };
+  const draw = () => { labels.length = 0; actions.clear(); v.renderInventory(); };
+  let rolls = 0; v.bookRandom = () => { rolls++; return 0; };
+  saveProgress(townDisk, session);
+  const before = townDisk.raw, writes = townDisk.writes;
+  v.openInventory(); v.inventoryItem = 'book:thunder'; draw();
+  actions.get('打书')(); draw();
+  assert.ok(labels.some(s => s.includes('新增 100%') && s.includes('顶替 0%')));
+  assert.ok(labels.includes('雷击术技能书 → 汀蛙'));
+  assert.ok(labels.includes('新增技能放入首个空格。'));
+  const cancelledCallback = actions.get('确认打书');
+  actions.get('取消')(); cancelledCallback();
+  assert.equal(townDisk.raw, before); assert.equal(townDisk.writes, writes); assert.equal(rolls, 0);
+  draw(); actions.get('打书')(); draw();
+  townDisk.fail = true; actions.get('确认打书')();
+  assert.match(v.bookMessage, /write failed/); assert.equal(v.bookConfirmation, undefined);
+  assert.equal(townDisk.raw, before); assert.deepEqual(pet.skillIds, ['crit']);
+  assert.equal(session.inventory['book:thunder'], 3);
+  townDisk.fail = false; draw(); actions.get('打书')(); draw();
+  const confirm = actions.get('确认打书'); confirm(); confirm(); cancelledCallback();
+  assert.equal(townDisk.writes, writes + 1); assert.equal(session.inventory['book:thunder'], 2);
+  assert.deepEqual(pet.skillIds, ['crit', 'thunder']); assert.match(v.bookMessage, /新增雷击术/);
+  draw(); actions.get('打书')(); assert.match(v.bookMessage, /已学/);
+  assert.equal(rolls, 0); assert.equal(townDisk.writes, writes + 1);
+  for (const region of ['town', 'outskirts']) {
+    v.town.load(region); complete();
+    pet.skillIds = ['crit', 'armor']; draw(); actions.get('打书')(); draw();
+    assert.ok(labels.some(s => s.includes('新增 60%') && s.includes('顶替 40%')));
+    const stale = actions.get('确认打书'); actions.get('取消')(); stale();
+    pet.skillIds.push('power'); draw(); actions.get('打书')(); draw();
+    assert.ok(labels.some(s => s.includes('新增 30%') && s.includes('顶替 70%')));
+    actions.get('关闭')(); assert.equal(v.bookConfirmation, undefined);
+  }
+  v.openInventory(); draw(); actions.get('打书')(); draw();
+  const changed = actions.get('确认打书'); v.mapBattle = true; changed();
+  assert.match(v.bookMessage, /战斗/); draw(); assert.equal(actions.has('打书'), false);
+  assert.equal(townDisk.writes, writes + 1); assert.equal(rolls, 0);
+});

@@ -85,3 +85,54 @@ test('non-battle allocation and release save first, and bad data cannot initiali
   assert.deepEqual(restored.roster.entries.map(entry => entry.id), [pet.id]);
   assert.equal(restored.selectedPetId, pet.id);
 });
+
+test('skill books save one complete candidate before publishing, preserve failures and expire confirmations', async () => {
+  const { progressSnapshot } = await import('../assets/battle/logic/local-progress.ts');
+  const session = new SessionProgress(initialHero(), undefined, undefined, () => 0);
+  const pet = session.roster.entries[0], disk = storage();
+  pet.skillIds = ['waterarrow', 'armor', 'crit', 'power'];
+  session.inventory = { 'book:thunder': 3 };
+  session.autoOrders.set(pet.id, { command: 'spell', skillId: 'waterarrow' });
+  session.autoOrders.set('pet-2', { command: 'defend' });
+  saveProgress(disk, session);
+  const before = disk.raw, original = structuredClone(pet), orders = [...session.autoOrders];
+  let writes = 0, rolls = 0;
+  const random = () => { rolls++; return 0; };
+  const persist = (next, inventory) => { disk.setItem('', progressSnapshot(session, undefined, next, undefined, inventory)); writes++; };
+  disk.fail = true;
+  const failed = session.prepareSkillBook(false, pet.id, 'book:thunder');
+  assert.throws(() => failed.execute(false, persist, random), /写入失败/);
+  assert.equal(failed.execute(false, persist, random), undefined);
+  assert.equal(disk.raw, before); assert.deepEqual(pet, original);
+  assert.deepEqual([...session.autoOrders], orders); assert.equal(writes, 0);
+  disk.fail = false;
+  const success = session.prepareSkillBook(false, pet.id, 'book:thunder');
+  assert.equal(success.execute(false, persist, random).replaced, 'waterarrow');
+  assert.equal(success.execute(false, persist, random), undefined);
+  assert.equal(writes, 1); assert.equal(rolls, 2);
+  assert.deepEqual(pet, { ...original, skillIds: ['thunder', 'armor', 'crit', 'power'] });
+  assert.equal(session.inventory['book:thunder'], 2);
+  assert.equal(session.autoOrders.has(pet.id), false);
+  assert.deepEqual(session.autoOrders.get('pet-2'), { command: 'defend' });
+  const restored = loadSessionProgress(disk);
+  assert.equal(progressSnapshot(restored), disk.raw);
+  assert.equal(restored.selectedPetId, session.selectedPetId);
+  assert.deepEqual(restored.inventory, session.inventory);
+  const battle = new Battle(() => 0, 1, 0, session, () => 1);
+  assert.ok(battle.pets.find(p => p.id === pet.id).skillIds.includes('thunder'));
+  const { AutoCommands } = await import('../assets/battle/logic/auto.ts');
+  battle.enemies.forEach(enemy => { enemy.hp = enemy.maxHp = 10000; enemy.speed = 1; });
+  session.autoOrders.set('hero', { command: 'defend' });
+  const auto = new AutoCommands(() => 0); auto.enabled = true; auto.issue(battle);
+  assert.ok(battle.events.some(event => event.kind === 'spell' && event.actorId === pet.id && event.skillId === 'thunder'));
+  for (const change of ['battle', 'missing', 'stock', 'skills']) {
+    pet.skillIds = ['crit']; session.inventory['book:thunder'] = 1;
+    const pending = session.prepareSkillBook(false, pet.id, 'book:thunder');
+    if (change === 'missing') session.roster.entries.splice(0, 1);
+    if (change === 'stock') session.inventory['book:thunder'] = 0;
+    if (change === 'skills') pet.skillIds = ['crit', 'armor'];
+    assert.throws(() => pending.execute(change === 'battle', persist, random));
+    if (change === 'missing') session.roster.entries.unshift(pet);
+  }
+  assert.equal(writes, 1); assert.equal(rolls, 2);
+});

@@ -84,6 +84,9 @@ export class BattleView extends Component {
   private inventoryOpen = false;
   private inventoryItem?: string;
   private inventoryPet?: string;
+  private bookRandom = Math.random;
+  private bookMessage = '';
+  private bookConfirmation?: { transaction: ReturnType<SessionProgress['prepareSkillBook']>; caption: string };
   private resultSaved = false;
   private returnMessage = '';
   private postBattle?: { result: Battle['result']; position: { x: number; y: number } };
@@ -1453,14 +1456,50 @@ export class BattleView extends Component {
     this.spellOpen = false;
     this.inventoryOpen = this.rosterOpen = true;
     this.inventoryPet = this.progress.selectedPetId;
+    this.bookConfirmation = undefined;
+    this.bookMessage = '';
     this.render();
   }
 
+  private beginSkillBook(): void {
+    this.bookConfirmation = undefined;
+    try {
+      const id = this.inventoryPet ?? '', item = this.inventoryItem ?? '';
+      const transaction = this.progress.prepareSkillBook(!this.onMap, id, item);
+      const pet = this.progress.roster.entries.find(entry => entry.id === id)!;
+      this.bookMessage = '';
+      this.bookConfirmation = { transaction, caption: `${ITEMS[item].name} → ${pet.name}\n`
+        + `当前 ${pet.skillIds!.length} 技能 · 消耗 1 本\n新增 ${Math.round(transaction.rate * 100)}% · 顶替 ${Math.round((1 - transaction.rate) * 100)}%\n`
+        + (transaction.rate < 1 ? '顶替时随机替换一个非必带技能。' : '新增技能放入首个空格。') };
+    } catch (error) { this.bookMessage = error instanceof Error ? error.message : String(error); }
+    this.render();
+  }
+
+  private renderBookConfirmation(): void {
+    const pending = this.bookConfirmation;
+    if (!pending) return;
+    const cancel = () => { this.bookConfirmation = undefined; this.render(); };
+    this.rect(0, 0, CONFIG.width, CONFIG.height, '#000000', '', 0, cancel, 180).addComponent(BlockInputEvents);
+    this.rect(337, 205, 660, 340, '#1E3835', '#E5CB8D', 12).addComponent(BlockInputEvents);
+    pending.caption.split('\n').forEach((line, index) => this.text(line, 370, 240 + index * 43, 24, '#F3DFAD', 595));
+    this.button('取消', 410, 455, 180, 55, true, cancel);
+    this.button('确认打书', 740, 455, 180, 55, true, () => {
+      if (this.bookConfirmation !== pending) return;
+      this.bookConfirmation = undefined;
+      try {
+        const result = pending.transaction.execute(!this.onMap || !this.inventoryOpen, (pet, inventory) =>
+          progressIO.write(progressStorage(), progressSnapshot(this.progress, undefined, pet, undefined, inventory)), this.bookRandom);
+        if (result) this.bookMessage = result.message;
+      } catch (error) { this.bookMessage = `打书失败：${error instanceof Error ? error.message : String(error)}`; }
+      this.render();
+    });
+  }
+
   private renderInventory(): void {
-    const close = () => { this.inventoryOpen = this.rosterOpen = false; this.render(); };
+    const close = () => { this.bookConfirmation = undefined; this.inventoryOpen = this.rosterOpen = false; this.render(); };
     this.rect(0, 0, CONFIG.width, CONFIG.height, '#000000', '', 0, close, 150).addComponent(BlockInputEvents);
     this.rect(140, 95, 1054, 560, '#1E3835', '#E5CB8D', 12).addComponent(BlockInputEvents);
-    this.text('背包 · 仅供查看', 175, 112, 28, '#F3DFAD', 650);
+    this.text(this.onMap ? '背包 · 技能书' : '背包 · 战斗中只读', 175, 112, 28, '#F3DFAD', 650);
     this.button('关闭', 1030, 110, 135, 48, true, close);
     const owned = Object.entries(this.progress.inventory).filter(([, count]) => count > 0);
     if (!owned.length) this.text('背包空空，战斗胜利有机会获得材料。', 180, 200, 22, '#C6DBC6', 610);
@@ -1474,6 +1513,9 @@ export class BattleView extends Component {
     this.progress.roster.entries.forEach((pet, i) => this.button(
       `${this.inventoryPet === pet.id ? '✓ ' : ''}${pet.name}`, 790 + i % 2 * 190,
       215 + Math.floor(i / 2) * 52, 180, 46, this.onMap, () => { this.inventoryPet = pet.id; this.render(); }));
+    if (this.inventoryItem?.startsWith('book:')) this.button('打书', 840, 500, 260, 52, this.onMap, () => this.beginSkillBook());
+    this.text(this.bookMessage, 175, 603, 20, '#F4DC9C', 960);
+    this.renderBookConfirmation();
   }
 
   private renderDropMode(): void {
