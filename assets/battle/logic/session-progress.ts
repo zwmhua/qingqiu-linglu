@@ -7,12 +7,23 @@ import { petCombat } from './pet-panel';
 import { petProgress, Roster, type CarriedPet, type RosterState } from './roster';
 import { pickWildLevel } from './wild-encounter';
 import { generateSkills } from './pet-skills';
+import type { Inventory, DropMode } from './inventory';
 
 export class SessionProgress {
   readonly roster: Roster;
   readonly autoOrders = new Map<string, { command: 'attack' | 'defend' | 'spell'; skillId?: string }>();
   selectedPetId: string;
   heroProgress?: HeroProgress;
+  inventory: Inventory = {};
+  lastSettledId = 0;
+  dropMode: DropMode = 'formal';
+  private battleSequence = 0;
+
+  allocateBattleId(): number {
+    const next = Math.max(this.battleSequence, this.lastSettledId) + 1;
+    if (!Number.isSafeInteger(next)) throw new Error('场次编号超出范围');
+    return this.battleSequence = next;
+  }
 
   constructor(heroProgress?: HeroProgress, previous?: RosterState, selectedPetId?: string,
     petRandom = Math.random, aptitudeRandom = Math.random, growthRandom = Math.random,

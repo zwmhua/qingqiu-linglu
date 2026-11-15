@@ -503,7 +503,7 @@ test('outskirts loading is atomic, ignores stale callbacks, and round trips with
   };
   v.statusCard = (kind, x, unit) => portraits.push([kind, x, unit.id]);
   v.renderTown();
-  assert.deepEqual(buttons, [['人物', true], ['宠物', true], ['背包·未开放', false], ['合宠·未开放', false], ['出城', true]]);
+  assert.deepEqual(buttons, [['下场掉率：正式', true], ['人物', true], ['宠物', true], ['背包', true], ['合宠·未开放', false], ['出城', true]]);
   assert.deepEqual(portraits, [['pet', 906, session.selectedPetId], ['hero', 1102, 'hero']]);
   assert.ok(view.movement.select({ x: 800, y: 500 }));
   let activate;
@@ -856,6 +856,7 @@ test('startup retries migration with the same candidate before creating a playab
   saveProgress(townDisk, source);
   const saved = JSON.parse(townDisk.raw);
   saved.version = 3;
+  delete saved.inventory; delete saved.lastSettledId;
   saved.pets.forEach(p => { delete p.skillIds; });
   const raw = JSON.stringify(saved), values = new Map([['qingqiu-linglu:test-progress', raw]]), attempts = [];
   const original = { getItem: townDisk.getItem, setItem: townDisk.setItem };
@@ -889,6 +890,70 @@ test('fixed mutation preview generates a level-zero baby and normal baby preview
     assert.deepEqual(battle.enemies.map(p => [p.level, p.isBaby, p.isMutated]), [[0, true, sample === 'mutationSample']]);
   }
   window.location.search = '?devPreview=1';
+});
+
+test('inventory pauses map and battle; locked rates settle once with identical retry bytes and refresh', async () => {
+  for (const outcome of ['victory', 'capture', 'escaped', 'defeat']) for (const speed of [1, 2]) {
+    const { v, session, complete } = await roundTripView(outcome === 'capture' ? 'single' : 'pair');
+    const b = v.battle, initialMode = b.dropMode;
+    session.dropMode = 'test'; v.speedMultiplier = speed;
+    assert.equal(b.dropMode, initialMode);
+    session.inventory = { rejuvenation: 99 };
+    let rolls = 0; v.dropRandom = () => { rolls++; return 0; };
+    v.openInventory(); const seconds = b.seconds;
+    v.update(100); assert.equal(b.seconds, seconds);
+    v.inventoryOpen = false; v.rosterOpen = false;
+    if (outcome === 'capture') { b.command('hero', 'capture', 'enemy-0'); b.command('pet', 'defend'); }
+    else if (outcome === 'escaped') { b.command('hero', 'flee'); b.command('pet', 'defend'); }
+    else { (outcome === 'victory' ? b.enemies : b.allies).forEach(u => u.hp = 0); b.checkWinner(); }
+    const victory = b.result === 'victory', before = townDisk.raw, writes = townDisk.writes;
+    townDisk.fail = true; v.finishBattle();
+    const candidate = v.resultCandidate;
+    assert.equal(typeof candidate, 'string'); assert.equal(townDisk.raw, before);
+    assert.deepEqual(session.inventory, { rejuvenation: 99 });
+    assert.equal(session.lastSettledId, 0);
+    v.finishBattle(); assert.equal(v.resultCandidate, candidate);
+    assert.equal(rolls, victory ? 4 : 0);
+    townDisk.fail = false; v.finishBattle(); v.finishBattle();
+    if (outcome === 'defeat') complete();
+    assert.equal(townDisk.writes, writes + 1); assert.equal(townDisk.raw, candidate);
+    assert.equal(session.inventory.rejuvenation, victory ? 100 : 99);
+    assert.equal(session.lastSettledId, b.battleId);
+    const refreshed = loadSessionProgress(townDisk);
+    assert.deepEqual(refreshed.inventory, session.inventory);
+    assert.deepEqual(refreshed.heroProgress, session.heroProgress);
+    assert.equal(refreshed.roster.entries.length, outcome === 'capture' ? 3 : 2);
+    v.town.movement.select({ x: 1600, y: 420 }); v.openInventory();
+    assert.equal(v.mapBlocked, true); assert.equal(v.town.movement.target, undefined);
+    const position = { ...v.town.movement.position }; v.update(10);
+    assert.deepEqual(v.town.movement.position, position);
+    v.inventoryOpen = false; v.rosterOpen = false; v.update(10);
+    assert.deepEqual(v.town.movement.position, position);
+    if (outcome === 'defeat') { v.town.load('outskirts'); complete(); }
+    v.startFixedBattle(); assert.equal(v.battle.dropMode, 'test');
+    assert.equal(v.battle.battleId, b.battleId + 1);
+    assert.equal(rolls, victory ? 4 : 0);
+  }
+});
+
+test('nonterminal capture carries inventory in its save; replayed settled IDs never redraw rewards', async () => {
+  const { v, session } = await roundTripView('pair'), b = v.battle;
+  session.inventory = { rejuvenation: 99 }; v.persistProgress();
+  let rolls = 0; v.dropRandom = () => { rolls++; return 0; };
+  const hp = v.captureHp(), deployment = v.captureDeployment();
+  b.command('hero', 'capture', 'enemy-0'); b.command('pet', 'defend');
+  v.playNextAttack = () => {};
+  v.startPlayback(1, 'command', hp, deployment);
+  assert.equal(b.result, undefined); assert.equal(rolls, 0);
+  assert.deepEqual(JSON.parse(townDisk.raw).inventory, { rejuvenation: 99 });
+  assert.equal(JSON.parse(townDisk.raw).pets.length, 3);
+  b.enemies.forEach(u => u.hp = 0); b.checkWinner();
+  v.playing = false; v.finishBattle();
+  const inventory = { ...session.inventory }, hero = structuredClone(session.heroProgress);
+  v.resultSaved = false; v.resultCandidate = undefined; v.resultDrops = undefined; v.mapBattle = true;
+  b.checkWinner(); v.finishBattle();
+  assert.deepEqual(session.inventory, inventory); assert.deepEqual(session.heroProgress, hero);
+  assert.equal(rolls, 4); assert.deepEqual(JSON.parse(townDisk.raw).inventory, inventory);
 });
 
 test('skill slots open only owned skills and close on switching pets', () => {

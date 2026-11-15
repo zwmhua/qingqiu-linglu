@@ -1,0 +1,39 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { registerHooks } from 'node:module';
+registerHooks({ resolve(s, c, next) { return next(s.startsWith('.') && !s.endsWith('.ts') ? `${s}.ts` : s, c); } });
+const { ITEMS, BOOK_IDS, DROP_RATES, rollDrops, addInventory, validateInventory } = await import('../assets/battle/logic/inventory.ts');
+const { PET_SKILLS } = await import('../assets/battle/logic/pet-skills.ts');
+test('catalog, fixed rates, independent thresholds and twelve equal book intervals', () => {
+  assert.equal(Object.keys(ITEMS).length, 14);
+  assert.deepEqual(BOOK_IDS, Object.keys(PET_SKILLS).map(id => `book:${id}`));
+  assert.deepEqual(DROP_RATES, { formal: [0.08, 0.03, 0.01], test: [0.5, 0.3, 0.1] });
+  for (const mode of ['formal', 'test']) for (let category = 0; category < 3; category++) {
+    for (const hit of [false, true]) {
+      const sequence = DROP_RATES[mode].map((rate, i) => i === category ? rate - Number(hit) * 0.000001 : 1);
+      if (hit && category === 0) sequence.push(0.5);
+      let calls = 0;
+      const drops = rollDrops(mode, () => sequence[calls++]);
+      assert.equal(calls, 3 + Number(hit && category === 0));
+      assert.deepEqual(drops, hit ? { [[BOOK_IDS[6], 'rejuvenation', 'mutation-rejuvenation'][category]]: 1 } : {});
+    }
+    for (let book = 0; book < 12; book++) for (const edge of [0, 0.999999]) {
+      let calls = 0;
+      const sequence = [0, 0, 0, (book + edge) / 12];
+      assert.deepEqual(rollDrops(mode, () => sequence[calls++]),
+        { [BOOK_IDS[book]]: 1, rejuvenation: 1, 'mutation-rejuvenation': 1 });
+      assert.equal(calls, 4);
+    }
+  }
+});
+test('one slot beyond 99, invalid IDs and quantities reject without mutating inputs', () => {
+  const before = { rejuvenation: 99 };
+  assert.deepEqual(addInventory(before, { rejuvenation: 1 }), { rejuvenation: 100 });
+  assert.deepEqual(before, { rejuvenation: 99 });
+  for (const invalid of [null, [], { alien: 1 }, { rejuvenation: -1 }, { rejuvenation: 0.5 },
+    { rejuvenation: '1' }, { rejuvenation: Number.MAX_SAFE_INTEGER + 1 }, { rejuvenation: NaN }])
+    assert.throws(() => validateInventory(invalid));
+  assert.throws(() => addInventory({ rejuvenation: Number.MAX_SAFE_INTEGER }, { rejuvenation: 1 }));
+  assert.doesNotThrow(() => validateInventory({ rejuvenation: 0 }));
+  for (const value of [-1, NaN, 1.1]) assert.throws(() => rollDrops('formal', () => value));
+});

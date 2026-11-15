@@ -777,3 +777,83 @@ Cocos Creator 3.8.8 以当前配置分别构建 Web mobile 和微信小游戏，
 | 微信 inventory | 57666 | 0 |
 
 构建日志、字节统计和业务源文件哈希在 `temp/p2-09/`，产物在 `temp/p2-09/build-source/build/`。微信模拟器、微信真机、手机浏览器实机、对发布产物的额外浏览器实点均为 `NOT_TESTED`。最终试玩由华周验收。
+
+## P2-10｜开工、授权与逐文件复估（2026-11-15）
+
+最终逐文件实际增删（相对起始 SHA，业务与测试合计 **346/450 行**）：`inventory.ts` 42、`session-progress.ts` 11、`local-progress.ts` 42、`Battle.ts` 7、`BattleView.ts` 85、`inventory.test.mjs` 39、`progress-migration.test.mjs` 48、`p2-01-regression.test.mjs` 2、`pet-passives.test.mjs` 2、`pet-progression.test.mjs` 1、`town-progress-integration.test.mjs` 67。文档及对应 `.meta` 不计；未新增依赖。
+
+- 22:15（北京时间）记录：Human 已批准完整 P2-10 保持一张卡，业务代码与测试相对起始 SHA 的合计增删上限特批 450 行，解除发卡前超原 300 行的 X2；实际超限仍须停止报告。先最简背包与 v5 迁移，再接掉落，两步一起验收；只本地提交，最终由华周试玩。
+- 本轮原工作区 `task/26-boot-subpackage` 的 `assets/battle/logic.meta` 修改、两张未跟踪宠物原图及全部未跟踪美术触发 X1。Human 已明确解除本次 X1，要求原样保留；后续操作使用独立干净工作树 `C:/Users/hua/cocos/Project/qingqiu-linglu-task45`，分支 `task/45-p2-10-inventory`。
+- 已实际执行 `git fetch origin main`，起始 SHA 为 `d6f00f36d0dbf3295c589fe9b46b2ca3f2dbc88b`，包含 P2-09 主动法术与 AI、`8b39063` 自动指令小修及 `d6f00f3` 试玩验收记录。新工作树开工时 `git status --short` 为空。
+- 附件原字节复制到 `docs/cards/card-P2-10.md`，两者 SHA-256 均为 `f3450f294d072d03f4056abe0d863fa268c67515d7b53ba09b94b16217e5de43`。未修改卡面。
+
+按实际基线读取迁移校验、会话、战斗构造、现有结算重试、城野与战斗入口及相关测试后的复估如下；这是实施前估算，不是实际 diff，不以压缩代码或削弱断言满足额度。
+
+| 路径 | 复估增删行数 | 实施关注点 |
+| --- | ---: | --- |
+| `assets/battle/logic/inventory.ts` | 48～56 | 14 道具、稳定 ID、固定概率、独立抽取、数量及溢出校验；对应 meta 不计业务行数 |
+| `assets/battle/logic/session-progress.ts` | 20～26 | 库存与已结算 ID、递增场次 ID、同场候选及保存后提交 |
+| `assets/battle/logic/local-progress.ts` | 50～62 | v4 技能原样保留、旧版分别校验与备份、v5 完整快照及字段校验 |
+| `assets/battle/scripts/Battle.ts` | 12～18 | 场次与掉率绑定、现有以 Battle 为参数的保存入口保持库存字段 |
+| `assets/battle/scripts/BattleView.ts` | 110～132 | 最简文字面板、城野选择预览、阻断与暂停、模式标识、同候选重试及成功提示 |
+| `tests/inventory.test.mjs` | 40～46 | 两组阈值、独立抽取、12 本书、跨 99、非法库存 |
+| `tests/progress-migration.test.mjs` | 40～48 | 保留旧校验断言，补 v4/v5、原字节备份和故障 |
+| `tests/p2-01-regression.test.mjs` | 2 | 产物版本断言更新为 v5，旧输入与校验断言保留 |
+| `tests/town-progress-integration.test.mjs` | 44～52 | 背包阻断、胜/抓胜/败逃、开战锁定、同候选重试与刷新防重 |
+| `tests/pet-passives.test.mjs`（待白名单授权） | 2 | 第 151 行生成产物版本断言由 4 更新为 5 |
+| `tests/pet-progression.test.mjs`（待白名单授权） | 2 | 从当前快照制作旧档夹具时移除库存及结算字段，保留 v1/v2 原规则及全部断言 |
+| **合计** | **370～446** | 上限仍为 450，实施与测试后继续核算 |
+
+- 22:15（北京时间）X2：卡面遗漏以上两份旧测试。现有 `pet-passives.test.mjs:151` 固定要求生成 v4；`pet-progression.test.mjs:187～189` 以当前快照改版本制作旧档，v5 新字段会被旧版严格校验拒绝。不能为迁就夹具放宽旧档字段规则，也不能未授权修改白名单外测试；停在开工复估阶段，请 Human 明确放行两项最小版本适配，全部原业务断言保留。
+- 当前仅原卡及本记录落盘，产品与测试尚未修改，尚未提交。node:test、限定严格 tsc、ego-browser 试玩、Web/微信构建、包体及最终 SHA 独立静态 QA 均为 `NOT_TESTED`，原因是白名单 X2 待解除。未创建 Issue/PR，未推送或合并。
+- 22:28（北京时间）记录：Human 已将 `tests/pet-passives.test.mjs` 与 `tests/pet-progression.test.mjs` 的最小版本适配纳入白名单，解除上述 X2；全部原业务断言保留，仍计入 450 行。随后先写背包、迁移和结算验收测试，尚未写产品实现。
+- 首轮定向 `node --test` 实际运行 44 项，38 成功、6 失败，日志 `temp/p2-10/red.log`。5 个失败属于尚未实现的模块、v5 产物或背包入口；另 1 个是本次新写迁移测试的夹具错误：`source.roster.nextCapturedId = 12` 给 getter 赋值，在到达迁移校验前抛出 TypeError。此失败不能充当迁移红测证据。
+- 22:28（北京时间）按 AGENTS.md「测试本身有错：停下报告，不自己改」暂停，保留新测试及日志。拟仅把抓取序号 12 的设置移到 `old` JSON 样本，继续保留最终快照完全一致断言；等待 Human 批准该夹具纠正。产品代码仍无修改，尚未提交；浏览器、构建、严格 tsc 和独立静态 QA 仍为 `NOT_TESTED`。
+
+### P2-10 实施与本地检查
+
+- Human 随后明确批准将 `nextCapturedId=12` 设置移到旧档 JSON 样本，保留全部断言；纠正后 `red-corrected.log` 在 v5 缺字段的预期断言处失败，不再以 getter 赋值错误充当红测。先实现道具、会话与迁移，再接共用面板和结算候选。
+- v4 技能保持原顺序，迁移目标为 v5；v1～v3 仍按原输入规则校验、备份、补技能。新档库存及结算字段从所有保存入口贯穿，旧版本仍拒绝新增字段。战斗构造锁定场次 ID 与模式，三个品类各抽一次，书命中后再等概率选一本；首次候选缓存，写成功后才提交库存和结算标识。
+- 按本卡开放背包的契约，将城镇按钮列表的完整期望由“背包未开放”更新为“背包可用”，同时明确断言正式掉率按钮；其他原业务断言保留。另补非终结抓取保存库存、重复已结算 ID 不再发奖的检查。
+- 最终全量 `node --test tests/*.test.mjs` 实跑 **190 成功、0 失败**，退出 0，日志 `temp/p2-10/final-tests.log`。`COCOS_TYPESCRIPT` 指向 Creator 3.8.8 自带 TypeScript，无新增依赖。限定严格 tsc 覆盖全部 `assets/battle/logic/*.ts`、`Battle.ts`、`assets/logic/platform.ts` 及传递依赖，退出 0，日志 `final-tsc.log`；视图另外经真实 Creator 两端编译。
+- 保留非最终失败记录：`full-02.log` 为 189 成功/1 失败，旧 `baby.test.mjs` 随机生成回血技能使被抓宠 HP 从期望 8 变为 9；`full-03.log` 的旧 `auto.test.mjs` 出现保护对象已死亡。固定 `Math.random=0.5` 的诊断在起始 d6f00f3 与本次实现均为 10 项中 4 成功/6 失败，失败均为同六个 auto 用例，见 `flaky-baseline.log`、`flaky-candidate.log`。未修改这些文件或断言；最终标准命令不注入随机值。旧随机夹具的稳定性仍是已知限制，不把一次成功解释为消除随机性问题。
+
+### P2-10 ego-browser 现场
+
+本工作树的 Creator 开发预览为 `http://127.0.0.1:7465/`，本地代理 `node temp/p2-10/proxy.cjs` 在 `http://127.0.0.1:18415/` 提供相同预览与明确验收样本；不部署、不修改线上数据。样本仅在 `devPreview=1&p2Inventory=1` 时安装固定掉落随机源、1 HP 胜场及可控写入故障，掉率开关本身只切 formal/test。首次空 origin 使用 v4 样本，以后打开不重置该主档。
+
+- [正式设置试玩入口](http://127.0.0.1:18415/?scene=3ca2435e-bec8-4656-9bf9-63cfaadc18b7)：开始游戏 → 背包；与下述样本为同一 origin、同一主键和背包。
+- [固定胜场验收入口](http://127.0.0.1:18415/?scene=3ca2435e-bec8-4656-9bf9-63cfaadc18b7&devPreview=1&roundTripSample=single&p2Inventory=1)：开始游戏 → 出城 → 下场掉率 → 固定开战（测试）。这里的三类命中是显式样本输入，不代表概率开关强制命中。
+
+| 实际操作 | 现场证据与结果 |
+| --- | --- |
+| v4 样本进入城镇，打开背包、选择另一只宠 | 主档变 v5、空库存、lastSettledId=0；人物与原宠完整 JSON、技能次序相同，原出战 pet 与抓取序号 3 保留。空态可见，选 pet-2 只改变面板预览，不改出战与库存。截图 `empty-final.png`。 |
+| 野外走动中开包，再点面板内空白、关闭 | 真实指针按下/抬起设置道路目标 `(925.70,390.46)`，走到 `(551.19,375.45)` 时开包立即清目标；遮罩下再点地图，位置与遇怪余数不变；关闭后不续走。该段明确样本将距离随机源设为 1，避免自然遇怪中断阻断检查；未跳过移动/距离逻辑。`movement-block-final.json`。此前正式走动也实际触发过自然遭遇，不把那轮中断后的空目标当作暂停证据。 |
+| 同档种子库存还童露 99，测试模式开战，战中切回正式 | 本场 ID 1 保持 test，下场变 formal，两组状态及概率同时可见且不再遮住人物进度。指令阶段背包只读，点击道具显示说明，选宠按钮灰色；开包前后倒计时相同。`final-locked.png`、`final-battle-readonly.png`。 |
+| 普通攻击获胜，故意令主档写入失败 | 播放队列已空，留在结果页并显示失败提示；主档原字节未变，库存仍 99、结算 ID 仍 0。候选同时包含人物经验 10、宠物经验、原名单与出战、还童露 100、暴击书 1、变异还童露 1 和 ID 1。共 4 次抽取。`save-failure.json`、`final-save-failure.png`。 |
+| 失败状态点重试，再恢复写入并重试 | 各次尝试字节完全相同，抽取次数仍 4，只有一次成功写入；重复终局回调不加材料。正常回原位，独立宽提示条与背包三项一致，还童露 100 仍一格，书可点看说明。`retry-success.json`、`final-reward.png`、`final-inventory100.png`。 |
+| 下一场抓走最后一只 | 场次 ID 2，已采用 formal；胜利结算一次，新增 caught-3。固定随机样本使三类再各 +1，库存成为还童露 101、暴击书 2、变异还童露 2。`capture-win.json`。 |
+| 分别整队逃跑和战败 | ID 3/4，库存均不变，掉落随机调用数不变；逃跑返回原位，战败回城。`escape-defeat.json`、`final-defeat-return.png`。非终结抓取不掉落由真实视图集成测试另覆盖。 |
+| 去掉全部测试参数、刷新并重新开始 | 主档字节与刷新前完全相同；formal、devPreview=false，城里背包仍为 101/2/2、已结算 ID 4，没有重复发奖。`refresh-formal.json`、`final-formal-inventory.png`。 |
+
+上述证据都在本工作树 `temp/p2-10/`。浏览器已保留最终背包页供华周继续查看，正式玩法建议使用上面的正式入口。
+
+工具与环境留痕：首选 18410 端口被旧代理占用，未停旧服务，改用空闲 18415；首次截图遇 WebGL context lost，恢复后重新采集，黑屏不作证据。验收窗口消失后按 ego-browser 规则暂停并得到 Human 明确授权恢复，同地址同档继续。Creator 隐藏窗口未即时刷新外部脚本时，只重启本卡预览进程并核对实际函数含最终改动。构建驱动第一次没有等待 GUI 子进程，改为隐藏启动、串行等待并记录真实退出码。固定输入诊断首次 Windows import 路径缺 file URL，改正后才采用对照结果；均未改变产品断言和权限。
+
+### P2-10 最终构建与交接
+
+本卡最终源文件复制到忽略目录 `temp/p2-10/build-source/`，使用现有 `settings/web-mobile-build.json`、`settings/wechat-build.json` 串行构建。两端最终均退出 **36**，日志记录 **Finished**；BattleView 源文件与构建副本 SHA-256 一致（`f6708368724577f02394c5793402753c69f69578960768134d324b51ad265cfc`）。Creator 对本工作树 `engine.json` 仅改行尾，核对内容相同后恢复，不纳入提交。
+
+| 产物 | 字节 |
+| --- | ---: |
+| Web mobile 总计 | 8466382 |
+| 微信总计 | 6549735 |
+| 微信主包 | 919168 |
+| 微信 battle | 3054691 |
+| 微信 town | 1923710 |
+| 微信 outskirts | 594500 |
+| 微信 inventory | 57666 |
+
+包体按实际文件逐项求和，见 `package-bytes.json`。限定 tsc、测试和构建日志同目录。微信模拟器、微信真机、手机浏览器实机和发布产物的额外实点为 **NOT_TESTED**；本轮实际试玩使用 Creator 开发预览。独立 QA 仅做静态审查，报告另附并绑定最终完整本地提交 SHA，不冒充 CI、阿bob 或 Human 试玩验收。未推送、未合并、未修改 STATUS.md。
+
+可粘贴 STATUS 建议（待华周试玩确认后登记）：P2-10 最简背包、两套同档掉落、v5 迁移及原子结算已实现；本地检查与试玩证据见本节。下一步先验收 P2-10，再发 P2-11 打书；还童与合宠按后续卡推进。

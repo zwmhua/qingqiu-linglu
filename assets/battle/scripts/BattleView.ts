@@ -21,6 +21,7 @@ import { browserParams, progressIO, wechatStorage } from '../../logic/platform';
 import { ProgressLoader, progressSnapshot, resetProgress, saveProgress } from '../logic/local-progress';
 import { activeSpells, PET_SKILLS, SKILL_POOLS, skillDescription } from '../logic/pet-skills';
 import type { TargetMode } from '../logic/targeting';
+import { addInventory, ITEMS, rollDrops, type Inventory } from '../logic/inventory';
 
 type SpellFxEvent = Pick<SpellEvent, 'kind' | 'actorId' | 'logIndex'> & Partial<Pick<SpellEvent, 'skillId' | 'manaAfter'>> & {
   targets: readonly { targetId: string; damage: number; hpAfter: number; missed?: boolean }[];
@@ -78,6 +79,11 @@ export class BattleView extends Component {
   private returningTown = false;
   private returnPoint?: { x: number; y: number };
   private resultCandidate?: string;
+  private resultDrops?: Inventory;
+  private dropRandom = Math.random;
+  private inventoryOpen = false;
+  private inventoryItem?: string;
+  private inventoryPet?: string;
   private resultSaved = false;
   private returnMessage = '';
   private postBattle?: { result: Battle['result']; position: { x: number; y: number } };
@@ -1433,9 +1439,56 @@ export class BattleView extends Component {
   }
 
   private renderRosterList(): void {
+    if (this.inventoryOpen) { this.renderInventory(); return; }
     const { entries } = this.progress.roster;
     const selected = entries.find(pet => pet.id === (this.selectedPetId ?? this.progress.selectedPetId)) ?? entries[0];
     if (selected) this.renderPetPanel(selected);
+  }
+
+  private openInventory(): void {
+    if (this.playing || this.confirmingTarget || this.summonOpen || this.detailsOpen || this.progressReadFailed) return;
+    this.stopTown();
+    this.stopPotentialRepeat();
+    this.choosingTarget = null;
+    this.spellOpen = false;
+    this.inventoryOpen = this.rosterOpen = true;
+    this.inventoryPet = this.progress.selectedPetId;
+    this.render();
+  }
+
+  private renderInventory(): void {
+    const close = () => { this.inventoryOpen = this.rosterOpen = false; this.render(); };
+    this.rect(0, 0, CONFIG.width, CONFIG.height, '#000000', '', 0, close, 150).addComponent(BlockInputEvents);
+    this.rect(140, 95, 1054, 560, '#1E3835', '#E5CB8D', 12).addComponent(BlockInputEvents);
+    this.text('背包 · 仅供查看', 175, 112, 28, '#F3DFAD', 650);
+    this.button('关闭', 1030, 110, 135, 48, true, close);
+    const owned = Object.entries(this.progress.inventory).filter(([, count]) => count > 0);
+    if (!owned.length) this.text('背包空空，战斗胜利有机会获得材料。', 180, 200, 22, '#C6DBC6', 610);
+    owned.forEach(([id, count], i) => this.button(`${ITEMS[id].name} ×${count}`,
+      175 + i % 2 * 290, 175 + Math.floor(i / 2) * 52, 280, 46, true, () => {
+        this.inventoryItem = id; this.render();
+      }));
+    this.text(this.inventoryItem ? ITEMS[this.inventoryItem].description : '点道具查看说明。',
+      175, 555, 20, '#F4DC9C', 600);
+    this.text(this.onMap ? '携带宠预览（不改变出战）' : '战斗中只读', 790, 175, 20, '#F3DFAD', 390);
+    this.progress.roster.entries.forEach((pet, i) => this.button(
+      `${this.inventoryPet === pet.id ? '✓ ' : ''}${pet.name}`, 790 + i % 2 * 190,
+      215 + Math.floor(i / 2) * 52, 180, 46, this.onMap, () => { this.inventoryPet = pet.id; this.render(); }));
+  }
+
+  private renderDropMode(): void {
+    if (!this.devPreview || !this.usesTestProgress) return;
+    const x = this.onMap ? 25 : 465, y = this.onMap ? 270 : 175;
+    this.button(`下场掉率：${this.progress.dropMode === 'test' ? '测试' : '正式'}`, x, y, 270, 48,
+      !this.playing && !this.rosterOpen, () => {
+        this.stopTown();
+        this.progress.dropMode = this.progress.dropMode === 'test' ? 'formal' : 'test';
+        this.render();
+      }).addComponent(BlockInputEvents);
+    const caption = (test: boolean) => test ? '测试掉率：技能书50%／还童露30%／变异还童露10%' : '正式掉率：技能书8%／还童露3%／变异还童露1%';
+    this.rect(x - 5, y + 49, 850, this.onMap ? 34 : 62, '#18312F', '', 6, undefined, 230).addComponent(BlockInputEvents);
+    this.text(`下场 ${caption(this.progress.dropMode === 'test')}`, x, y + 52, 18, '#F4DC9C', 820);
+    if (!this.onMap) this.text(`本场已锁定 ${caption(this.battle.dropMode === 'test')}`, x, y + 79, 18, '#F4DC9C', 850);
   }
 
   private restartBattle(battle: Battle): void {
@@ -1457,6 +1510,8 @@ export class BattleView extends Component {
     this.displayedLogEnd = undefined;
     this.playing = false;
     this.resultCandidate = undefined;
+    this.resultDrops = undefined;
+    this.inventoryOpen = false;
     this.resultSaved = false;
   }
 
@@ -1489,8 +1544,13 @@ export class BattleView extends Component {
     if (this.onMap || this.playing || this.battle.phase !== 'ended' || this.resultSaved) return;
     try {
       if (this.progressReadFailed) throw new Error('读取失败，禁止覆盖原档');
+      if (!this.resultCandidate) {
+        const fresh = this.battle.battleId > this.progress.lastSettledId;
+        this.resultDrops ??= fresh && this.battle.result === 'victory' ? rollDrops(this.battle.dropMode, this.dropRandom) : {};
+        this.resultCandidate = progressSnapshot(this.progress, undefined, undefined, undefined,
+          addInventory(this.progress.inventory, this.resultDrops), Math.max(this.progress.lastSettledId, this.battle.battleId));
+      }
       if (this.usesTestProgress) {
-        this.resultCandidate ??= progressSnapshot(this.progress);
         progressIO.write(progressStorage(), this.resultCandidate);
       }
     } catch {
@@ -1498,6 +1558,9 @@ export class BattleView extends Component {
       this.render();
       return;
     }
+    const saved = JSON.parse(this.resultCandidate);
+    this.progress.inventory = saved.inventory;
+    this.progress.lastSettledId = saved.lastSettledId;
     this.resultSaved = true;
     this.progressError = '';
     if (this.mapBattle) {
@@ -1519,6 +1582,11 @@ export class BattleView extends Component {
       }
     }
     this.render();
+  }
+
+  private get dropMessage(): string {
+    const drops = Object.entries(this.resultDrops ?? {}).map(([id, count]) => `${ITEMS[id].name}×${count}`);
+    return drops.length ? `获得 ${drops.join('、')}` : '未获得材料';
   }
 
   private clearView(): void {
@@ -1718,6 +1786,7 @@ export class BattleView extends Component {
     this.node.addChild(overlay);
     this.layer = overlay;
     const openPets = () => {
+      this.inventoryOpen = false;
       this.rosterOpen = true;
       this.openPetPanel(this.progress.selectedPetId);
     };
@@ -1733,6 +1802,10 @@ export class BattleView extends Component {
       });
     this.rect(20, 18, 470, 52, '#203D36', '', 10, undefined, 220).addComponent(BlockInputEvents);
     this.text(town.message || this.progressError || this.returnMessage || (town.region === 'town' ? '城里' : '野外'), 30, 24, 24);
+    if (this.postBattle?.result === 'victory') {
+      this.rect(320, 625, 980, 42, '#18312F', '', 6, undefined, 230).addComponent(BlockInputEvents);
+      this.text(this.dropMessage, 335, 631, 21, '#F4DC9C', 950);
+    }
     if (town.canRetry) this.button('重试', 540, 335, 250, 60, !town.loading, () => { town.load(); this.render(); });
     if (this.progressReadFailed) {
       this.button('重试读取/迁移', 490, 335, 350, 60, true, () => this.retryProgress()).addComponent(BlockInputEvents);
@@ -1760,14 +1833,16 @@ export class BattleView extends Component {
     const maxHp = hero ? heroPanel(hero.stats).maxHp : BATTLE_RULES.hero.hp;
     this.statusCard('pet', 906, pet && { ...pet, hp: pet.maxHp });
     this.statusCard('hero', 1102, { id: 'hero', name: BATTLE_RULES.hero.name, hp: maxHp, maxHp });
-    const entries = ['人物', '宠物', '背包·未开放', '合宠·未开放', town.region === 'town' ? '出城' : '回城'];
+    this.renderDropMode();
+    const entries = ['人物', '宠物', '背包', '合宠·未开放', town.region === 'town' ? '出城' : '回城'];
     entries.forEach((name, i) => {
-      const enabled = !town.loading && (i < 2 || i === 4);
+      const enabled = !town.loading && i !== 3;
       this.button(name, 444 + i * 172, 678, 164, 56, enabled, () => {
         if (!this.enabledInHierarchy || town.loading) return;
         town.stop();
         if (i === 0) this.openHeroPanel();
         else if (i === 1) openPets();
+        else if (i === 2) this.openInventory();
         else travel();
       }).addComponent(BlockInputEvents);
     });
@@ -1847,11 +1922,14 @@ export class BattleView extends Component {
     this.layer = interfaceLayer;
     this.renderLog();
     this.renderHeroProgress();
+    this.renderDropMode();
+    if (!this.playing) this.button('背包', 345, 104, 115, 54, !this.confirmingTarget, () => this.openInventory());
     if (this.devPreview && this.usesTestProgress && !this.playing && !this.rosterOpen)
       this.button('测试重置', 200, 104, 136, 54, this.canResetProgress, () => this.resetTestProgress());
     if (this.battle.phase !== 'ended') this.autoButton();
     if (!this.playing) this.button(`携带 ${this.battle.roster.entries.length}/${this.battle.roster.capacity}`,
       25, 104, 165, 54, true, () => {
+        this.inventoryOpen = false;
         this.choosingTarget = null;
         this.summonOpen = false;
         this.stopPotentialRepeat();
@@ -1927,6 +2005,7 @@ export class BattleView extends Component {
       this.text(this.battle.heroProgress && this.battle.winner === 'ally'
         ? `本场获得经验 ${earnedExp}` : '林间遭遇暂告一段落', 470, 322, 22, '#c6dbc6', 380, 1);
       if (levelsGained) this.text(`升 ${levelsGained} 级 · 每级五项各 +1、潜能 +5`, 425, 352, 20, '#F4DC9C', 466, 1);
+      if (this.resultSaved) this.text(this.dropMessage, 340, 490, 21, '#F4DC9C', 660, 1);
       this.button(this.resultSaved ? '再来一场' : '重试保存', 513, 384, 286, 69, true, () => {
         if (!this.resultSaved) { this.finishBattle(); return; }
         const { session, heroRage } = this.battle;

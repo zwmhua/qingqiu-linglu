@@ -15,6 +15,7 @@ import { WILD_SPECIES, pickWildLevel, pickWildSpecies, wildCombat } from '../log
 import type { WildSpecies } from '../logic/wild-encounter';
 import { HERO_PROGRESSION, awardExperience, heroPanel, initialHero } from '../logic/hero-progress';
 import type { HeroProgress, LevelProgress } from '../logic/hero-progress';
+import type { DropMode } from '../logic/inventory';
 
 export type Side = 'ally' | 'enemy';
 export type Command = 'attack' | 'defend' | 'protect' | 'retreat' | 'flee' | 'summon' | 'capture' | 'spell' | 'autoAttack';
@@ -51,6 +52,10 @@ export class Battle {
   allies: Unit[] = [];
   enemies: Unit[] = [];
   readonly session: SessionProgress;
+  readonly battleId: number;
+  readonly dropMode: DropMode;
+  get inventory() { return this.session.inventory; }
+  get lastSettledId() { return this.session.lastSettledId; }
   get roster() { return this.session.roster; }
   commands = new Map<string, Choice>();
   lastCommands = new Map<string, Choice>();
@@ -87,6 +92,8 @@ export class Battle {
     this.session = previousRoster instanceof SessionProgress ? previousRoster
       : new SessionProgress(progression?.hero, previousRoster, progression?.selectedPetId,
         progression?.petRandom, aptitudeRandom, growthRandom, baseStatsRandom, skillRandom);
+    this.battleId = this.session.allocateBattleId();
+    this.dropMode = this.session.dropMode;
     const progress = this.heroProgress;
     const stats = progress ? heroPanel(progress.stats) : undefined;
     const hero = BATTLE_RULES.hero;

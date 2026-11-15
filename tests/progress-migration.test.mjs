@@ -12,6 +12,7 @@ const key = 'qingqiu-linglu:test-progress';
 function fixture(version) {
   const saved = JSON.parse(progressSnapshot(new SessionProgress(initialHero(), undefined, undefined, () => 0)));
   saved.version = version;
+  delete saved.inventory; delete saved.lastSettledId;
   for (const pet of saved.pets) {
     delete pet.skillIds;
     pet.skill = '露珠弹';
@@ -39,7 +40,7 @@ test('each original version backs up exact bytes before committing and reloads w
     const storage = disk(original), raw = storage.values.get(key);
     const session = new ProgressLoader().load(storage, () => 0);
     assert.equal(storage.values.get(`${key}:backup:v${version}`), raw);
-    assert.equal(JSON.parse(storage.values.get(key)).version, 4);
+    assert.equal(JSON.parse(storage.values.get(key)).version, 5);
     assert.deepEqual(session.roster.entries.map(p => [p.baseStats, p.potential]), original.pets.map(p => [p.baseStats, p.potential ?? 0]));
     assert.deepEqual(storage.attempts.map(([k]) => k), [`${key}:backup:v${version}`, key]);
     for (let i = 0; i < 2; i++) assert.deepEqual(new ProgressLoader().load(storage, () => assert.fail('reroll')).roster.entries, session.roster.entries);
@@ -129,11 +130,56 @@ test('captured mutated babies level normally and existing mutated wild saves rem
   for (const isBaby of [true, false]) for (const version of [3, 4]) {
     const saved = JSON.parse(progressSnapshot(session));
     saved.version = version;
+    delete saved.inventory; delete saved.lastSettledId;
     saved.pets.at(-1).isBaby = isBaby;
     if (version === 3) saved.pets.forEach(p => { delete p.skillIds; });
     const restored = new ProgressLoader().load(disk(saved), () => 0).roster.entries.at(-1);
     const { skill: _old, skillIds: _skills, ...expected } = saved.pets.at(-1);
     const { skill: _restoredOld, skillIds: _restoredSkills, ...actual } = restored;
     assert.deepEqual(actual, expected);
+  }
+});
+
+test('v4 keeps exact ordered skills and progress, v5 validates inventory and settlement with fault-safe migration', () => {
+  const source = new SessionProgress(initialHero());
+  source.roster.entries[0].skillIds = ['regen', 'crit'];
+  source.selectedPetId = 'pet-2';
+  const old = JSON.parse(progressSnapshot(source));
+  old.nextCapturedId = 12;
+  old.version = 4; delete old.inventory; delete old.lastSettledId;
+  for (const mutate of [s => s.pets[0].skillIds = ['alien'], s => s.pets[0].skillIds = ['regen', 'regen'],
+    s => s.inventory = {}, s => s.lastSettledId = 0]) {
+    const bad = structuredClone(old); mutate(bad); const storage = disk(bad), raw = storage.values.get(key);
+    assert.throws(() => new ProgressLoader().load(storage));
+    assert.equal(storage.values.get(key), raw); assert.equal(storage.attempts.length, 0);
+  }
+  for (const failure of ['', `read:${key}`, `read:${key}:backup:v4`, `${key}:backup:v4`, key, 'conflict']) {
+    const storage = disk(old), raw = storage.values.get(key), loader = new ProgressLoader();
+    if (failure === 'conflict') storage.values.set(`${key}:backup:v4`, 'keep');
+    else storage.fail = failure;
+    if (failure) {
+      assert.throws(() => loader.load(storage, () => assert.fail('v4 reroll')));
+      assert.equal(storage.values.get(key), raw);
+      if (failure === 'conflict') { assert.equal(storage.values.get(`${key}:backup:v4`), 'keep'); continue; }
+    }
+    const attempted = storage.attempts.find(([k]) => k === key)?.[1];
+    storage.fail = '';
+    const restored = loader.load(storage, () => assert.fail('v4 reroll'));
+    const saved = JSON.parse(storage.values.get(key));
+    assert.deepEqual(saved, { ...old, version: 5, inventory: {}, lastSettledId: 0 });
+    assert.equal(storage.values.get(`${key}:backup:v4`), raw);
+    if (attempted) assert.equal(storage.values.get(key), attempted);
+    restored.inventory = { rejuvenation: 100 }; restored.lastSettledId = 7;
+    storage.setItem(key, progressSnapshot(restored));
+    const refresh = loader.load(storage, () => assert.fail('refresh reroll'));
+    assert.deepEqual(refresh.inventory, restored.inventory);
+    assert.equal(new Battle(() => 0, 1, 0, refresh).battleId, 8);
+    for (const mutate of [s => s.inventory = [], s => s.inventory = { alien: 1 }, s => s.lastSettledId = -1,
+      s => s.lastSettledId = 0.5, s => s.lastSettledId = Number.MAX_SAFE_INTEGER + 1, s => delete s.inventory]) {
+      const broken = structuredClone(saved); mutate(broken);
+      const invalid = disk(broken), bytes = invalid.values.get(key);
+      assert.throws(() => loader.load(invalid));
+      assert.equal(invalid.values.get(key), bytes); assert.equal(invalid.attempts.length, 0);
+    }
   }
 });
