@@ -37,6 +37,7 @@ export const CONFIG = {
     attackMoveSeconds: 0.25, attackBeatSeconds: 0.05, attackStrikeSeconds: 0.15, attackReach: 82, attackScale: 1.08,
     hitSeconds: 0.2, hitDistance: 10, defendDistance: 8, flashSeconds: 0.15, hpSeconds: 0.18,
     critFlashSeconds: 0.18, critShakeDistance: 5, critShakeSeconds: 0.15,
+    reactionFlashSeconds: 0.09, counterSeconds: 0.18, counterDistance: 22, floatStackGap: 53, floatHitOffset: 61,
     fadeSeconds: 0.4, deathSink: 15,
     floatPopSeconds: 0.15, floatPopScale: 1.22, floatHoldSeconds: 0.25, floatDistance: 40, floatSeconds: 0.4,
     spellSeconds: 0.3, spellTargetGap: 0.08, spellCastScale: 1.06, spellHeight: 58,
