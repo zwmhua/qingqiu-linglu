@@ -128,6 +128,12 @@ test('physical passive playback keeps each event HP until the queue empties at b
     const v = new BattleView(), pending = [], shown = [], logs = [], waits = [];
     v.townPreview = false;
     v.speedMultiplier = speed;
+    const pet = { id: 'pet', side: 'ally' };
+    v.unitPoint = () => ({ x: 500, y: 400 });
+    const strikeNumber = v.numberLayout?.(pet, speed, 60, '连打·暴击');
+    assert.equal(strikeNumber?.color, speed === 1 ? '#FF7772' : '#F9D177');
+    assert.equal(v.numberLayout(pet, speed, -15, '噬血').color, '#9EE685');
+    if (speed === 1) assert.ok(strikeNumber.y + strikeNumber.size * 1.65 < v.healthBarY(pet, 400));
     const hit = (source, targetId, targetDamage, targetAfter) =>
       ({ kind: 'attack', source, targetId, targetDamage, targetAfter });
     const log = ['准备', '主击', '噬血一', '反弹', '还击', '主击二', '噬血二', '回合回血'];

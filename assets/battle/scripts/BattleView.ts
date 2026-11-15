@@ -112,6 +112,7 @@ export class BattleView extends Component {
   private unitNodes = new Map<string, Node>();
   private shadowNodes = new Map<string, Node>();
   private markerNodes = new Map<string, Node>();
+  private statusHpBars = new Map<string, (hp: number) => void>();
   private basePositions = new Map<string, Vec3>();
   private ringOpacities = new Map<string, UIOpacity>();
   private confirmingTarget = false;
@@ -570,8 +571,14 @@ export class BattleView extends Component {
     tween(visual).repeatForever(tween<Node>().to(a.idleSeconds, {}, { onUpdate: sway })).start();
   }
 
-  private unitInfo(unit: Unit): void {
-    if ((this.displayedLeft?.get(unit.id) ?? unit.left) || (this.displayedHp?.get(unit.id) ?? unit.hp) === 0) return;
+  private healthBarY(unit: Unit, footY: number): number {
+    const v = CONFIG.visual;
+    const height = (this.isHero(unit) ? v.heroHeight : v.frogHeight) * v.unitScale;
+    return footY - height - v.headGap - v.barHeight - (unit.side === 'ally' ? v.barHeight + v.barGap : 0);
+  }
+
+  private unitInfo(unit: Unit, showEmptyHp = false): void {
+    if ((this.displayedLeft?.get(unit.id) ?? unit.left) || (!showEmptyHp && (this.displayedHp?.get(unit.id) ?? unit.hp) === 0)) return;
     const previous = this.layer;
     const group = new Node(`markers-${unit.id}`);
     previous.addChild(group);
@@ -580,11 +587,9 @@ export class BattleView extends Component {
     const point = this.unitPoint(unit);
     const targetable = this.canSelect(unit);
     const v = CONFIG.visual;
-    const height = (this.isHero(unit) ? CONFIG.visual.heroHeight : CONFIG.visual.frogHeight)
-      * CONFIG.visual.unitScale;
     const headX = point.x + (this.isHero(unit) ? v.heroHeadOffsetX : 0);
     const barX = headX - v.barWidth / 2;
-    const healthY = point.y - height - v.headGap - v.barHeight - (unit.side === 'ally' ? v.barHeight + v.barGap : 0);
+    const healthY = this.healthBarY(unit, point.y);
     const targetClick = targetable ? () => this.chooseTarget(unit.id) : undefined;
     const bar = (y: number, fillWidth: number, color: string) => {
       this.rect(barX - 1, y - 1, v.barWidth + 2, v.barHeight + 2, '#142322', '', 2, targetClick);
@@ -711,15 +716,22 @@ export class BattleView extends Component {
     return speed === 1 ? [a.normalFloatHoldSeconds, a.normalFloatFadeSeconds] : [0, a.floatSeconds / speed];
   }
 
+  private numberLayout(unit: Unit, speed: number, damage: number, caption: string) {
+    const point = this.unitPoint(unit);
+    const size = speed === 1 && caption.includes(PET_SKILLS.crit.name) ? 30 : 26;
+    const y = speed === 1 ? this.healthBarY(unit, point.y) - size * 1.7 - 6 : point.y - 126;
+    const color = damage < 0 ? '#9EE685' : speed === 1 ? '#FF7772' : '#F9D177';
+    return { x: point.x, y, size, color };
+  }
+
   private damageNumber(id: string, damage: number, speed: number, caption = '', done?: () => void): void {
     if (damage === 0 && !caption) return;
-    const point = this.unitPoint(this.battle.units.find(unit => unit.id === id)!);
+    const { x, y, size, color } = this.numberLayout(this.battle.units.find(unit => unit.id === id)!, speed, damage, caption);
     const previous = this.layer;
     this.layer = this.markerLayer;
     const value = damage < 0 ? `+${-damage}` : damage > 0 ? `-${damage}` : '0';
     const width = caption ? 210 : 90;
-    const number = this.text(caption ? `${caption} ${value}` : value, point.x - width / 2, point.y - 126,
-      26, damage < 0 ? '#9EE685' : '#F9D177', width, 1);
+    const number = this.text(caption ? `${caption} ${value}` : value, x - width / 2, y, size, color, width, 1);
     this.layer = previous;
     const label = number.getComponent(Label)!;
     label.isBold = true;
@@ -746,7 +758,7 @@ export class BattleView extends Component {
       .to(seconds / 4, { position: at });
   }
 
-  private flashUnit(node: Node, seconds: number): void {
+  private flashUnit(node: Node, seconds: number, tint = Color.WHITE): void {
     const frame = node.getComponent(Sprite)!.spriteFrame;
     const { width, height } = node.getComponent(UITransform)!.contentSize;
     const flash = new Node('hit-flash');
@@ -762,7 +774,7 @@ export class BattleView extends Component {
     const fill = new Node('flash-fill');
     flash.addChild(fill);
     const graphics = fill.addComponent(Graphics);
-    graphics.fillColor = Color.WHITE;
+    graphics.fillColor = tint;
     graphics.rect(-width / 2, 0, width, height);
     graphics.fill();
     tween(flash).delay(seconds).call(() => flash.destroy()).start();
@@ -770,12 +782,13 @@ export class BattleView extends Component {
 
   private showImpact(id: string, damage: number, hp: number, dx: number, dy: number, speed: number, caption = '', done?: () => void): void {
     this.displayedHp!.set(id, hp);
+    if (speed === 1) this.statusHpBars.get(id)?.(hp);
     this.damageNumber(id, damage, speed, caption, done);
     const previous = this.layer;
     this.markerNodes.get(id)?.destroy();
     this.markerNodes.delete(id);
     this.layer = this.markerLayer;
-    this.unitInfo(this.battle.units.find(unit => unit.id === id)!);
+    this.unitInfo(this.battle.units.find(unit => unit.id === id)!, speed === 1);
     this.layer = previous;
     const target = this.unitNodes.get(id);
     if (!target || damage <= 0) return;
@@ -783,7 +796,11 @@ export class BattleView extends Component {
     const seconds = a.hitSeconds / speed;
     const at = target.position.clone();
     const defending = this.battle.lastCommands.get(id)?.command === 'defend';
-    if (!defending) this.flashUnit(target, a.flashSeconds / speed);
+    const critical = speed === 1 && caption.includes(PET_SKILLS.crit.name);
+    const reflected = speed === 1 && caption === PET_SKILLS.reflect.name;
+    const flash = critical ? a.normalCritFlashSeconds : a.flashSeconds;
+    const tint = critical ? C('#FFE080') : reflected ? C('#CBCFFF') : Color.WHITE;
+    if (!defending || critical || reflected) this.flashUnit(target, flash / speed, tint);
     const reaction = defending
       ? tween(target).to(seconds / 2, { position: new Vec3(at.x + dx * a.defendDistance, at.y + dy * a.defendDistance, at.z) })
         .to(seconds / 2, { position: at })
@@ -872,7 +889,11 @@ export class BattleView extends Component {
     const leg = (speed === 1 ? a.normalAttackSeconds : a.attackSeconds) / 2;
     const fallen = event.targetAfter === 0 || event.guardAfter === 0;
     const reaction = a.hitSeconds + (fallen ? a.fadeSeconds : 0);
-    const movement = tween(actor).to(leg / speed, { position: strike }, { easing: 'quadOut' }).call(hit)
+    const movement = tween(actor);
+    if (speed === 1) movement.to(a.normalWindupSeconds, {
+      position: origin.clone().subtract(direction.clone().multiplyScalar(a.normalWindupDistance)),
+    }, { easing: 'quadOut' });
+    movement.to(leg / speed, { position: strike }, { easing: 'quadOut' }).call(hit)
       .to(leg / speed, { position: origin }, { easing: 'quadOut' });
     if (!done) movement.delay((Math.max(leg, a.floatSeconds, reaction) - leg) / speed).call(next);
     movement.start();
@@ -969,7 +990,16 @@ export class BattleView extends Component {
     bars.forEach((bar, index) => {
       const by = y + 17 + index * 22;
       this.rect(x + 69, by, 112, 10, '#10201F', '#526562', 2);
-      if (bar.value > 0) this.rect(x + 70, by + 1, 110 * bar.value / bar.max, 8, bar.color, '', 1);
+      if (this.playing && this.speedMultiplier === 1 && index === 0 && unit) {
+        const fill = this.rect(x + 70, by + 1, 110, 8, bar.color, '', 1);
+        const update = (hp: number) => {
+          const ratio = hp / bar.max;
+          this.pos(fill, x + 70 + 55 * ratio, by + 5);
+          fill.setScale(ratio, 1, 1);
+        };
+        this.statusHpBars.set(unit.id, update);
+        update(bar.value);
+      } else if (bar.value > 0) this.rect(x + 70, by + 1, 110 * bar.value / bar.max, 8, bar.color, '', 1);
       if (kind === 'pet' ? this.selectedPetId === unit?.id && this.rosterOpen : this.detailsOpen && !progress) {
         const value = bar.label !== '经验' ? `${bar.value}/${bar.max}`
           : !progress ? '待定'
@@ -1309,6 +1339,7 @@ export class BattleView extends Component {
   }
 
   private clearView(): void {
+    this.statusHpBars.clear();
     for (const child of [...this.node.children]) if (child.name !== 'Camera' && child !== this.town?.root) {
       child.active = false;
       child.destroy();

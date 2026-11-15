@@ -35,7 +35,8 @@ export const CONFIG = {
   animation: {
     idleSeconds: 2.2, idleHeight: 4, idleScale: 0.02, idleStagger: 0.31,
     attackSeconds: 0.3, attackDistance: 56,
-    normalAttackSeconds: 0.45,
+    normalAttackSeconds: 0.45, normalWindupSeconds: 0.25, normalWindupDistance: 14,
+    normalCritFlashSeconds: 0.15,
     normalFloatHoldSeconds: 0.45, normalFloatFadeSeconds: 0.25,
     hitSeconds: 0.2, hitDistance: 7, defendDistance: 4, flashSeconds: 0.08,
     fadeSeconds: 0.4, floatDistance: 40, floatSeconds: 0.32,
