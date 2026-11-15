@@ -22,6 +22,12 @@ import { ProgressLoader, progressSnapshot, resetProgress, saveProgress } from '.
 import { PET_SKILLS, SKILL_POOLS, skillDescription } from '../logic/pet-skills';
 import type { TargetMode } from '../logic/targeting';
 
+type SpellFxEvent = {
+  kind: 'spell'; actorId: string; logIndex: number;
+  targets: readonly { targetId: string; damage: number; hpAfter: number; missed?: boolean }[];
+};
+type ViewBattleEvent = BattleEvent | SpellFxEvent | { kind: 'dodge'; targetId: string; logIndex: number };
+
 const { ccclass, property } = _decorator;
 const POTENTIAL_RELEASE_EVENTS = ['pointerup', 'pointercancel', 'pointerout', 'mouseup', 'touchend', 'touchcancel', 'blur'] as const;
 const C = (hex: string) => new Color(hex);
@@ -113,12 +119,13 @@ export class BattleView extends Component {
   private shadowNodes = new Map<string, Node>();
   private markerNodes = new Map<string, Node>();
   private statusHpBars = new Map<string, (hp: number) => void>();
+  private markerHpBars = new Map<string, (hp: number) => void>();
   private basePositions = new Map<string, Vec3>();
   private ringOpacities = new Map<string, UIOpacity>();
   private confirmingTarget = false;
   private confirmingReset = false;
   private displayedHp: Map<string, number> | null = null;
-  private animationQueue: BattleEvent[] = [];
+  private animationQueue: ViewBattleEvent[] = [];
   private displayedLogEnd?: number;
   private displayedDeployment: Map<string, boolean> | null = null;
   private displayedLeft: Map<string, boolean> | null = null;
@@ -571,14 +578,22 @@ export class BattleView extends Component {
     tween(visual).repeatForever(tween<Node>().to(a.idleSeconds, {}, { onUpdate: sway })).start();
   }
 
+  private healthFill(x: number, y: number, w: number, h: number, color: string) {
+    const fill = this.rect(x, y, w, h, color, '', 1);
+    return (ratio: number) => {
+      this.pos(fill, x + w * ratio / 2, y + h / 2);
+      fill.setScale(ratio, 1, 1);
+    };
+  }
+
   private healthBarY(unit: Unit, footY: number): number {
     const v = CONFIG.visual;
     const height = (this.isHero(unit) ? v.heroHeight : v.frogHeight) * v.unitScale;
     return footY - height - v.headGap - v.barHeight - (unit.side === 'ally' ? v.barHeight + v.barGap : 0);
   }
 
-  private unitInfo(unit: Unit, showEmptyHp = false): void {
-    if ((this.displayedLeft?.get(unit.id) ?? unit.left) || (!showEmptyHp && (this.displayedHp?.get(unit.id) ?? unit.hp) === 0)) return;
+  private unitInfo(unit: Unit): void {
+    if ((this.displayedLeft?.get(unit.id) ?? unit.left) || (this.displayedHp?.get(unit.id) ?? unit.hp) === 0) return;
     const previous = this.layer;
     const group = new Node(`markers-${unit.id}`);
     previous.addChild(group);
@@ -591,13 +606,15 @@ export class BattleView extends Component {
     const barX = headX - v.barWidth / 2;
     const healthY = this.healthBarY(unit, point.y);
     const targetClick = targetable ? () => this.chooseTarget(unit.id) : undefined;
-    const bar = (y: number, fillWidth: number, color: string) => {
+    const bar = (y: number, color: string) => {
       this.rect(barX - 1, y - 1, v.barWidth + 2, v.barHeight + 2, '#142322', '', 2, targetClick);
       this.rect(barX, y, v.barWidth, v.barHeight, '#42524E', '', 1, targetClick);
-      if (fillWidth > 0) this.rect(barX, y, fillWidth, v.barHeight, color, '', 1, targetClick);
+      return this.healthFill(barX, y, v.barWidth, v.barHeight, color);
     };
-    bar(healthY, v.barWidth * (this.displayedHp?.get(unit.id) ?? unit.hp) / unit.maxHp, '#D95757');
-    if (unit.side === 'ally') bar(healthY + v.barHeight + v.barGap, v.barWidth, '#559DD8');
+    const drawHp = bar(healthY, '#D95757');
+    this.markerHpBars.set(unit.id, hp => drawHp(hp / unit.maxHp));
+    drawHp((this.displayedHp?.get(unit.id) ?? unit.hp) / unit.maxHp);
+    if (unit.side === 'ally') bar(healthY + v.barHeight + v.barGap, '#559DD8')(1);
     const compactPetName = this.isPet(unit) && unit.name.length <= 2;
     const nameWidth = unit.isMutated ? 178 : compactPetName ? v.petNameWidth : v.nameWidth;
     const nameX = point.x + (this.isPet(unit) ? v.petNameOffsetX : 0) - nameWidth / 2;
@@ -691,19 +708,20 @@ export class BattleView extends Component {
     return new Map(this.battle.units.map(unit => [unit.id, unit.deployed]));
   }
 
-  private startPlayback(round: number, phase: string, hp: Map<string, number>, deployment: Map<string, boolean>): boolean {
+  private startPlayback(round: number, phase: string, hp: Map<string, number>, deployment: Map<string, boolean>,
+    events: readonly ViewBattleEvent[] = this.battle.events): boolean {
     if (round === this.battle.round && phase === this.battle.phase) return false;
     if (this.battle.phase !== 'ended' && this.battle.events.some(event =>
       event.kind === 'summon' || event.kind === 'captureSuccess')) this.persistProgress();
-    if (this.battle.events.length === 0) {
+    if (events.length === 0) {
       this.finishBattle();
       return this.battle.phase === 'ended';
     }
     this.displayedHp = hp;
     this.displayedDeployment = deployment;
     this.displayedLeft = new Map(this.battle.units.map(unit => [unit.id, unit.left]));
-    for (const event of this.battle.events) if (event.kind === 'captureSuccess') this.displayedLeft.set(event.targetId, false);
-    this.animationQueue = [...this.battle.events];
+    for (const event of events) if (event.kind === 'captureSuccess') this.displayedLeft.set(event.targetId, false);
+    this.animationQueue = [...events];
     this.displayedLogEnd = this.animationQueue.find(event => 'logIndex' in event)?.logIndex;
     this.playing = true;
     this.render();
@@ -713,25 +731,26 @@ export class BattleView extends Component {
 
   private floatingNumberTiming(speed: number): [hold: number, fade: number] {
     const a = CONFIG.animation;
-    return speed === 1 ? [a.normalFloatHoldSeconds, a.normalFloatFadeSeconds] : [0, a.floatSeconds / speed];
+    return [a.floatHoldSeconds / speed, a.floatSeconds / speed];
   }
 
-  private numberLayout(unit: Unit, speed: number, damage: number, caption: string) {
+  private numberLayout(unit: Unit, _speed: number, damage: number, caption: string) {
     const point = this.unitPoint(unit);
-    const size = speed === 1 && caption.includes(PET_SKILLS.crit.name) ? 30 : 26;
-    const y = speed === 1 ? this.healthBarY(unit, point.y) - size * 1.7 - 6 : point.y - 126;
-    const color = damage < 0 ? '#9EE685' : speed === 1 ? '#FF7772' : '#F9D177';
+    const size = caption.includes(PET_SKILLS.crit.name) ? 30 : 26;
+    const y = this.healthBarY(unit, point.y) - size * 1.7 - 6;
+    const color = damage < 0 ? '#9EE685' : '#FF7772';
     return { x: point.x, y, size, color };
   }
 
   private damageNumber(id: string, damage: number, speed: number, caption = '', done?: () => void): void {
-    if (damage === 0 && !caption) return;
+    if (damage === 0 && !caption) { done?.(); return; }
     const { x, y, size, color } = this.numberLayout(this.battle.units.find(unit => unit.id === id)!, speed, damage, caption);
     const previous = this.layer;
     this.layer = this.markerLayer;
     const value = damage < 0 ? `+${-damage}` : damage > 0 ? `-${damage}` : '0';
     const width = caption ? 210 : 90;
-    const number = this.text(caption ? `${caption} ${value}` : value, x - width / 2, y, size, color, width, 1);
+    const text = caption === '闪避' ? caption : caption ? `${caption} ${value}` : value;
+    const number = this.text(text, x - width / 2, y, size, color, width, 1);
     this.layer = previous;
     const label = number.getComponent(Label)!;
     label.isBold = true;
@@ -739,13 +758,12 @@ export class BattleView extends Component {
     label.outlineColor = C('#36291F');
     label.outlineWidth = 2;
     const opacity = number.addComponent(UIOpacity);
-    const [hold, fade] = this.floatingNumberTiming(speed);
-    const movement = tween(number).to(fade, { position: new Vec3(number.position.x,
-      number.position.y + CONFIG.animation.floatDistance, 0) });
-    const opacityTween = tween(opacity);
-    if (hold) opacityTween.delay(hold).call(() => movement.start());
-    else movement.start();
-    opacityTween.to(fade, { opacity: 0 }).call(() => {
+    const a = CONFIG.animation;
+    const [hold, fade] = this.floatingNumberTiming(speed), pop = a.floatPopSeconds / (2 * speed);
+    tween(number).to(pop, { scale: new Vec3(a.floatPopScale, a.floatPopScale, 1) }, { easing: 'quadOut' })
+      .to(pop, { scale: new Vec3(1, 1, 1) }).delay(hold)
+      .to(fade, { position: new Vec3(number.position.x, number.position.y + a.floatDistance, 0) }).start();
+    tween(opacity).delay(2 * pop + hold).to(fade, { opacity: 0 }).call(() => {
       number.destroy();
       done?.();
     }).start();
@@ -777,41 +795,97 @@ export class BattleView extends Component {
     graphics.fillColor = tint;
     graphics.rect(-width / 2, 0, width, height);
     graphics.fill();
-    tween(flash).delay(seconds).call(() => flash.destroy()).start();
+    const opacity = flash.addComponent(UIOpacity);
+    const pulse = seconds / 3;
+    tween(opacity).delay(pulse).set({ opacity: 0 }).delay(pulse).set({ opacity: 255 })
+      .delay(pulse).call(() => flash.destroy()).start();
   }
 
   private showImpact(id: string, damage: number, hp: number, dx: number, dy: number, speed: number, caption = '', done?: () => void): void {
+    const a = CONFIG.animation;
+    const value = { hp: this.displayedHp!.get(id) ?? hp };
     this.displayedHp!.set(id, hp);
-    if (speed === 1) this.statusHpBars.get(id)?.(hp);
+    if (value.hp !== hp) tween(value).to(a.hpSeconds / speed, { hp }, { easing: 'quadOut', onUpdate: () => {
+      this.markerHpBars.get(id)?.(value.hp);
+      this.statusHpBars.get(id)?.(value.hp);
+    } }).start();
     this.damageNumber(id, damage, speed, caption, done);
-    const previous = this.layer;
-    this.markerNodes.get(id)?.destroy();
-    this.markerNodes.delete(id);
-    this.layer = this.markerLayer;
-    this.unitInfo(this.battle.units.find(unit => unit.id === id)!, speed === 1);
-    this.layer = previous;
     const target = this.unitNodes.get(id);
     if (!target || damage <= 0) return;
-    const a = CONFIG.animation;
     const seconds = a.hitSeconds / speed;
     const at = target.position.clone();
     const defending = this.battle.lastCommands.get(id)?.command === 'defend';
-    const critical = speed === 1 && caption.includes(PET_SKILLS.crit.name);
-    const reflected = speed === 1 && caption === PET_SKILLS.reflect.name;
-    const flash = critical ? a.normalCritFlashSeconds : a.flashSeconds;
+    const critical = caption.includes(PET_SKILLS.crit.name);
+    const reflected = caption === PET_SKILLS.reflect.name;
+    const flash = critical ? a.critFlashSeconds : a.flashSeconds;
     const tint = critical ? C('#FFE080') : reflected ? C('#CBCFFF') : Color.WHITE;
-    if (!defending || critical || reflected) this.flashUnit(target, flash / speed, tint);
-    const reaction = defending
-      ? tween(target).to(seconds / 2, { position: new Vec3(at.x + dx * a.defendDistance, at.y + dy * a.defendDistance, at.z) })
-        .to(seconds / 2, { position: at })
-      : this.shakeUnit(target, a.hitDistance, seconds);
+    this.flashUnit(target, flash / speed, tint);
+    const camera = critical ? this.node.getChildByName('Camera') : null;
+    if (camera) this.shakeUnit(camera, a.critShakeDistance, a.critShakeSeconds / speed).start();
+    const away = new Vec3(dx || (!dy ? (at.x < 0 ? -1 : 1) : 0), dy, 0)
+      .multiplyScalar(defending ? a.defendDistance : a.hitDistance);
+    const reaction = tween(target).to(seconds / 2, { position: at.clone().add(away) }, { easing: 'quadOut' })
+      .to(seconds / 2, { position: at });
     if (hp === 0) reaction.call(() => {
       target.getComponent(Sprite)!.grayscale = true;
       const shadow = this.shadowNodes.get(id);
       if (shadow) shadow.active = false;
-      tween(target.getComponent(UIOpacity)!).to(a.fadeSeconds / speed, { opacity: 0 }).start();
+      const duration = a.fadeSeconds / speed;
+      tween(target.getComponent(UIOpacity)!).to(duration, { opacity: 0 }).start();
+      tween(target).to(duration, { position: new Vec3(at.x, at.y - a.deathSink, at.z) }).start();
     });
     reaction.start();
+  }
+
+  private magicPulse(id: string, feet: boolean, speed: number, peak?: () => void, done?: () => void): void {
+    const a = CONFIG.animation;
+    const point = this.unitPoint(this.battle.units.find(unit => unit.id === id)!);
+    const glow = new Node(feet ? 'spell-ring' : 'spell-impact');
+    this.markerLayer.addChild(glow);
+    this.pos(glow, point.x, feet ? point.y : point.y - a.spellHeight);
+    glow.addComponent(UITransform);
+    const ink = glow.addComponent(Graphics);
+    if (feet) {
+      ink.strokeColor = C('#94DCFF');
+      ink.lineWidth = a.spellRingWidth;
+      ink.ellipse(0, 0, a.spellRingX, a.spellRingY);
+      ink.stroke();
+    } else {
+      ink.fillColor = C('#9CB9FFA0');
+      ink.circle(0, 0, a.spellRadius);
+      ink.fill();
+      ink.fillColor = C('#E9F8FF');
+      ink.circle(0, 0, a.spellCoreRadius);
+      ink.fill();
+    }
+    const alpha = glow.addComponent(UIOpacity);
+    alpha.opacity = 0;
+    const half = a.spellSeconds / (2 * speed);
+    tween(alpha).to(half, { opacity: 255 }).call(() => peak?.())
+      .to(half, { opacity: 0 }).call(() => { glow.destroy(); done?.(); }).start();
+  }
+
+  private playSpell(event: SpellFxEvent, speed: number, next: () => void): void {
+    const a = CONFIG.animation;
+    const caster = this.unitNodes.get(event.actorId);
+    if (caster) {
+      const base = caster.scale.clone(), half = a.spellSeconds / (2 * speed);
+      tween(caster).to(half, { scale: base.clone().multiplyScalar(a.spellCastScale) })
+        .to(half, { scale: base }).start();
+    }
+    this.magicPulse(event.actorId, true, speed, undefined, () => {
+      let remaining = event.targets.length;
+      if (!remaining) { next(); return; }
+      event.targets.forEach(({ targetId, damage, hpAfter, missed }, index) => {
+        const launch = () => this.magicPulse(targetId, false, speed, () => {
+          const hp = missed ? this.displayedHp!.get(targetId)! : hpAfter;
+          this.showImpact(targetId, missed ? 0 : damage, hp, 0, 0, speed, missed ? '闪避' : '',
+            () => { if (--remaining === 0) next(); });
+        });
+        if (index) this.scheduleOnce(launch, index * a.spellTargetGap / speed);
+        else launch();
+      });
+    });
   }
 
   private playNextAttack(): void {
@@ -837,19 +911,21 @@ export class BattleView extends Component {
     }
     const a = CONFIG.animation;
     const speed = this.speedMultiplier;
-    const target = this.unitNodes.get(event.targetId);
     const next = () => {
       if ('logIndex' in event) this.displayedLogEnd = event.logIndex + 1;
       this.render();
       this.playNextAttack();
     };
-    const done = speed === 1 ? next : undefined;
+    if (event.kind === 'spell') { this.playSpell(event, speed, next); return; }
+    if (event.kind === 'dodge') {
+      this.showImpact(event.targetId, 0, this.displayedHp!.get(event.targetId)!, 0, 0, speed, '闪避', next);
+      return;
+    }
+    const target = this.unitNodes.get(event.targetId);
     if (event.kind === 'heal' || (event.kind === 'attack' && event.source === 'reflect')) {
       const damage = event.kind === 'heal' ? -event.amount : event.targetDamage;
       const caption = event.kind === 'heal' ? PET_SKILLS.lifesteal.name : event.caption;
-      this.showImpact(event.targetId, damage, event.targetAfter, 0, 0, speed, caption, done);
-      const reaction = a.hitSeconds + (event.targetAfter === 0 ? a.fadeSeconds : 0);
-      if (!done) this.scheduleOnce(next, Math.max(a.floatSeconds, reaction) / speed);
+      this.showImpact(event.targetId, damage, event.targetAfter, 0, 0, speed, caption, next);
       return;
     }
     if (event.kind !== 'attack') {
@@ -875,28 +951,20 @@ export class BattleView extends Component {
     const hit = () => {
       const { x, y } = direction;
       this.showImpact(event.targetId, event.targetDamage, event.targetAfter, x, y, speed, event.caption,
-        event.guardId ? undefined : done);
+        event.guardId ? undefined : next);
       if (event.guardId && event.guardAfter !== undefined)
-        this.showImpact(event.guardId, event.guardDamage ?? 0, event.guardAfter, x, y, speed, '', done);
+        this.showImpact(event.guardId, event.guardDamage ?? 0, event.guardAfter, x, y, speed, '', next);
     };
-    if (!actor || !target) {
-      hit();
-      if (!done) next();
-      return;
-    }
-    const origin = actor.position.clone();
-    const strike = origin.clone().add(direction.clone().multiplyScalar(a.attackDistance));
-    const leg = (speed === 1 ? a.normalAttackSeconds : a.attackSeconds) / 2;
-    const fallen = event.targetAfter === 0 || event.guardAfter === 0;
-    const reaction = a.hitSeconds + (fallen ? a.fadeSeconds : 0);
-    const movement = tween(actor);
-    if (speed === 1) movement.to(a.normalWindupSeconds, {
-      position: origin.clone().subtract(direction.clone().multiplyScalar(a.normalWindupDistance)),
-    }, { easing: 'quadOut' });
-    movement.to(leg / speed, { position: strike }, { easing: 'quadOut' }).call(hit)
-      .to(leg / speed, { position: origin }, { easing: 'quadOut' });
-    if (!done) movement.delay((Math.max(leg, a.floatSeconds, reaction) - leg) / speed).call(next);
-    movement.start();
+    if (!actor || !target) { hit(); return; }
+    const origin = actor.position.clone(), scale = actor.scale.clone();
+    const reach = Math.min(a.attackReach, Vec3.distance(origin, target.position) / 2);
+    const front = target.position.clone().subtract(direction.clone().multiplyScalar(reach));
+    const strike = a.attackStrikeSeconds / (2 * speed);
+    tween(actor).to(a.attackMoveSeconds / speed, { position: front }, { easing: 'quadOut' })
+      .delay(a.attackBeatSeconds / speed)
+      .to(strike, { scale: scale.clone().multiplyScalar(a.attackScale) }, { easing: 'quadOut' }).call(hit)
+      .to(strike, { scale })
+      .to(a.attackMoveSeconds / speed, { position: origin }, { easing: 'quadOut' }).start();
   }
 
   private logLines(): { text: string; result: boolean }[] {
@@ -990,15 +1058,10 @@ export class BattleView extends Component {
     bars.forEach((bar, index) => {
       const by = y + 17 + index * 22;
       this.rect(x + 69, by, 112, 10, '#10201F', '#526562', 2);
-      if (this.playing && this.speedMultiplier === 1 && index === 0 && unit) {
-        const fill = this.rect(x + 70, by + 1, 110, 8, bar.color, '', 1);
-        const update = (hp: number) => {
-          const ratio = hp / bar.max;
-          this.pos(fill, x + 70 + 55 * ratio, by + 5);
-          fill.setScale(ratio, 1, 1);
-        };
-        this.statusHpBars.set(unit.id, update);
-        update(bar.value);
+      if (this.playing && index === 0 && unit) {
+        const drawHp = this.healthFill(x + 70, by + 1, 110, 8, bar.color);
+        this.statusHpBars.set(unit.id, hp => drawHp(hp / bar.max));
+        drawHp(bar.value / bar.max);
       } else if (bar.value > 0) this.rect(x + 70, by + 1, 110 * bar.value / bar.max, 8, bar.color, '', 1);
       if (kind === 'pet' ? this.selectedPetId === unit?.id && this.rosterOpen : this.detailsOpen && !progress) {
         const value = bar.label !== '经验' ? `${bar.value}/${bar.max}`
@@ -1340,6 +1403,7 @@ export class BattleView extends Component {
 
   private clearView(): void {
     this.statusHpBars.clear();
+    this.markerHpBars.clear();
     for (const child of [...this.node.children]) if (child.name !== 'Camera' && child !== this.town?.root) {
       child.active = false;
       child.destroy();

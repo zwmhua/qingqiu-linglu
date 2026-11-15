@@ -131,9 +131,9 @@ test('physical passive playback keeps each event HP until the queue empties at b
     const pet = { id: 'pet', side: 'ally' };
     v.unitPoint = () => ({ x: 500, y: 400 });
     const strikeNumber = v.numberLayout?.(pet, speed, 60, '连打·暴击');
-    assert.equal(strikeNumber?.color, speed === 1 ? '#FF7772' : '#F9D177');
+    assert.equal(strikeNumber?.color, '#FF7772');
     assert.equal(v.numberLayout(pet, speed, -15, '噬血').color, '#9EE685');
-    if (speed === 1) assert.ok(strikeNumber.y + strikeNumber.size * 1.65 < v.healthBarY(pet, 400));
+    assert.ok(strikeNumber.y + strikeNumber.size * 1.65 < v.healthBarY(pet, 400));
     const hit = (source, targetId, targetDamage, targetAfter) =>
       ({ kind: 'attack', source, targetId, targetDamage, targetAfter });
     const log = ['准备', '主击', '噬血一', '反弹', '还击', '主击二', '噬血二', '回合回血'];
@@ -153,17 +153,54 @@ test('physical passive playback keeps each event HP until the queue empties at b
       if (!v.playing) shown.push([v.battle.units[0].hp]);
     };
     assert.ok(v.startPlayback(1, 'command', new Map([['pet', 20], ['enemy-0', 80]]), new Map()));
-    assert.deepEqual(shown, speed === 1 ? [[20, 20]] : [[20, 20], [35, 20]]);
+    assert.deepEqual(shown, [[20, 20]]);
     assert.equal(pending.length, 1);
     while (pending.length) pending.shift()();
     assert.deepEqual(shown, [[20, 20], [35, 20], [20, 20], [10, 20], [10, 0], [15, 0], [20]]);
     assert.equal(v.displayedHp, null);
     assert.equal(v.animationQueue.length, 0);
     assert.deepEqual(logs, log);
-    assert.deepEqual(waits, speed === 1 ? [] : Array(3).fill(0.16));
-    assert.deepEqual(v.floatingNumberTiming(speed), speed === 1 ? [0.45, 0.25] : [0, 0.16]);
+    assert.deepEqual(waits, []);
+    assert.deepEqual(v.floatingNumberTiming(speed), speed === 1 ? [0.25, 0.4] : [0.125, 0.2]);
   }
 });
+test('spell playback staggers targets, hits at the glow peak, and waits for both numbers', () => {
+  const v = new BattleView(), pulses = [], timers = [], impacts = [];
+  v.townPreview = false;
+  const units = ['hero', 'pet', 'enemy-0', 'enemy-1'].map(id => ({ id, hp: 20 }));
+  v.battle = { phase: 'command', round: 2, log: ['准备', '群体施法', '闪避'], units, events: [] };
+  v.render = () => {};
+  v.magicPulse = (id, atFeet, _speed, peak, done) => pulses.push({ id, atFeet, peak, done });
+  v.scheduleOnce = (fn, delay) => timers.push({ fn, delay });
+  v.showImpact = (id, damage, hp, _dx, _dy, _speed, caption, done) => {
+    v.displayedHp.set(id, hp);
+    impacts.push({ id, damage, hp, caption, done });
+  };
+  const hp = new Map(units.map(u => [u.id, u.hp]));
+  const events = [
+    { kind: 'spell', actorId: 'pet', logIndex: 1, targets: [
+      { targetId: 'enemy-0', damage: 5, hpAfter: 15 },
+      { targetId: 'enemy-1', damage: 4, hpAfter: 16 },
+    ] },
+    { kind: 'dodge', targetId: 'hero', logIndex: 2 },
+  ];
+  assert.ok(v.startPlayback(1, 'command', hp, new Map(), events));
+  assert.deepEqual(pulses.map(p => [p.id, p.atFeet]), [['pet', true]]);
+  pulses[0].done();
+  assert.equal(timers[0].delay, 0.08);
+  assert.equal(impacts.length, 0);
+  pulses[1].peak();
+  timers[0].fn();
+  pulses[2].peak();
+  assert.deepEqual(impacts.map(i => [i.id, i.damage, i.hp]), [['enemy-0', 5, 15], ['enemy-1', 4, 16]]);
+  impacts[0].done();
+  assert.equal(v.animationQueue.length, 1);
+  impacts[1].done();
+  assert.deepEqual([impacts[2].caption, impacts[2].hp], ['闪避', 20]);
+  impacts[2].done();
+  assert.deepEqual([v.playing, v.animationQueue.length, v.displayedHp], [false, 0, null]);
+});
+
 test('town and outskirts use Spine run downhill, frame run uphill and keep one foot baseline', () => {
   const v = new BattleView();
   v.render = () => {};
