@@ -736,30 +736,36 @@ export class BattleView extends Component {
     return [a.floatHoldSeconds / speed, a.floatSeconds / speed];
   }
 
-  private numberLayout(unit: Unit, _speed: number, damage: number, caption: string) {
+  private numberLayout(unit: Unit, _speed: number, damage: number, caption: string, small = false) {
     const point = this.unitPoint(unit);
-    const size = caption.includes(PET_SKILLS.crit.name) ? 30 : 26;
+    const size = small ? 22 : caption.includes(PET_SKILLS.crit.name) ? 30 : 26;
     const y = this.healthBarY(unit, point.y) - size * 1.7 - 6;
     const color = damage < 0 ? '#9EE685' : '#FF7772';
     return { x: point.x, y, size, color };
   }
 
-  private damageNumber(id: string, damage: number, speed: number, caption = '', done?: () => void, slot = 0, offset = 0): void {
+  private damageNumber(id: string, damage: number, speed: number, caption = '', done?: () => void, small = false, offset = 0): void {
     if (damage === 0 && !caption) { done?.(); return; }
-    const { x, y, size, color } = this.numberLayout(this.battle.units.find(unit => unit.id === id)!, speed, damage, caption);
+    const { x, y, size, color } = this.numberLayout(this.battle.units.find(unit => unit.id === id)!, speed, damage, caption, small);
     const previous = this.layer;
     this.layer = this.markerNodes.get(id) ?? this.markerLayer;
     const a = CONFIG.animation;
     const value = damage < 0 ? `+${-damage}` : damage > 0 ? `−${damage}` : '0';
-    const width = caption ? 210 : 90;
-    const text = caption === '闪避' ? caption : caption ? `${caption} ${value}` : value;
-    const number = this.text(text, x + offset - width / 2, y - slot * a.floatStackGap, size, color, width, 1);
+    const critical = caption === PET_SKILLS.crit.name;
+    const width = caption && !critical ? 210 : 90;
+    const text = caption === '闪避' ? caption : caption && !critical ? caption + ' ' + value : value;
+    const number = this.text(text, x + offset - width / 2, y, size, color, width, 1);
+    if (critical) {
+      this.layer = number;
+      this.text(caption, 0, 0, 18, '#FFD889', 56, 1).setPosition(value.length * size * 0.3 + 25, 0, 0);
+    }
     this.layer = previous;
-    const label = number.getComponent(Label)!;
-    label.isBold = true;
-    label.enableOutline = true;
-    label.outlineColor = C('#36291F');
-    label.outlineWidth = 2;
+    for (const node of [number, ...number.children]) {
+      const label = node.getComponent(Label)!;
+      label.isBold = label.enableOutline = true;
+      label.outlineColor = C('#36291F');
+      label.outlineWidth = 2;
+    }
     const opacity = number.addComponent(UIOpacity);
     const [hold, fade] = this.floatingNumberTiming(speed), pop = a.floatPopSeconds / (2 * speed);
     tween(number).to(pop, { scale: new Vec3(a.floatPopScale, a.floatPopScale, 1) }, { easing: 'quadOut' })
@@ -858,29 +864,34 @@ export class BattleView extends Component {
       const counter = reactions.some(event => event.kind === 'attack' && event.source === 'counter' && event.actorId === id);
       this.hitReaction(id, damage, hp, x, y, speed, caption, counter);
     });
+    const finalHp = new Map(impacts.map(({ id, hp }) => [id, hp]));
+    const passives = new Map<string, { gain: number; loss: number }>();
     for (const event of reactions) {
-      impacts.push({ id: event.targetId, hp: event.targetAfter,
-        damage: event.kind === 'heal' ? -event.amount : event.targetDamage,
-        caption: event.kind === 'heal' ? PET_SKILLS.lifesteal.name : event.caption });
+      const totals = passives.get(event.targetId) ?? { gain: 0, loss: 0 };
+      if (event.kind === 'heal') totals.gain += event.amount;
+      else totals.loss += event.targetBefore - event.targetAfter;
+      passives.set(event.targetId, totals);
+      finalHp.set(event.targetId, event.targetAfter);
     }
     const returned = reactions.find(event => event.kind === 'attack' && event.targetDamage > 0);
     const attacker = returned && this.unitNodes.get(returned.targetId);
-    if (attacker && returned.kind === 'attack') {
-      const tint = returned.source === 'reflect' ? C('#CBCFFF') : Color.WHITE;
-      this.flashUnit(attacker, CONFIG.animation.reactionFlashSeconds / speed, tint);
-    }
-    for (const [id, hp] of new Map(impacts.map(impact => [impact.id, impact.hp]))) this.animateHp(id, hp, speed);
-    const numbers = impacts.filter(({ damage, caption }) => damage !== 0 || caption);
-    let remaining = numbers.length;
-    if (!remaining) { next(); return; }
-    const slots = new Map<string, number>();
+    if (attacker && returned.kind === 'attack')
+      this.flashUnit(attacker, CONFIG.animation.reactionFlashSeconds / speed,
+        returned.source === 'reflect' ? C('#CBCFFF') : Color.WHITE);
+    for (const [id, hp] of finalHp) this.animateHp(id, hp, speed);
     const spread = reactions.length ? Math.sign(x) * CONFIG.animation.floatHitOffset : 0;
-    for (const { id, damage, caption } of numbers) {
-      const slot = slots.get(id) ?? 0;
-      slots.set(id, slot + 1);
-      this.damageNumber(id, damage, speed, caption, () => { if (--remaining === 0) next(); }, slot,
-        id === hit.actorId ? -spread : spread);
+    const crit = PET_SKILLS.crit.name;
+    const numbers = impacts.map(({ id, damage, caption }) =>
+      ({ id, damage, caption: caption.includes(crit) ? crit : '', small: false, offset: spread }));
+    for (const [id, { gain, loss }] of passives) {
+      const center = id === hit.actorId ? -spread : spread;
+      const gap = gain && loss ? CONFIG.animation.floatStackGap / 2 : 0;
+      if (gain) numbers.push({ id, damage: -gain, caption: '', small: true, offset: center - gap });
+      if (loss) numbers.push({ id, damage: loss, caption: '', small: true, offset: center + gap });
     }
+    let remaining = numbers.length;
+    for (const { id, damage, caption, small, offset } of numbers)
+      this.damageNumber(id, damage, speed, caption, () => { if (--remaining === 0) next(); }, small, offset);
   }
 
   private magicPulse(id: string, feet: boolean, speed: number, peak?: () => void, done?: () => void): void {
@@ -1003,7 +1014,12 @@ export class BattleView extends Component {
       reactions.push(reaction);
       logIndex = reaction.logIndex;
     }
-    const hit = () => this.playStrike(event, reactions, direction, speed, next);
+    const hit = () => {
+      this.displayedLogEnd = logIndex! + 1;
+      const panel = this.node?.getChildByName('interface-layer');
+      if (panel) this.renderLog(panel);
+      this.playStrike(event, reactions, direction, speed, next);
+    };
     if (!actor || !target) { hit(); return; }
     const origin = actor.position.clone(), scale = actor.scale.clone();
     const reach = Math.min(a.attackReach, Vec3.distance(origin, target.position) / 2);
@@ -1040,7 +1056,11 @@ export class BattleView extends Component {
     return lines;
   }
 
-  private renderLog(): void {
+  private renderLog(parent = this.layer): void {
+    const previous = this.layer;
+    parent.getChildByName('battle-log')?.destroy();
+    this.layer = new Node('battle-log');
+    parent.addChild(this.layer);
     const lines = this.logLines();
     const lineHeight = 28;
     const top = CONFIG.height - 20 - 24 - lines.length * lineHeight;
@@ -1058,6 +1078,7 @@ export class BattleView extends Component {
       const escaped = entry.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       rich.string = entry.result ? `<b>${escaped}</b>` : escaped.replace(/\d+/g, '<color=#F7D28A>$&</color>');
     });
+    this.layer = previous;
   }
 
   private statusCard(kind: 'pet' | 'hero', x: number,

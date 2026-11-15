@@ -126,18 +126,20 @@ test('passive attributes render consistently and playback reveals healing before
 test('physical playback groups each strike and its passives at both speeds', () => {
   for (const speed of [1, 2]) {
     const v = new BattleView(), pending = [], shown = [], numbers = [], logs = [], waits = [];
+    v.node.getChildByName = () => undefined;
     v.townPreview = false;
     v.speedMultiplier = speed;
     const pet = { id: 'pet', side: 'ally' };
     v.unitPoint = () => ({ x: 500, y: 400 });
     const strikeNumber = v.numberLayout?.(pet, speed, 60, '连打·暴击');
     assert.equal(strikeNumber?.color, '#FF7772');
-    assert.equal(v.numberLayout(pet, speed, -15, '噬血').color, '#9EE685');
+    assert.equal(v.numberLayout(pet, speed, -15, '', true).color, '#9EE685');
     assert.ok(strikeNumber.y + strikeNumber.size * 1.65 < v.healthBarY(pet, 400));
     const hit = (source, targetId, targetDamage, targetAfter) =>
       ({ kind: 'attack', source, actorId: targetId === 'pet' ? 'enemy-0' : 'pet', targetId, targetDamage, targetAfter,
-        caption: { reflect: '反弹', counter: '还击' }[source] ?? '' });
-    const log = ['准备', '主击', '噬血一', '反弹', '还击', '主击二', '噬血二', '回合回血'];
+        targetBefore: targetAfter + targetDamage,
+        caption: { reflect: '反弹', counter: '还击' }[source] ?? (targetDamage === 60 ? '连打·暴击' : '连打') });
+    const log = ['准备', '连打·暴击 60', '噬血 +15', '反弹 −15', '还击 −10', '连打 30', '噬血 +5', '回合回血'];
     v.battle = { phase: 'command', round: 2, log, events: [
       hit('main', 'enemy-0', 60, 20), { kind: 'heal', targetId: 'pet', amount: 15, targetAfter: 35 },
       hit('reflect', 'pet', 15, 20), hit('counter', 'pet', 10, 10), hit('main', 'enemy-0', 30, 0),
@@ -148,27 +150,24 @@ test('physical playback groups each strike and its passives at both speeds', () 
       shown.push([id, v.displayedHp.get(id), hp]);
       v.displayedHp.set(id, hp);
     };
-    v.damageNumber = (id, damage, _speed, caption, done, slot = 0) => {
-      numbers.push([id, damage, caption, slot]);
+    v.damageNumber = (id, damage, _speed, caption, done, small = false) => {
+      numbers.push([id, damage, caption, small]);
       if (done) pending.push(done);
-    };
-    v.showImpact = (id, damage, hp, _dx, _dy, speed, caption, done) => {
-      v.animateHp(id, hp);
-      v.damageNumber(id, damage, speed, caption, done);
     };
     v.render = () => {
       logs.push(v.logLines().at(-1).text);
       if (!v.playing) shown.push([v.battle.units[0].hp]);
     };
     assert.ok(v.startPlayback(1, 'command', new Map([['pet', 20], ['enemy-0', 80]]), new Map()));
-    const first = [['enemy-0', 60, '', 0], ['pet', -15, '噬血', 0], ['pet', 15, '反弹', 1], ['pet', 10, '还击', 2]];
+    const first = [['enemy-0', 60, '暴击', false], ['pet', -15, '', true], ['pet', 25, '', true]];
     assert.deepEqual(numbers, first);
     assert.deepEqual(shown, [['enemy-0', 80, 20], ['pet', 20, 10]]);
-    assert.equal(pending.length, 4);
-    pending.splice(0, 3).forEach(done => done());
+    assert.deepEqual(v.logLines().map(line => line.text), log.slice(1, 5));
+    assert.equal(pending.length, 3);
+    pending.splice(0, 2).forEach(done => done());
     assert.deepEqual(numbers, first);
     pending.shift()();
-    assert.deepEqual(numbers.slice(4), [['enemy-0', 30, '', 0], ['pet', -5, '噬血', 0]]);
+    assert.deepEqual(numbers.slice(3), [['enemy-0', 30, '', false], ['pet', -5, '', true]]);
     assert.deepEqual(shown.slice(2), [['enemy-0', 20, 0], ['pet', 10, 15]]);
     while (pending.length) pending.shift()();
     assert.deepEqual(shown.at(-1), [20]);
