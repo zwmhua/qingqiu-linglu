@@ -674,3 +674,51 @@ NOT_TESTED：微信模拟器、真机、真实手机浏览器；未把桌面尺�
 - 独立静态 QA 对该完整 SHA 复核 PASS，未运行测试、构建或独立用例。最终候选执行端全量 node:test 169 成功、0 失败，限定 tsc 退出 0；构建、ego-browser 试玩和未测项见上文。
 - 怪物选敌补测使用隔离 origin、1 级汀蛙宝宝：普通入口自然遇怪 1 场，双方防御且存活在场时 4 次合格攻击依次打宝宝、宝宝、宝宝、人物；固定单敌样本 1 场，3 次均打人物。具体日志留在 task40 的 `temp/p2-07/targeting-normal.log` 和 `targeting-fixed.log`。本项不替代其他试玩证据。
 - 下一张按设计卡序为 P2-08 战斗触发类被动；需先按真实主线重估并另行发卡授权。本次仅同步文档，不改变已验收业务代码；微信模拟器、真机和真实手机浏览器仍为 NOT_TESTED。
+
+## P2-08｜战斗触发类被动（2026-11-15）
+
+从已包含 P2-07 验收提交 `9a3dbb0d15d21b97381055ed192490d546d34833` 的 `origin/main` `760b994d0e72add9f82d8a44b1c4ae67819a0019` 建立 `task/42-p2-08-combat-trigger-passives`。定稿卡按原字节存入 `docs/cards/card-P2-08.md`。
+
+### 留痕和实际检查
+
+- 13:37（北京时间），X1。卡面还击条件漏写实际失血。华周确认按阶段二设计，伤害全由保护者承担时原目标不抽还击，X1 解除。
+- 13:41（北京时间），播放用例的夹具仍处于地图模式。华周授权只补 `v.townPreview = false`，全部断言保留。`temp/p2-08/red-confirmed.log` 记录基线上的 7 个失败，播放用例已执行主击并因缺少噬血失败。
+- 13:54（北京时间），×1 首击提前显示后续被动和胜利。先增加日志时序失败断言（`log-order-red.log`），再修正；实际业务加测试 305 行触发 X2。华周将本卡上限调到 310 行，X2 解除。相对起始提交的增删为 `Battle.ts` 118 行、`BattleView.ts` 36 行、新逻辑测试 118 行、播放测试 33 行。
+- 设置 `COCOS_TYPESCRIPT=E:/ProgramData/cocos/editors/Creator/3.8.8/resources/app.asar.unpacked/node_modules/typescript` 后运行 `node --test tests/*.test.mjs`。最终 176 成功、0 失败，退出 0（`temp/p2-08/final-node-test.log`）。固定全局 `Math.random=0.5` 的额外诊断在起始 SHA 与实现后都复现了同五个旧夹具失败，原测试断言保留（`fixed-0.5-baseline.log`、`fixed-0.5.log`）。
+- `node <COCOS_TYPESCRIPT>/bin/tsc --noEmit --skipLibCheck --strict --target ES2022 --module ESNext --moduleResolution node <assets/battle/logic/*.ts 全部文件> assets/battle/scripts/Battle.ts assets/logic/platform.ts` 退出 0，包含真实传递依赖（`final-tsc.log`）。视图由 Creator 两端实际编译，播放另有真实视图集成测试。
+- 本地预览第一次打开的是旧脚本。重启本工作树 Creator 后确认载入最终逻辑。随后把证据脚本从待销毁的上一帧节点改为读取当前绘制层，重跑两个速度，验证以最终的 JSON 和截图为准。
+
+### 隔离浏览器样本
+
+从 [组合样本](http://127.0.0.1:18402/?scene=3ca2435e-bec8-4656-9bf9-63cfaadc18b7&devPreview=1&roundTripSample=single&p2Sample=combo) 点「开始游戏 → 出城 → 固定开战（测试）」。左上可切换 ×1／×2。`temp/p2-08/proxy.cjs` 把隔离地址 `127.0.0.1:18402` 指向本工作树 Creator 的 `7461` 端口。需要重新启动代理时，从本工作树运行 `node temp/p2-08/proxy.cjs 7461`，端口以本工作树 Creator 实际监听为准。
+
+隔离页首次进入时确认存储为空，写入通过 `readProgress` 校验的 `temp/p2-08/fixture-v4.json`。`fixture-browser.js` 在固定开战后设置当前战斗的 10 级宠物、有效属性、气血、速度、技能和随机序列。场景仍走原战斗和保存入口。组合样本保留 `single` 遭遇构造时已计算的 10 点经验，临时改变战斗单位等级不用于验收 10 级怪物的经验公式。
+
+| `p2Sample` | 实际点击与结果 |
+| --- | --- |
+| `combo` | 人物防御，宠物点左侧敌方汀蛙。×1 和 ×2 各完成一场。守方 HP 80→20→0，宠物 20→35→20→10→15。第二击名义 30，守方实掉 20，噬血 5。逐条展示已播放日志，两档各在最后一次噬血之后保存一次 v4，再回到 `(540,375)`。 |
+| `miss` | 人物防御，宠物普攻。第一击全额 40，无第二击，宠物噬血 10。队列末次事件时宠物 HP 30，播放完进入第 2 回合后回血 5 到 35。 |
+| `reflect` | 人物防御，宠物普攻。主击 30，反弹 7 打倒宠物。还击与第二击均取消，守方原定出手仍攻击人物。第 2 回合可操作。 |
+| `pet-guards` | 人物防御，宠物保护人物。敌人首动，人物及保护宠各掉 10，敌人噬血 5。保护宠保持 65 HP，不触发反应。 |
+| `hero-guards` | 人物保护宠物，宠物防御。宠实际掉 10，人物分担名义 10、实际掉 6 并倒地，愤怒只增加 6。敌人噬血 4，随后受宠物反弹 2、还击 20，第 2 回合可由宠物操作。 |
+| `zero` | 人物保护宠物，宠物防御。1 点伤害全由人物承担，宠物 HP 保持 75，只有选敌和伤害浮动两次随机抽取。 |
+
+在同一入口替换最后一个参数即可换样本。各次实际出手、随机抽取、血条与日志记录保留于 `temp/p2-08/final-*.json`，截图在同目录。组合×1 的 `final-combo-x1-impact.png` 显示首击浮字和当时日志，`final-combo-x2-return.png` 显示快进后返回地图。
+
+### 构建与未测项
+
+使用 Cocos Creator 3.8.8 的 `--project <当前工作树> --build "configPath=<当前工作树>/settings/<目标>-build.json;logDest=<本卡日志>"`，分别使用 `web-mobile` 和 `wechat` 配置重建，两端退出 36，日志均记录 `Finished`。两个产物的 battle 脚本均含最终日志和事件队列逻辑。Creator 仅改写了本工作树 `engine.json` 的行尾，核对非行尾内容完全相同后恢复原文件。
+
+| 产物 | 字节 |
+| --- | ---: |
+| 微信主包 | 919168 |
+| 微信 battle | 3037613 |
+| 微信 inventory | 57666 |
+| 微信 outskirts | 594500 |
+| 微信 town | 1923710 |
+| 微信总计 | 6532657 |
+| Web mobile 总计 | 8449304 |
+
+按实际文件字节求和，微信 `battle` 注册于 `subpackages/battle/`，主包低于 3.5 MB。原始数据见 `temp/p2-08/final-package-bytes.json`，产物位于 `build/web-mobile` 和 `build/wechatgame`。
+
+微信模拟器、微信真机、真实手机浏览器和对 Web 发布产物的额外浏览器交互均为 `NOT_TESTED`。ego-browser 实操使用本机 Creator 预览。华周最终试玩与验收待确认。

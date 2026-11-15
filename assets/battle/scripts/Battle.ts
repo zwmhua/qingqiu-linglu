@@ -6,7 +6,7 @@ import { BABY_CONFIG, effectiveLevel, isBabyEncounter } from '../logic/baby';
 import { generateAptitudes } from '../logic/aptitude';
 import { generateGrowth } from '../logic/growth';
 import { generateBaseStats } from '../logic/base-stats';
-import { generateSkills } from '../logic/pet-skills';
+import { generateSkills, PET_SKILLS } from '../logic/pet-skills';
 import { effectivePetPanel, statPassives, regenAmount } from '../logic/pet-panel';
 import type { Aptitudes } from '../logic/aptitude';
 import type { BaseStats } from '../logic/base-stats';
@@ -29,14 +29,16 @@ export type Unit = {
 };
 type Order = { actor: Unit; command: Command; target?: string };
 export type AttackEvent = {
-  kind: 'attack';
-  actorId: string; targetId: string; damage: number; targetDamage: number;
+  kind: 'attack'; source: 'main' | 'reflect' | 'counter'; caption: string;
+  logIndex: number; actorId: string; targetId: string; damage: number; targetDamage: number;
   targetBefore: number; targetAfter: number;
   guardId?: string; guardDamage?: number; guardAfter?: number;
 };
 export type SummonEvent = { kind: 'summon'; actorId: string; fromId?: string; toId: string };
 export type CaptureEvent = { kind: 'captureSuccess' | 'captureFail'; actorId: string; targetId: string };
-export type BattleEvent = AttackEvent | SummonEvent | CaptureEvent;
+type HealEvent = { kind: 'heal'; logIndex: number; targetId: string; amount: number; targetAfter: number };
+export type BattleEvent = AttackEvent | SummonEvent | CaptureEvent | HealEvent;
+const inBattle = (u: Unit): boolean => u.deployed && u.hp > 0 && !u.left;
 
 export class Battle {
   allies: Unit[] = [];
@@ -332,37 +334,11 @@ export class Battle {
         if (this.checkWinner()) break;
         continue;
       }
-      const targets = turn.actor.side === 'ally' ? this.enemies : this.allies;
-      const target = targets.find(u => u.id === turn.target && u.deployed && u.hp > 0 && !u.left) ??
-        (turn.actor.side === 'enemy'
-          ? targets.filter(u => u.deployed && u.hp > 0 && !u.left)[Math.floor(this.random() * targets.filter(u => u.deployed && u.hp > 0 && !u.left).length)]
-          : targets.find(u => u.deployed && u.hp > 0 && !u.left));
+      const targets = (turn.actor.side === 'ally' ? this.enemies : this.allies).filter(inBattle);
+      const target = targets.find(u => u.id === turn.target) ??
+        targets[turn.actor.side === 'enemy' && targets.length ? Math.floor(this.random() * targets.length) : 0];
       if (!target) break;
-      const d = BATTLE_RULES.damage;
-      const factor = d.randomMin + this.random() * (d.randomMax - d.randomMin);
-      let damage = Math.max(d.min, Math.round((turn.actor.attack - target.defense * d.defenseFactor) * factor));
-      const beforeDefense = damage;
-      if (target.defending) damage = Math.max(d.min, Math.round(damage * BATTLE_RULES.defenseDamageFactor));
-      const guard = turn.actor.side === 'enemy'
-        ? this.allies.find(u => u.deployed && u.hp > 0 && !u.left && this.commands.get(u.id)?.command === 'protect'
-          && this.commands.get(u.id)?.target === target.id)
-        : undefined;
-      const guardedDamage = guard ? Math.ceil(damage * BATTLE_RULES.protection.protectorShare) : 0;
-      const targetDamage = damage - guardedDamage;
-      const targetBefore = target.hp;
-      const guardBefore = guard?.hp;
-      if (guard) guard.hp = Math.max(0, guard.hp - guardedDamage);
-      target.hp = Math.max(0, target.hp - targetDamage);
-      if (target.id === 'hero') this.heroRage = Math.min(BATTLE_RULES.status.rageMax,
-        this.heroRage + (targetBefore - target.hp) * BATTLE_RULES.status.ragePerDamage);
-      if (guard?.id === 'hero' && guardBefore !== undefined) this.heroRage = Math.min(BATTLE_RULES.status.rageMax,
-        this.heroRage + (guardBefore - guard.hp) * BATTLE_RULES.status.ragePerDamage);
-      const event: AttackEvent = { kind: 'attack', actorId: turn.actor.id, targetId: target.id, damage,
-        targetDamage, targetBefore, targetAfter: target.hp,
-        guardId: guard?.id, guardDamage: guard ? guardedDamage : undefined, guardAfter: guard?.hp };
-      this.attackEvents.push(event);
-      this.events.push(event);
-      this.log.push(`${turn.actor.name} 攻击 ${target.name}，造成 ${damage} 点伤害${target.defending ? `（防御减伤，原 ${beforeDefense}）` : ''}${guard ? `；${guard.name} 保护分担 ${guardedDamage} 点，${target.name} 承受 ${targetDamage} 点` : ''}。${guard?.hp === 0 ? ` ${guard.name}${guard.id === 'hero' ? '倒地' : '失去战斗能力'}。` : ''}${target.hp === 0 ? ` ${target.name}${target.id === 'hero' ? '倒地' : '失去战斗能力'}。` : ''}`);
+      this.attack(turn.actor, target);
       if (this.checkWinner()) {
         if (this.winner === 'ally' && this.commands.get('hero')?.command === 'capture'
           && !this.lastOrder.includes('hero')) this.log.push('没有存活的敌人，抓取取消。');
@@ -378,5 +354,79 @@ export class Battle {
     } else {
       this.log.push(this.winner === 'ally' ? '战斗胜利！' : '战斗失败。');
     }
+  }
+
+  private attack(actor: Unit, target: Unit): void {
+    const combo = this.rollSkill(actor, 'combo');
+    for (let hit = 0; hit < (combo ? PET_SKILLS.combo.params.hits : 1); hit++) {
+      if (!inBattle(actor) || !inBattle(target)) break;
+      const crit = this.rollSkill(actor, 'crit');
+      const multiplier = (combo ? 1 - PET_SKILLS.combo.params.reduction : 1)
+        * (crit ? PET_SKILLS.crit.params.multiplier : 1);
+      const caption = [combo && PET_SKILLS.combo.name, crit && PET_SKILLS.crit.name].filter(Boolean).join('·');
+      const { lost, guardLost } = this.strike(actor, target, this.physicalDamage(actor, target, multiplier), 'main', caption);
+      this.lifesteal(actor, lost + guardLost);
+      if (!lost || !inBattle(target) || !inBattle(actor)) continue;
+      if (this.rollSkill(target, 'reflect')) {
+        const damage = Math.floor(lost * PET_SKILLS.reflect.params.ratio);
+        this.strike(target, actor, damage, 'reflect', PET_SKILLS.reflect.name);
+      }
+      if (inBattle(actor) && this.rollSkill(target, 'counter')) {
+        const damage = this.physicalDamage(target, actor, PET_SKILLS.counter.params.ratio);
+        this.strike(target, actor, damage, 'counter', PET_SKILLS.counter.name);
+      }
+    }
+  }
+
+  private rollSkill(unit: Unit, id: 'combo' | 'crit' | 'reflect' | 'counter'): boolean {
+    return unit.skillIds?.includes(id) === true && this.random() < PET_SKILLS[id].params.rate;
+  }
+
+  private physicalDamage(actor: Unit, target: Unit, multiplier: number): number {
+    const d = BATTLE_RULES.damage;
+    const factor = d.randomMin + this.random() * (d.randomMax - d.randomMin);
+    return Math.max(d.min, Math.round((actor.attack - target.defense * d.defenseFactor) * factor * multiplier));
+  }
+
+  private lifesteal(actor: Unit, lost: number): void {
+    if (!actor.skillIds?.includes('lifesteal')) return;
+    const amount = Math.min(actor.maxHp - actor.hp, Math.floor(lost * PET_SKILLS.lifesteal.params.ratio));
+    if (amount <= 0) return;
+    actor.hp += amount;
+    this.events.push({ kind: 'heal', logIndex: this.log.length, targetId: actor.id, amount, targetAfter: actor.hp });
+    this.log.push(`${actor.name} ${PET_SKILLS.lifesteal.name}，回复 ${amount} 点气血。`);
+  }
+
+  private loseHp(unit: Unit, damage: number): number {
+    const before = unit.hp;
+    unit.hp = Math.max(0, before - damage);
+    const lost = before - unit.hp;
+    if (unit.id === 'hero') this.heroRage = Math.min(BATTLE_RULES.status.rageMax,
+      this.heroRage + lost * BATTLE_RULES.status.ragePerDamage);
+    return lost;
+  }
+
+  private strike(actor: Unit, target: Unit, beforeDefense: number, source: AttackEvent['source'], caption: string) {
+    const defending = source !== 'reflect' && target.defending;
+    const damage = defending
+      ? Math.max(BATTLE_RULES.damage.min, Math.round(beforeDefense * BATTLE_RULES.defenseDamageFactor)) : beforeDefense;
+    const guard = source === 'main' && actor.side === 'enemy'
+      ? this.allies.find(u => inBattle(u) && this.commands.get(u.id)?.command === 'protect'
+        && this.commands.get(u.id)?.target === target.id)
+      : undefined;
+    const guardedDamage = guard ? Math.ceil(damage * BATTLE_RULES.protection.protectorShare) : 0;
+    const targetDamage = damage - guardedDamage;
+    const targetBefore = target.hp;
+    const guardLost = guard ? this.loseHp(guard, guardedDamage) : 0;
+    const lost = this.loseHp(target, targetDamage);
+    const event: AttackEvent = { kind: 'attack', source, caption, logIndex: this.log.length,
+      actorId: actor.id, targetId: target.id, damage,
+      targetDamage, targetBefore, targetAfter: target.hp,
+      guardId: guard?.id, guardDamage: guard ? guardedDamage : undefined, guardAfter: guard?.hp };
+    this.attackEvents.push(event);
+    this.events.push(event);
+    const action = caption || '攻击';
+    this.log.push(`${actor.name} ${action} ${target.name}，造成 ${damage} 点伤害${defending ? `（防御减伤，原 ${beforeDefense}）` : ''}${guard ? `；${guard.name} 保护分担 ${guardedDamage} 点，${target.name} 承受 ${targetDamage} 点` : ''}。${guard?.hp === 0 ? ` ${guard.name}${guard.id === 'hero' ? '倒地' : '失去战斗能力'}。` : ''}${target.hp === 0 ? ` ${target.name}${target.id === 'hero' ? '倒地' : '失去战斗能力'}。` : ''}`);
+    return { lost, guardLost };
   }
 }

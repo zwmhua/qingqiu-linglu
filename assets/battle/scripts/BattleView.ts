@@ -118,6 +118,7 @@ export class BattleView extends Component {
   private confirmingReset = false;
   private displayedHp: Map<string, number> | null = null;
   private animationQueue: BattleEvent[] = [];
+  private displayedLogEnd?: number;
   private displayedDeployment: Map<string, boolean> | null = null;
   private displayedLeft: Map<string, boolean> | null = null;
   private summonOpen = false;
@@ -698,18 +699,22 @@ export class BattleView extends Component {
     this.displayedLeft = new Map(this.battle.units.map(unit => [unit.id, unit.left]));
     for (const event of this.battle.events) if (event.kind === 'captureSuccess') this.displayedLeft.set(event.targetId, false);
     this.animationQueue = [...this.battle.events];
+    this.displayedLogEnd = this.animationQueue.find(event => 'logIndex' in event)?.logIndex;
     this.playing = true;
     this.render();
     this.playNextAttack();
     return true;
   }
 
-  private damageNumber(id: string, damage: number, speed: number): void {
-    if (damage <= 0) return;
+  private damageNumber(id: string, damage: number, speed: number, caption = ''): void {
+    if (damage === 0 && !caption) return;
     const point = this.unitPoint(this.battle.units.find(unit => unit.id === id)!);
     const previous = this.layer;
     this.layer = this.markerLayer;
-    const number = this.text(`-${damage}`, point.x - 45, point.y - 126, 26, '#F9D177', 90, 1);
+    const value = damage < 0 ? `+${-damage}` : damage > 0 ? `-${damage}` : '0';
+    const width = caption ? 210 : 90;
+    const number = this.text(caption ? `${caption} ${value}` : value, point.x - width / 2, point.y - 126,
+      26, damage < 0 ? '#9EE685' : '#F9D177', width, 1);
     this.layer = previous;
     const label = number.getComponent(Label)!;
     label.isBold = true;
@@ -752,9 +757,9 @@ export class BattleView extends Component {
     tween(flash).delay(seconds).call(() => flash.destroy()).start();
   }
 
-  private showImpact(id: string, damage: number, hp: number, dx: number, dy: number, speed: number): void {
+  private showImpact(id: string, damage: number, hp: number, dx: number, dy: number, speed: number, caption = ''): void {
     this.displayedHp!.set(id, hp);
-    this.damageNumber(id, damage, speed);
+    this.damageNumber(id, damage, speed, caption);
     const previous = this.layer;
     this.markerNodes.get(id)?.destroy();
     this.markerNodes.delete(id);
@@ -789,6 +794,7 @@ export class BattleView extends Component {
       this.displayedHp = null;
       this.displayedDeployment = null;
       this.displayedLeft = null;
+      this.displayedLogEnd = undefined;
       if (this.battle.phase === 'ended') { this.finishBattle(); return; }
       if (this.auto.enabled && this.battle.phase === 'command') this.runAuto();
       else this.render();
@@ -804,7 +810,19 @@ export class BattleView extends Component {
     const a = CONFIG.animation;
     const speed = this.speedMultiplier;
     const target = this.unitNodes.get(event.targetId);
-    const next = () => { this.render(); this.playNextAttack(); };
+    const next = () => {
+      if ('logIndex' in event) this.displayedLogEnd = event.logIndex + 1;
+      this.render();
+      this.playNextAttack();
+    };
+    if (event.kind === 'heal' || (event.kind === 'attack' && event.source === 'reflect')) {
+      const damage = event.kind === 'heal' ? -event.amount : event.targetDamage;
+      const caption = event.kind === 'heal' ? PET_SKILLS.lifesteal.name : event.caption;
+      this.showImpact(event.targetId, damage, event.targetAfter, 0, 0, speed, caption);
+      const reaction = a.hitSeconds + (event.targetAfter === 0 ? a.fadeSeconds : 0);
+      this.scheduleOnce(next, Math.max(a.floatSeconds, reaction) / speed);
+      return;
+    }
     if (event.kind !== 'attack') {
       const captured = event.kind === 'captureSuccess';
       const finish = () => {
@@ -827,7 +845,7 @@ export class BattleView extends Component {
     const direction = actor && target ? target.position.clone().subtract(actor.position).normalize() : Vec3.ZERO;
     const hit = () => {
       const { x, y } = direction;
-      this.showImpact(event.targetId, event.targetDamage, event.targetAfter, x, y, speed);
+      this.showImpact(event.targetId, event.targetDamage, event.targetAfter, x, y, speed, event.caption);
       if (event.guardId && event.guardAfter !== undefined)
         this.showImpact(event.guardId, event.guardDamage ?? 0, event.guardAfter, x, y, speed);
     };
@@ -844,7 +862,8 @@ export class BattleView extends Component {
 
   private logLines(): { text: string; result: boolean }[] {
     const lines: { text: string; result: boolean }[] = [];
-    for (const event of this.battle.log.slice(-4)) {
+    const end = this.displayedLogEnd ?? this.battle.log.length;
+    for (const event of this.battle.log.slice(Math.max(0, end - 4), end)) {
       const result = /战斗胜利|战斗失败/.test(event);
       let line = '';
       let width = 0;
@@ -1204,6 +1223,7 @@ export class BattleView extends Component {
     this.selectedPetId = null;
     this.releasePrompt = undefined;
     this.animationQueue = [];
+    this.displayedLogEnd = undefined;
     this.playing = false;
     this.resultCandidate = undefined;
     this.resultSaved = false;

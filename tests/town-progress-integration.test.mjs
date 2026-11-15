@@ -47,7 +47,7 @@ export const assetManager = { loadBundle(name, cb) {
   globalThis.loadedBundle = name; globalThis.townLoad = cb;
   (globalThis.bundleLoads ??= {})[name] = cb;
 } };
-export class Vec3 { constructor(x, y) { this.x = x; this.y = y; } }
+export class Vec3 { static ZERO = { x: 0, y: 0 }; constructor(x, y) { this.x = x; this.y = y; } }
 export class Rect { constructor(x, y, width, height) { Object.assign(this, { x, y, width, height }); } }
 export class Size {}
 export class Color {}
@@ -122,6 +122,37 @@ test('passive attributes render consistently and playback reveals healing before
   assert.equal(unit.hp, healed);
 });
 
+
+test('physical passive playback keeps each event HP until the queue empties at both speeds', () => {
+  const waits = [];
+  for (const speed of [1, 2]) {
+    const v = new BattleView(), pending = [], shown = [], logs = [];
+    v.townPreview = false;
+    v.speedMultiplier = speed;
+    const hit = (source, targetId, targetDamage, targetAfter) =>
+      ({ kind: 'attack', source, targetId, targetDamage, targetAfter });
+    const log = ['准备', '主击', '噬血一', '反弹', '还击', '主击二', '噬血二', '回合回血'];
+    v.battle = { phase: 'command', round: 2, log, events: [
+      hit('main', 'enemy-0', 60, 20), { kind: 'heal', targetId: 'pet', amount: 15, targetAfter: 35 },
+      hit('reflect', 'pet', 15, 20), hit('counter', 'pet', 10, 10), hit('main', 'enemy-0', 30, 0),
+      { kind: 'heal', targetId: 'pet', amount: 5, targetAfter: 15 },
+    ].map((event, index) => ({ ...event, logIndex: index + 1 })), units: [{ id: 'pet', hp: 20 }] };
+    v.scheduleOnce = (next, delay) => { pending.push(next); waits.push(delay); };
+    v.showImpact = (id, _damage, hp) => { v.displayedHp.set(id, hp); shown.push([...v.displayedHp.values()]); };
+    v.render = () => {
+      logs.push(v.logLines().at(-1).text);
+      if (!v.playing) shown.push([v.battle.units[0].hp]);
+    };
+    assert.ok(v.startPlayback(1, 'command', new Map([['pet', 20], ['enemy-0', 80]]), new Map()));
+    assert.deepEqual(shown, [[20, 20], [35, 20]]);
+    while (pending.length) pending.shift()();
+    assert.deepEqual(shown, [[20, 20], [35, 20], [20, 20], [10, 20], [10, 0], [15, 0], [20]]);
+    assert.equal(v.displayedHp, null);
+    assert.deepEqual(logs, log);
+  }
+  assert.equal(waits.length, 6);
+  assert.deepEqual(waits.slice(0, 3), waits.slice(3).map(delay => delay * 2));
+});
 test('town and outskirts use Spine run downhill, frame run uphill and keep one foot baseline', () => {
   const v = new BattleView();
   v.render = () => {};
