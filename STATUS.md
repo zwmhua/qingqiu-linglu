@@ -73,6 +73,10 @@
   - 同 SHA 全量 node:test 176 项成功，限定严格 tsc 退出 0。ego-browser 已试玩普通一击、固定技能组合及 ×2 回归。合入前在独立工作树重建 Web 和微信，两端退出 36 且日志均为 Finished。
   - 字节实测为 Web 总包 8450685，微信主包 919168、battle 3038994、town 1923710、outskirts 594500、inventory 57666，微信总包 6534038。较原主线增加 3210 字节，增量在 battle 分包。微信模拟器、真机与 Web 手机实机为 NOT_TESTED。
 
+- 2026-11-15 **task/36-battle-fx v2 已由华周试玩验收并快进合入 main。** 验收 SHA 为 `2e42feb95082bb8dd613dae1a3cac08e7c4aef51`，同击浮字精简、分项日志和双血条同步见 [v2 任务卡](docs/cards/card-P2-08-battle-fx-v2.md)与[回修及试玩记录](docs/cards/card-task-36-battle-fx.md)。
+  - 同 SHA 在独立工作树用 Creator 3.8.8 重建 Web mobile 和微信小游戏，两端均退出 36，构建日志均为 Finished。
+  - 实测字节为 Web 总包 8455332，微信主包 919168、battle 3043641、town 1923710、outskirts 594500、inventory 57666，微信总包 6538685。相对 P2-08 验收包，两端各增加 4647 字节，逐文件差异均在 battle 脚本。微信模拟器与真机本轮为 NOT_TESTED。
+
 ## P2-02B 验收记录
 
 - **P2-02B 城镇移动与面板接入（qa）**：基于华周已验收 A `6013bcebfcd4bcd12a5f3589b73049905c0ece0e`，分支 `task/30-p2-02b-town`，工作树 `C:/Users/hua/cocos/Project/qingqiu-linglu-task30`。开发与浏览器自测完成，华周已确认试玩通过。独立 QA 第1轮发现禁用输入问题，已按失败测试修复并在浏览器验证；只读静态复核 `bba74800e91145be5da006abd9c64a60bb64a859` 无剩余阻塞。QA 未跑测试或独立用例；本状态记录提交仅补交付证据。
