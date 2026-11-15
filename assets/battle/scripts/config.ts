@@ -54,6 +54,9 @@ export const CONFIG = {
 } as const;
 
 export const COMMAND_ICON_SIZE = 78;
+export const SPELL_TINTS: Record<string, string> = {
+  thunder: '#D0B5FF', fireball: '#FF976A', waterarrow: '#77DBFF',
+};
 const commandBottom = CONFIG.height - COMMAND_ICON_SIZE - 30;
 const commandVerticalStep = (commandBottom - CONFIG.visual.commandTop) / 3;
 const commandHorizontalStep = 80;

@@ -1,4 +1,5 @@
 import type { Battle, Unit } from '../scripts/Battle';
+import { activeSpells } from './pet-skills';
 
 type Enemy = Pick<Unit, 'id' | 'hp' | 'left'>;
 type AutoOrder = { command: 'attack' | 'defend'; target?: string };
@@ -20,7 +21,8 @@ export class AutoCommands {
     if (!this.enabled || battle.phase === 'ended') return;
     for (const actor of [...battle.pending]) {
       const order = nextAutoOrder(battle.lastCommands.get(actor.id)?.command, battle.enemies, this.random);
-      battle.command(actor.id, order.command, order.target);
+      const autoAttack = order.command === 'attack' && actor.id !== 'hero' && activeSpells(actor.skillIds).length > 0;
+      battle.command(actor.id, autoAttack ? 'autoAttack' : order.command, order.target);
     }
   }
 }

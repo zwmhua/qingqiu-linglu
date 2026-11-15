@@ -21,6 +21,87 @@ const make = (count = 1) => {
   return battle;
 };
 
+function spellFight() {
+  const battle = make(2), [hero, pet] = battle.allies, [enemy, other] = battle.enemies;
+  Object.assign(pet, { level: 0, spirit: 24, mana: 5, speed: 100, hp: 30,
+    skillIds: ['thunder', 'fireball', 'waterarrow', 'combo', 'crit', 'lifesteal', 'reflect', 'counter'] });
+  Object.assign(enemy, { hp: 120, spirit: 19, defense: 800, speed: 1, skillIds: ['armor', 'reflect', 'counter'] });
+  Object.assign(other, { hp: 120, speed: 1, skillIds: [] });
+  return { battle, hero, pet, enemy, other };
+}
+
+test('three spells spend mana on execution and ignore armor, defense and physical passives', () => {
+  for (const skill of ['thunder', 'fireball', 'waterarrow']) {
+    const { battle, pet, hero, enemy } = spellFight();
+    enemy.defending = true;
+    battle.command(pet.id, 'spell', enemy.id, skill);
+    assert.equal(pet.mana, 5);
+    battle.command(hero.id, 'defend');
+    assert.deepEqual(battle.events[0].targets, [{ targetId: enemy.id, damage: 23, hpAfter: 97 }]);
+    assert.deepEqual([battle.events[0].skillId, battle.events[0].manaAfter, pet.mana], [skill, 0, 0]);
+    assert.ok(!battle.events.some(e => e.kind === 'heal' || e.source === 'reflect' || e.source === 'counter'));
+  }
+});
+
+test('enemy uses the first affordable spell, bypasses protection, and only draws its original target roll', () => {
+  const { battle, pet, hero, enemy, other } = spellFight();
+  Object.assign(enemy, { mana: 5, speed: 110, spirit: 0, skillIds: ['armor', 'waterarrow', 'fireball'] });
+  other.hp = 0;
+  let draws = 0;
+  battle.random = () => { draws++; return 0.9; };
+  battle.command(hero.id, 'protect', pet.id);
+  battle.command(pet.id, 'defend');
+  assert.deepEqual(battle.events[0].targets, [{ targetId: pet.id, damage: 1, hpAfter: 29 }]);
+  assert.deepEqual([battle.events[0].skillId, enemy.mana, hero.hp, draws], ['waterarrow', 0, hero.maxHp, 1]);
+  pet.skillIds = [];
+  battle.command(hero.id, 'defend'); battle.command(pet.id, 'defend');
+  assert.deepEqual([battle.events[0].kind, draws], ['attack', 3]);
+});
+
+test('spell validation preserves mana and a queued shortfall uses the existing attack fallback', () => {
+  const { battle, pet, hero, enemy, other } = spellFight();
+  pet.mana = 4;
+  pet.skillIds = ['thunder', 'armor'];
+  assert.throws(() => battle.command(pet.id, 'spell', enemy.id, 'thunder'), /法力不足/);
+  assert.throws(() => battle.command(hero.id, 'spell', enemy.id, 'thunder'));
+  assert.throws(() => battle.command(pet.id, 'spell', enemy.id, 'armor'));
+  assert.throws(() => battle.command(pet.id, 'spell', enemy.id, 'fireball'));
+  assert.throws(() => battle.command(pet.id, 'spell', hero.id, 'thunder'));
+  assert.deepEqual([pet.mana, battle.commands.size], [4, 0]);
+  pet.mana = 5;
+  battle.command(pet.id, 'spell', enemy.id, 'thunder');
+  pet.mana = 4; enemy.hp = 0;
+  battle.command(hero.id, 'defend');
+  assert.deepEqual([battle.events[0].kind, battle.events[0].targetId, pet.mana], ['attack', other.id, 4]);
+  assert.ok(battle.log.some(line => line.includes('法力不足，改为普攻')));
+});
+
+test('inactive, displaced, flees and lost targets spend no mana; resummoning preserves it', () => {
+  for (const reason of ['down', 'summon', 'flee', 'target', 'victory']) {
+    const { battle, pet, hero, enemy, other } = spellFight();
+    battle.command(pet.id, 'spell', enemy.id, 'thunder');
+    if (reason === 'down') Object.assign(other, { attack: 1000, speed: 200 });
+    if (reason === 'target' || reason === 'victory') {
+      enemy.hp = 1; hero.speed = 200;
+      if (reason === 'victory') other.hp = 0;
+    }
+    if (reason === 'summon') hero.speed = 200;
+    if (reason === 'down') battle.random = () => 0.9;
+    battle.command(hero.id, reason === 'target' || reason === 'victory' ? 'attack'
+      : reason === 'down' ? 'defend' : reason, reason === 'summon' ? 'pet-2' : enemy.id);
+    assert.equal(pet.mana, 5, reason);
+  }
+  const { battle, pet, hero, enemy } = spellFight();
+  battle.command(pet.id, 'spell', enemy.id, 'thunder'); battle.command(hero.id, 'defend');
+  for (const incoming of ['pet-2', pet.id]) {
+    battle.command(hero.id, 'summon', incoming); battle.command(battle.selectedPetId, 'defend');
+  }
+  assert.deepEqual([pet.deployed, pet.mana], [true, 0]);
+  const fresh = new Battle(fixed, 1, 0, battle.session).pets[0];
+  assert.ok(fresh.mana > 0);
+  assert.equal(fresh.mana, fresh.maxMana);
+});
+
 test('hero flee withdraws the whole team before attacks, with an explicit result and no reward', () => {
   const battle = make(2);
   assert.throws(() => battle.command('hero', 'retreat'));

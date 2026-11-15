@@ -28,6 +28,16 @@ export const PET_SKILLS: Record<string, Skill> = {
     description: p => `每回合开始时，在场且存活则回复“自身等级÷${p.divisor}”点气血，向下取整，不超过气血上限。` },
   thunder: spell('雷击术'), fireball: spell('火球术'), waterarrow: spell('水箭术'),
 };
+export const activeSpells = (ids: readonly string[] = []) =>
+  ids.filter(id => PET_SKILLS[id]?.kind === 'active');
+
+export const firstAffordableSpell = ({ skillIds, mana }: { skillIds?: string[]; mana: number }) =>
+  activeSpells(skillIds).find(id => PET_SKILLS[id].params.mana <= mana);
+
+export function spellDamage(id: string, caster: { level: number; spirit: number }, targetSpirit: number): number {
+  const { base, level, spirit, resistance } = PET_SKILLS[id].params;
+  return Math.max(1, Math.round(base + level * Math.max(1, caster.level) + spirit * caster.spirit - resistance * targetSpirit));
+}
 export const SKILL_POOLS: Record<WildSpecies, { innate: string[]; random: string[] }> = {
   tingwa: { innate: [], random: ['regen', 'swift', 'combo', 'lifesteal', 'waterarrow'] },
   pangui: { innate: ['armor'], random: ['reflect', 'counter', 'regen', 'power'] },

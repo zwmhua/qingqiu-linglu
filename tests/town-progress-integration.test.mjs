@@ -215,6 +215,30 @@ test('spell playback staggers targets, hits at the glow peak, and waits for both
   assert.deepEqual([v.playing, v.animationQueue.length, v.displayedHp], [false, 0, null]);
 });
 
+test('real spell playback keeps mana and HP separate until cast and impact, then settles once', async () => {
+  const { Battle } = await import('../assets/battle/scripts/Battle.ts');
+  const v = new BattleView(), pulses = [];
+  v.townPreview = false;
+  const b = v.battle = new Battle(() => 0.5, 1, 0, new SessionProgress(initialHero()));
+  Object.assign(b.pets[0], { skillIds: ['thunder'], mana: 5, speed: 100 });
+  b.roster.entries[0].exp = 19;
+  b.enemies[0].hp = 1;
+  const hp = v.captureHp(), deployed = v.captureDeployment();
+  v.render = () => {};
+  v.finishBattle = () => { assert.equal(v.playing, false); pulses.push('finish'); };
+  v.magicPulse = (_id, _feet, _speed, peak, done) => pulses.push({ peak, done });
+  v.showImpact = (id, _damage, hp, _dx, _dy, _speed, _caption, done) => { v.displayedHp.set(id, hp); done(); };
+  b.command('hero', 'defend'); b.command('pet', 'spell', 'enemy-0', 'thunder');
+  assert.equal(b.events[0]?.kind, 'spell');
+  assert.ok(v.startPlayback(1, 'command', hp, deployed));
+  assert.deepEqual([v.displayedMana.get('pet'), v.displayedHp.get('enemy-0')], [5, 1]);
+  pulses[0].peak(); pulses[0].done();
+  assert.deepEqual([v.displayedMana.get('pet'), v.displayedHp.get('enemy-0')], [0, 1]);
+  pulses[1].peak();
+  assert.deepEqual([pulses[2], v.displayedMana, b.result], ['finish', null, 'victory']);
+  assert.deepEqual([b.pets[0].level, b.pets[0].mana], [2, b.pets[0].maxMana]);
+});
+
 test('town and outskirts use Spine run downhill, frame run uphill and keep one foot baseline', () => {
   const v = new BattleView();
   v.render = () => {};

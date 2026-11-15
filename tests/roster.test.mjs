@@ -70,7 +70,8 @@ test('a captured pet can be summoned from the next hero command with its capture
 });
 
 test('three captures fill five slots; full roster rejects without spending command or rolling', () => {
-  const battle = new Battle(() => 0, 3);
+  const battle = new Battle(() => 0, 3, 0, undefined, undefined, undefined, undefined,
+    undefined, undefined, undefined, undefined, () => 0);
   for (let i = 0; i < 3; i++) winCapture(battle, `enemy-${i}`);
   assert.equal(battle.roster.entries.length, 5);
   assert.equal(new Set(battle.roster.entries.map(pet => pet.id)).size, 5);
@@ -114,7 +115,7 @@ test('release rejects an active battle, the deployed pet and the last pet', () =
 
 test('release saves before removal, restores one carried pet and frees a capture slot', () => {
   const make = (count, previous, selectedPetId) => new Battle(() => 0, count, 0, previous, () => 1,
-    undefined, undefined, undefined, () => 1, undefined, { hero: initialHero(), selectedPetId });
+    undefined, undefined, undefined, () => 1, undefined, { hero: initialHero(), selectedPetId }, () => 0);
   let value = null;
   const storage = { getItem: () => value, setItem: (_key, next) => { value = next; },
     removeItem: () => { value = null; } };

@@ -6,18 +6,18 @@ import { BABY_CONFIG, effectiveLevel, isBabyEncounter } from '../logic/baby';
 import { generateAptitudes } from '../logic/aptitude';
 import { generateGrowth } from '../logic/growth';
 import { generateBaseStats } from '../logic/base-stats';
-import { generateSkills, PET_SKILLS } from '../logic/pet-skills';
-import { effectivePetPanel, statPassives, regenAmount } from '../logic/pet-panel';
+import { activeSpells, firstAffordableSpell, generateSkills, PET_SKILLS, spellDamage } from '../logic/pet-skills';
+import { effectivePetPanel, petPanel, statPassives, regenAmount } from '../logic/pet-panel';
 import type { Aptitudes } from '../logic/aptitude';
 import type { BaseStats } from '../logic/base-stats';
 import { MUTATION_CONFIG, isMutation, mutateAptitudes } from '../logic/mutation';
 import { WILD_SPECIES, pickWildLevel, pickWildSpecies, wildCombat } from '../logic/wild-encounter';
 import type { WildSpecies } from '../logic/wild-encounter';
-import { HERO_PROGRESSION, awardExperience, heroPanel } from '../logic/hero-progress';
+import { HERO_PROGRESSION, awardExperience, heroPanel, initialHero } from '../logic/hero-progress';
 import type { HeroProgress, LevelProgress } from '../logic/hero-progress';
 
 export type Side = 'ally' | 'enemy';
-export type Command = 'attack' | 'defend' | 'protect' | 'retreat' | 'flee' | 'summon' | 'capture';
+export type Command = 'attack' | 'defend' | 'protect' | 'retreat' | 'flee' | 'summon' | 'capture' | 'spell' | 'autoAttack';
 export type Unit = {
   id: string; name: string; side: Side; slot: number; level: number;
   species?: WildSpecies; isBaby?: boolean; isMutated?: boolean; combatLevel?: number;
@@ -25,9 +25,11 @@ export type Unit = {
   growth?: number;
   baseStats?: BaseStats;
   hp: number; maxHp: number; attack: number; defense: number; speed: number;
+  mana: number; maxMana: number; spirit: number;
   defending: boolean; left: boolean; deployed: boolean; skill?: string; skillIds?: string[];
 };
-type Order = { actor: Unit; command: Command; target?: string };
+type Choice = { command: Command; target?: string; skillId?: string };
+type Order = Choice & { actor: Unit };
 export type AttackEvent = {
   kind: 'attack'; source: 'main' | 'reflect' | 'counter'; caption: string;
   logIndex: number; actorId: string; targetId: string; damage: number; targetDamage: number;
@@ -37,20 +39,27 @@ export type AttackEvent = {
 export type SummonEvent = { kind: 'summon'; actorId: string; fromId?: string; toId: string };
 export type CaptureEvent = { kind: 'captureSuccess' | 'captureFail'; actorId: string; targetId: string };
 type HealEvent = { kind: 'heal'; logIndex: number; targetId: string; amount: number; targetAfter: number };
-export type BattleEvent = AttackEvent | SummonEvent | CaptureEvent | HealEvent;
+export type SpellEvent = {
+  kind: 'spell'; actorId: string; logIndex: number; skillId: string; manaAfter: number;
+  targets: readonly { targetId: string; damage: number; hpAfter: number }[];
+};
+export type BattleEvent = AttackEvent | SummonEvent | CaptureEvent | HealEvent | SpellEvent;
 const inBattle = (u: Unit): boolean => u.deployed && u.hp > 0 && !u.left;
+const filledMana = <T extends { maxMana: number }>(stats: T) => ({ ...stats, mana: stats.maxMana });
 
 export class Battle {
   allies: Unit[] = [];
   enemies: Unit[] = [];
   readonly session: SessionProgress;
   get roster() { return this.session.roster; }
-  commands = new Map<string, { command: Command; target?: string }>();
-  lastCommands = new Map<string, { command: Command; target?: string }>();
+  commands = new Map<string, Choice>();
+  lastCommands = new Map<string, Choice>();
   log: string[] = [];
   lastOrder: string[] = [];
   attackEvents: AttackEvent[] = [];
   events: BattleEvent[] = [];
+  manaBefore = new Map<string, number>();
+  maxManaBefore = new Map<string, number>();
   summonsUsed = 0;
   heroRage: number;
   phase: 'command' | 'ended' = 'command';
@@ -81,9 +90,11 @@ export class Battle {
     const progress = this.heroProgress;
     const stats = progress ? heroPanel(progress.stats) : undefined;
     const hero = BATTLE_RULES.hero;
+    const maxMana = stats?.maxMana ?? BATTLE_RULES.status.heroManaMax;
     this.allies = [
       { id: 'hero', name: hero.name, side: 'ally', slot: 1, level: progress?.level ?? hero.level,
         hp: stats?.maxHp ?? hero.hp, maxHp: stats?.maxHp ?? hero.hp, attack: stats?.attack ?? hero.attack,
+        mana: maxMana, maxMana, spirit: stats?.spirit ?? heroPanel(initialHero().stats).spirit,
         defense: stats?.defense ?? hero.defense, speed: stats?.speed ?? hero.speed,
         combatLevel: effectiveLevel(progress?.level ?? hero.level), defending: false, left: false, deployed: true },
     ];
@@ -96,7 +107,7 @@ export class Battle {
       baseStats: pet.baseStats,
       skillIds: [...(pet.skillIds ?? [])],
       isMutated: pet.isMutated,
-      hp: pet.maxHp, ...effectivePetPanel(pet),
+      hp: pet.maxHp, ...filledMana(effectivePetPanel(pet)),
       skill: pet.skill, defending: false, left: false, deployed: pet.id === this.selectedPetId,
     })));
     this.participatedPets.add(this.selectedPetId);
@@ -110,12 +121,14 @@ export class Battle {
       const isBaby = isBabyEncounter(babyRandom(), BABY_CONFIG.encounterRate);
       const isMutated = isBaby && isMutation(mutationRandom(), MUTATION_CONFIG.rate);
       const level = isBaby ? BABY_CONFIG.level : pickWildLevel(encounterRandom());
-      const aptitudes = generateAptitudes(isBaby, aptitudeRandom, wild.aptitudes);
+      const baseAptitudes = generateAptitudes(isBaby, aptitudeRandom, wild.aptitudes);
+      const aptitudes = isMutated ? mutateAptitudes(baseAptitudes, MUTATION_CONFIG.multiplier) : baseAptitudes;
+      const growth = generateGrowth(isBaby, growthRandom, wild.growth);
+      const baseStats = generateBaseStats(level, baseStatsRandom);
+      const { maxMana, spirit } = petPanel({ level, aptitudes, growth, baseStats });
       this.enemies.push({ id: `enemy-${i}`, name: isBaby ? `${wild.name}宝宝` : `野外${wild.name}`,
         side: 'enemy', slot: i, species, level, isBaby, isMutated, combatLevel: effectiveLevel(level),
-        aptitudes: isMutated ? mutateAptitudes(aptitudes, MUTATION_CONFIG.multiplier) : aptitudes,
-        growth: generateGrowth(isBaby, growthRandom, wild.growth),
-        baseStats: generateBaseStats(level, baseStatsRandom),
+        aptitudes, growth, baseStats, mana: maxMana, maxMana, spirit,
         skillIds: generateSkills(species, isMutated, skillRandom),
         ...wildCombat(species, level), defending: false, left: false, deployed: true });
     }
@@ -158,7 +171,7 @@ export class Battle {
     return this.allies.filter(u => u.id !== actorId && u.deployed && u.hp > 0 && !u.left && !reserved.has(u.id));
   }
 
-  command(actorId: string, command: Command, target?: string): void {
+  command(actorId: string, command: Command, target?: string, skillId?: string): void {
     if (this.phase !== 'command') throw new Error('当前不能下达指令');
     const actor = this.allies.find(u => u.id === actorId && u.deployed && u.hp > 0 && !u.left);
     if (!actor || this.commands.has(actorId)) throw new Error('单位不能接收指令');
@@ -168,8 +181,14 @@ export class Battle {
     if (command === 'summon' && (actor.id !== 'hero' || !this.summonTargets().some(u => u.id === target))) {
       throw new Error('没有可召唤的灵宠');
     }
-    if (command === 'attack' && !this.enemies.some(u => u.id === target && u.hp > 0 && !u.left)) {
+    if ((command === 'attack' || command === 'autoAttack' || command === 'spell')
+      && !this.enemies.some(u => u.id === target && inBattle(u))) {
       throw new Error('攻击需要存活目标');
+    }
+    if (command === 'spell') {
+      if (actor.id === 'hero' || !skillId || !activeSpells(actor.skillIds).includes(skillId))
+        throw new Error('未学会该灵术');
+      if (actor.mana < PET_SKILLS[skillId].params.mana) throw new Error('法力不足');
     }
     if (command === 'capture') {
       if (actor.id !== 'hero') throw new Error('只有撷灵客才能抓取');
@@ -183,7 +202,7 @@ export class Battle {
         throw new Error('保护需要其他存活的我方目标');
       }
     }
-    this.commands.set(actorId, { command, target });
+    this.commands.set(actorId, { command, target, ...(command === 'spell' && { skillId }) });
     if (this.pending.length === 0) this.resolve();
   }
 
@@ -242,14 +261,14 @@ export class Battle {
       if (this.levelsGained > 0) {
         const hero = this.allies[0];
         const stats = heroPanel(this.heroProgress.stats);
-        Object.assign(hero, stats, { hp: stats.maxHp, level: this.heroProgress.level,
+        Object.assign(hero, filledMana(stats), { hp: stats.maxHp, level: this.heroProgress.level,
           combatLevel: effectiveLevel(this.heroProgress.level) });
       }
       this.roster.awardExperience(this.participatedPets, this.earnedExp);
       for (const unit of this.pets) {
         const pet = this.roster.entries.find(entry => entry.id === unit.id);
         if (pet && pet.level !== unit.level)
-          Object.assign(unit, pet, effectivePetPanel(pet), { combatLevel: effectiveLevel(pet.level) });
+          Object.assign(unit, pet, filledMana(effectivePetPanel(pet)), { combatLevel: effectiveLevel(pet.level) });
       }
     }
     return this.winner;
@@ -259,6 +278,8 @@ export class Battle {
     this.lastCommands = new Map(this.commands);
     this.attackEvents = [];
     this.events = [];
+    this.manaBefore = new Map(this.units.map(unit => [unit.id, unit.mana]));
+    this.maxManaBefore = new Map(this.units.map(unit => [unit.id, unit.maxMana]));
     if (this.commands.get('hero')?.command === 'flee' && this.allies[0].hp > 0) {
       for (const ally of this.allies) ally.left = true;
       this.result = 'escaped';
@@ -287,12 +308,12 @@ export class Battle {
     const turns: Order[] = [];
     for (const ally of this.allies) {
       const chosen = this.commands.get(ally.id);
-      if (chosen && ally.deployed && ally.hp > 0 && !ally.left && (chosen.command === 'attack' || chosen.command === 'defend' || chosen.command === 'summon' || chosen.command === 'capture')) {
+      if (chosen && inBattle(ally) && chosen.command !== 'protect') {
         turns.push({ actor: ally, ...chosen });
       }
     }
     for (const enemy of this.enemies) {
-      if (enemy.hp > 0 && !enemy.left) turns.push({ actor: enemy, command: 'attack' });
+      if (inBattle(enemy)) turns.push({ actor: enemy, command: 'autoAttack' });
     }
     turns.sort((a, b) => b.actor.speed - a.actor.speed ||
       (a.actor.side === b.actor.side ? a.actor.slot - b.actor.slot : a.actor.side === 'ally' ? -1 : 1));
@@ -324,7 +345,7 @@ export class Battle {
         if (success) {
           if (!this.roster.addCaptured(target)) throw new Error('携带记录无法新增');
           const carried = this.roster.entries[this.roster.entries.length - 1];
-          this.allies.push({ ...target, ...carried, ...effectivePetPanel(carried), side: 'ally', slot: 0,
+          this.allies.push({ ...target, ...carried, ...filledMana(effectivePetPanel(carried)), side: 'ally', slot: 0,
             defending: false, left: false, deployed: false });
           target.left = true;
         }
@@ -335,10 +356,19 @@ export class Battle {
         continue;
       }
       const targets = (turn.actor.side === 'ally' ? this.enemies : this.allies).filter(inBattle);
-      const target = targets.find(u => u.id === turn.target) ??
+      const chosenTarget = targets.find(u => u.id === turn.target);
+      let skillId = turn.command === 'autoAttack' && turn.actor.id !== 'hero'
+        ? firstAffordableSpell(turn.actor) : turn.skillId;
+      if (skillId && turn.actor.mana < PET_SKILLS[skillId].params.mana) {
+        this.log.push(`${turn.actor.name} 法力不足，改为普攻。`);
+        skillId = undefined;
+      }
+      if (skillId && turn.command === 'spell' && !chosenTarget) continue;
+      const target = chosenTarget ??
         targets[turn.actor.side === 'enemy' && targets.length ? Math.floor(this.random() * targets.length) : 0];
       if (!target) break;
-      this.attack(turn.actor, target);
+      if (skillId) this.cast(turn.actor, target, skillId);
+      else this.attack(turn.actor, target);
       if (this.checkWinner()) {
         if (this.winner === 'ally' && this.commands.get('hero')?.command === 'capture'
           && !this.lastOrder.includes('hero')) this.log.push('没有存活的敌人，抓取取消。');
@@ -354,6 +384,16 @@ export class Battle {
     } else {
       this.log.push(this.winner === 'ally' ? '战斗胜利！' : '战斗失败。');
     }
+  }
+
+  private cast(actor: Unit, target: Unit, skillId: string): void {
+    const skill = PET_SKILLS[skillId];
+    const damage = spellDamage(skillId, actor, target.spirit);
+    actor.mana -= skill.params.mana;
+    this.loseHp(target, damage);
+    this.events.push({ kind: 'spell', actorId: actor.id, skillId, manaAfter: actor.mana,
+      logIndex: this.log.length, targets: [{ targetId: target.id, damage, hpAfter: target.hp }] });
+    this.log.push(`${actor.name} 施放 ${skill.name}，对 ${target.name} 造成 ${damage} 点伤害。`);
   }
 
   private attack(actor: Unit, target: Unit): void {

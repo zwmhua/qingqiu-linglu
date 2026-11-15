@@ -8,9 +8,11 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 } });
 const { Battle } = await import('../assets/battle/scripts/Battle.ts');
 const { AutoCommands, nextAutoOrder } = await import('../assets/battle/logic/auto.ts');
+const fight = () => new Battle(() => 0.5, 3, 0, undefined, () => 1,
+  undefined, undefined, undefined, undefined, undefined, undefined, () => 0);
 
 test('first-round auto issues both attacks immediately with injected random targets', () => {
-  const battle = new Battle(() => 0.5, 3);
+  const battle = fight();
   const rolls = [0, 0.99, 0.5, 0.5];
   const auto = new AutoCommands(() => rolls.shift());
   auto.toggle();
@@ -28,7 +30,7 @@ test('first-round auto issues both attacks immediately with injected random targ
 });
 
 test('auto repeats each actor attack or defense; other prior commands fall back to attack', () => {
-  const battle = new Battle(() => 0.5, 3);
+  const battle = fight();
   battle.command('hero', 'defend');
   battle.command('pet', 'attack', 'enemy-0');
   const auto = new AutoCommands(() => 0.99);
@@ -48,7 +50,7 @@ test('auto repeats each actor attack or defense; other prior commands fall back 
 });
 
 test('cancel restores manual commands; enabled auto carries into the next battle', () => {
-  const battle = new Battle(() => 0.5, 3);
+  const battle = fight();
   const auto = new AutoCommands(() => 0);
   auto.toggle();
   auto.issue(battle);
@@ -61,8 +63,22 @@ test('cancel restores manual commands; enabled auto carries into the next battle
   battle.checkWinner();
   auto.issue(battle);
   assert.equal(auto.enabled, true);
-  const next = new Battle(() => 0.5, 3);
+  const next = fight();
   auto.issue(next);
   assert.equal(next.round, 2);
   assert.equal(new AutoCommands(() => 0).enabled, false);
+});
+
+test('auto keeps hero defense, picks the first learned affordable spell and falls back to attack', () => {
+  const battle = fight(), pet = battle.pets[0], rolls = [0.99, 0.5];
+  Object.assign(pet, { skillIds: ['armor', 'fireball', 'thunder'], mana: 5, speed: 100 });
+  battle.lastCommands.set('hero', { command: 'defend' });
+  const auto = new AutoCommands(() => rolls.shift());
+  auto.toggle(); auto.issue(battle);
+  const spell = battle.events.find(e => e.kind === 'spell');
+  assert.deepEqual([spell?.skillId, spell?.targets[0].targetId, pet.mana], ['fireball', 'enemy-2', 0]);
+  auto.issue(battle);
+  assert.equal(battle.lastCommands.get('hero').command, 'defend');
+  assert.ok(battle.attackEvents.some(e => e.actorId === pet.id && e.targetId === 'enemy-1'));
+  assert.equal(rolls.length, 0);
 });

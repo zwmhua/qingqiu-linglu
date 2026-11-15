@@ -1,7 +1,7 @@
 import { game, Game, _decorator, BlockInputEvents, Color, Component, EventTouch, Graphics, Label, Mask, Node, ResolutionPolicy, RichText, Sprite, SpriteFrame, sys, tween, Tween, UIOpacity, UITransform, Vec3, view } from 'cc';
 import { TownView } from './TownView';
-import { AttackEvent, Battle, BattleEvent, Unit } from './Battle';
-import { COMMAND_ICON_SIZE, COMMAND_LAYOUT, CONFIG } from './config';
+import { AttackEvent, Battle, BattleEvent, SpellEvent, Unit } from './Battle';
+import { COMMAND_ICON_SIZE, COMMAND_LAYOUT, CONFIG, SPELL_TINTS } from './config';
 import { BATTLE_RULES } from '../logic/battle-rules';
 import { targetCommand, toggleTarget } from '../logic/targeting';
 import { AutoCommands } from '../logic/auto';
@@ -19,11 +19,10 @@ import { HERO_PROGRESSION, adjustPotential, heroPanel, heroPanelPreview, initial
 import { HoldRepeat } from '../logic/hold-repeat';
 import { browserParams, progressIO, wechatStorage } from '../../logic/platform';
 import { ProgressLoader, progressSnapshot, resetProgress, saveProgress } from '../logic/local-progress';
-import { PET_SKILLS, SKILL_POOLS, skillDescription } from '../logic/pet-skills';
+import { activeSpells, PET_SKILLS, SKILL_POOLS, skillDescription } from '../logic/pet-skills';
 import type { TargetMode } from '../logic/targeting';
 
-type SpellFxEvent = {
-  kind: 'spell'; actorId: string; logIndex: number;
+type SpellFxEvent = Pick<SpellEvent, 'kind' | 'actorId' | 'logIndex'> & Partial<Pick<SpellEvent, 'skillId' | 'manaAfter'>> & {
   targets: readonly { targetId: string; damage: number; hpAfter: number; missed?: boolean }[];
 };
 type ViewBattleEvent = BattleEvent | SpellFxEvent | { kind: 'dodge'; targetId: string; logIndex: number };
@@ -113,6 +112,8 @@ export class BattleView extends Component {
   private skillOpen?: string;
   private layoutTest = this.devPreview && queryParams().get('layout') === '10v10';
   private choosingTarget: TargetMode | null = null;
+  private spellOpen = false;
+  private spellId?: string;
   private lastShownSecond = -1;
   private layer!: Node;
   private markerLayer!: Node;
@@ -121,12 +122,14 @@ export class BattleView extends Component {
   private shadowNodes = new Map<string, Node>();
   private markerNodes = new Map<string, Node>();
   private statusHpBars = new Map<string, (hp: number) => void>();
+  private statusManaBars = new Map<string, (mana: number) => void>();
   private markerHpBars = new Map<string, (hp: number) => void>();
   private basePositions = new Map<string, Vec3>();
   private ringOpacities = new Map<string, UIOpacity>();
   private confirmingTarget = false;
   private confirmingReset = false;
   private displayedHp: Map<string, number> | null = null;
+  private displayedMana: Map<string, number> | null = null;
   private animationQueue: ViewBattleEvent[] = [];
   private displayedLogEnd?: number;
   private displayedDeployment: Map<string, boolean> | null = null;
@@ -455,6 +458,7 @@ export class BattleView extends Component {
       if (this.confirmingTarget || (this.playing && !this.auto.enabled)) return;
       this.auto.toggle();
       this.choosingTarget = null;
+      this.spellOpen = false;
       this.summonOpen = false;
       this.rosterOpen = false;
       paint();
@@ -662,7 +666,7 @@ export class BattleView extends Component {
     const phase = this.battle.phase;
         const hp = this.captureHp();
         const deployment = this.captureDeployment();
-        this.battle.command(actor.id, command, id);
+        this.battle.command(actor.id, command, id, command === 'spell' ? this.spellId : undefined);
         this.choosingTarget = null;
         this.confirmingTarget = false;
         if (this.startPlayback(before, phase, hp, deployment)) return;
@@ -713,6 +717,8 @@ export class BattleView extends Component {
   private startPlayback(round: number, phase: string, hp: Map<string, number>, deployment: Map<string, boolean>,
     events: readonly ViewBattleEvent[] = this.battle.events): boolean {
     if (round === this.battle.round && phase === this.battle.phase) return false;
+    this.spellOpen = false;
+    if (this.choosingTarget === 'spell') this.choosingTarget = null;
     if (this.battle.phase !== 'ended' && this.battle.events.some(event =>
       event.kind === 'summon' || event.kind === 'captureSuccess')) this.persistProgress();
     if (events.length === 0) {
@@ -720,6 +726,7 @@ export class BattleView extends Component {
       return this.battle.phase === 'ended';
     }
     this.displayedHp = hp;
+    this.displayedMana = new Map(this.battle.manaBefore);
     this.displayedDeployment = deployment;
     this.displayedLeft = new Map(this.battle.units.map(unit => [unit.id, unit.left]));
     for (const event of events) if (event.kind === 'captureSuccess') this.displayedLeft.set(event.targetId, false);
@@ -894,7 +901,7 @@ export class BattleView extends Component {
       this.damageNumber(id, damage, speed, caption, () => { if (--remaining === 0) next(); }, small, offset);
   }
 
-  private magicPulse(id: string, feet: boolean, speed: number, peak?: () => void, done?: () => void): void {
+  private magicPulse(id: string, feet: boolean, speed: number, peak?: () => void, done?: () => void, tint = '#94DCFF'): void {
     const a = CONFIG.animation;
     const point = this.unitPoint(this.battle.units.find(unit => unit.id === id)!);
     const glow = new Node(feet ? 'spell-ring' : 'spell-impact');
@@ -903,12 +910,12 @@ export class BattleView extends Component {
     glow.addComponent(UITransform);
     const ink = glow.addComponent(Graphics);
     if (feet) {
-      ink.strokeColor = C('#94DCFF');
+      ink.strokeColor = C(tint);
       ink.lineWidth = a.spellRingWidth;
       ink.ellipse(0, 0, a.spellRingX, a.spellRingY);
       ink.stroke();
     } else {
-      ink.fillColor = C('#9CB9FFA0');
+      ink.fillColor = C(tint + 'A0');
       ink.circle(0, 0, a.spellRadius);
       ink.fill();
       ink.fillColor = C('#E9F8FF');
@@ -924,25 +931,31 @@ export class BattleView extends Component {
 
   private playSpell(event: SpellFxEvent, speed: number, next: () => void): void {
     const a = CONFIG.animation;
+    const skill = event.skillId ? PET_SKILLS[event.skillId] : undefined;
+    const tint = event.skillId ? SPELL_TINTS[event.skillId] : undefined;
     const caster = this.unitNodes.get(event.actorId);
     if (caster) {
       const base = caster.scale.clone(), half = a.spellSeconds / (2 * speed);
       tween(caster).to(half, { scale: base.clone().multiplyScalar(a.spellCastScale) })
         .to(half, { scale: base }).start();
     }
-    this.magicPulse(event.actorId, true, speed, undefined, () => {
+    this.magicPulse(event.actorId, true, speed, () => {
+      if (event.manaAfter === undefined) return;
+      this.displayedMana!.set(event.actorId, event.manaAfter);
+      this.statusManaBars.get(event.actorId)?.(event.manaAfter);
+    }, () => {
       let remaining = event.targets.length;
       if (!remaining) { next(); return; }
       event.targets.forEach(({ targetId, damage, hpAfter, missed }, index) => {
         const launch = () => this.magicPulse(targetId, false, speed, () => {
           const hp = missed ? this.displayedHp!.get(targetId)! : hpAfter;
-          this.showImpact(targetId, missed ? 0 : damage, hp, 0, 0, speed, missed ? '闪避' : '',
+          this.showImpact(targetId, missed ? 0 : damage, hp, 0, 0, speed, missed ? '闪避' : skill?.name,
             () => { if (--remaining === 0) next(); });
-        });
+        }, undefined, tint);
         if (index) this.scheduleOnce(launch, index * a.spellTargetGap / speed);
         else launch();
       });
-    });
+    }, tint);
   }
 
   private playNextAttack(): void {
@@ -951,6 +964,7 @@ export class BattleView extends Component {
     if (!event) {
       this.playing = false;
       this.displayedHp = null;
+      this.displayedMana = null;
       this.displayedDeployment = null;
       this.displayedLeft = null;
       this.displayedLogEnd = undefined;
@@ -1082,7 +1096,8 @@ export class BattleView extends Component {
   }
 
   private statusCard(kind: 'pet' | 'hero', x: number,
-    unit: Pick<Unit, 'id' | 'name' | 'species' | 'isMutated' | 'hp' | 'maxHp'> | undefined): void {
+    unit: (Pick<Unit, 'id' | 'name' | 'species' | 'isMutated' | 'hp' | 'maxHp'> &
+      Partial<Pick<Unit, 'mana' | 'maxMana'>>) | undefined): void {
     const y = 18;
     const card = this.rect(x, y, 192, 104, '#203A37', '#829183', 9, undefined, 215);
     if (this.onMap) card.addComponent(BlockInputEvents);
@@ -1114,7 +1129,8 @@ export class BattleView extends Component {
     const pet = this.progress.roster.entries.find(pet => pet.id === unit?.id);
     const progress = kind === 'hero' ? heroProgress : pet;
     const mana = heroProgress ? heroPanel(heroProgress.stats).maxMana : BATTLE_RULES.status.heroManaMax;
-    const petMana = pet ? petPanel(pet).maxMana : 0;
+    const petMana = (this.playing && unit ? this.battle.maxManaBefore?.get(unit.id) : undefined)
+      ?? unit?.maxMana ?? (pet ? petPanel(pet).maxMana : 0);
     const bars = kind === 'hero'
       ? [
         { label: '气血', value: unit ? this.displayedHp?.get(unit.id) ?? unit.hp : 0, max: unit?.maxHp ?? 1, color: '#D95757' },
@@ -1124,18 +1140,29 @@ export class BattleView extends Component {
       ]
       : [
         { label: '气血', value: unit ? this.displayedHp?.get(unit.id) ?? unit.hp : 0, max: unit?.maxHp ?? 1, color: '#D95757' },
-        { label: '法力', value: petMana, max: petMana, color: '#559DD8' },
+        { label: '法力', value: (unit && this.displayedMana?.get(unit.id)) ?? unit?.mana ?? petMana, max: petMana, color: '#559DD8' },
         { label: '经验', value: progress?.exp ?? 0, max: progress ? levelUpExp(progress.level) : 1, color: '#E6C95C' },
       ];
     bars.forEach((bar, index) => {
       const by = y + 17 + index * 22;
       this.rect(x + 69, by, 112, 10, '#10201F', '#526562', 2);
+      if (kind === 'pet' && bar.label === '法力' && unit && this.playing) {
+        const fill = this.healthFill(x + 70, by + 1, 110, 8, bar.color);
+        const label = this.text('', x + 69, by - 5, 12, '#FFFFFF', 112, 1).getComponent(Label)!;
+        const draw = (mana: number) => { fill(aptitudeBarRatio(mana, 0, bar.max)); label.string = `${mana}/${bar.max}`; };
+        this.statusManaBars.set(unit.id, draw);
+        draw(bar.value);
+        return;
+      }
       if (this.playing && index === 0 && unit) {
         const drawHp = this.healthFill(x + 70, by + 1, 110, 8, bar.color);
         this.statusHpBars.set(unit.id, hp => drawHp(hp / bar.max));
         drawHp(bar.value / bar.max);
       } else if (bar.value > 0) this.rect(x + 70, by + 1, 110 * bar.value / bar.max, 8, bar.color, '', 1);
+      if (kind === 'pet' && bar.label === '法力' && unit)
+        this.text(`${bar.value}/${bar.max}`, x + 69, by - 5, 12, '#FFFFFF', 112, 1);
       if (kind === 'pet' ? this.selectedPetId === unit?.id && this.rosterOpen : this.detailsOpen && !progress) {
+        if (kind === 'pet' && bar.label === '法力') return;
         const value = bar.label !== '经验' ? `${bar.value}/${bar.max}`
           : !progress ? '待定'
             : progress.level === HERO_PROGRESSION.maxLevel ? '已满级' : `${bar.value}/${bar.max}`;
@@ -1143,6 +1170,23 @@ export class BattleView extends Component {
       }
     });
     this.text(unit ? `${unit.isMutated ? '变异' : ''}${unit.name}` : '暂无出战宝宝', x + 8, y + 79, 15, '#F4E9C8', 180);
+  }
+
+  private renderSpellList(actor: Unit): void {
+    const ids = activeSpells(actor.skillIds);
+    this.rect(0, 0, CONFIG.width, CONFIG.height, '#101E1C', '', 0, undefined, 165).addComponent(BlockInputEvents);
+    this.rect(462, 201, 410, 344, '#1E3835', '#E5CB8D', 14);
+    const title = !ids.length ? '未学会主动灵术'
+      : ids.every(id => actor.mana < PET_SKILLS[id].params.mana) ? '法力不足' : '选择灵术';
+    this.text(title, 485, 216, 27, '#F3DFAD', 364, 1);
+    ids.forEach((id, index) => {
+      const { name, params } = PET_SKILLS[id];
+      this.button(`${name}　消耗 ${params.mana} 法力`, 490, 263 + index * 58, 354, 49,
+        actor.mana >= params.mana, () => {
+          this.spellId = id; this.spellOpen = false; this.choosingTarget = 'spell'; this.render();
+        });
+    });
+    this.button('返回', 566, 478, 202, 49, true, () => { this.spellOpen = false; this.render(); });
   }
 
   private renderSummonList(actorId: string): void {
@@ -1233,7 +1277,7 @@ export class BattleView extends Component {
     const preview = petPanelPreview(pet, this.allocationPreview);
     const { maxHp, maxMana } = preview.panel;
     const hp = `${this.onMap ? maxHp : live?.hp ?? pet.hp}/${maxHp}`;
-    const mana = `${maxMana}/${maxMana}`;
+    const mana = `${live?.mana ?? maxMana}/${live?.maxMana ?? maxMana}`;
     [['气血', hp], ['法力', mana]].forEach(([name, value], i) => {
       const y = 109 + i * 48;
       this.text(name, 617, y, 21, ink, 54);
@@ -1310,11 +1354,13 @@ export class BattleView extends Component {
 
   private renderPetAttributes(pet: CarriedPet): void {
     const { maxHp, maxMana, attack, defense, speed, dodge, spirit } = petPanel(pet);
-    const hp = this.onMap ? maxHp : this.battle.pets.find(unit => unit.id === pet.id)?.hp ?? pet.hp;
+    const live = this.onMap ? undefined : this.battle.pets.find(unit => unit.id === pet.id);
+    const hp = this.onMap ? maxHp : live?.hp ?? pet.hp;
+    const mana = live?.mana ?? maxMana, manaMax = live?.maxMana ?? maxMana;
     const xpMax = levelUpExp(pet.level);
     const capped = pet.level === HERO_PROGRESSION.maxLevel;
     this.petInfoBar('气血', `${hp}/${maxHp}`, 202, aptitudeBarRatio(hp, 0, maxHp), '#D35657');
-    this.petInfoBar('法力', `${maxMana}/${maxMana}`, 257, 1, '#559DD8');
+    this.petInfoBar('法力', `${mana}/${manaMax}`, 257, aptitudeBarRatio(mana, 0, manaMax), '#559DD8');
     this.petInfoBar('经验', capped ? '已满级' : `${pet.exp}/${xpMax}`, 311,
       capped ? 1 : aptitudeBarRatio(pet.exp, 0, xpMax), '#DBAA4F');
     [['伤害', attack], ['防御', defense], ['速度', speed], ['躲避', dodge], ['灵力', spirit]].forEach(([name, value], i) => {
@@ -1396,6 +1442,8 @@ export class BattleView extends Component {
     this.stopPotentialRepeat();
     this.battle = battle;
     this.choosingTarget = null;
+    this.spellOpen = false;
+    this.displayedMana = null;
     this.displayedHp = null;
     this.displayedDeployment = null;
     this.displayedLeft = null;
@@ -1475,6 +1523,7 @@ export class BattleView extends Component {
 
   private clearView(): void {
     this.statusHpBars.clear();
+    this.statusManaBars.clear();
     this.markerHpBars.clear();
     for (const child of [...this.node.children]) if (child.name !== 'Camera' && child !== this.town?.root) {
       child.active = false;
@@ -1817,7 +1866,7 @@ export class BattleView extends Component {
     this.rect(1095, 119, 218, 59, '#18312F', '', 9, undefined, 205);
     this.text(this.playing ? '战斗进行中' : this.battle.phase === 'ended'
       ? this.resultTitle
-      : this.choosingTarget === 'attack' ? '请选择敌方目标'
+      : this.choosingTarget === 'attack' || this.choosingTarget === 'spell' ? '请选择敌方目标'
         : this.choosingTarget === 'capture' ? '请选择抓取目标'
         : this.choosingTarget === 'protect' ? '请选择我方目标'
           : `请为 ${this.battle.pending[0]?.name ?? ''} 下达指令`,
@@ -1850,7 +1899,9 @@ export class BattleView extends Component {
           { label: '逃跑', enabled: true, action: () => send('flee') },
         ] : [
           { label: '攻击', enabled: true, action: () => select('attack') },
-          { label: '灵术', enabled: false },
+          { label: '灵术', enabled: true, action: () => {
+            this.spellOpen = this.choosingTarget !== 'spell'; this.choosingTarget = null; this.render();
+          } },
           { label: '保护', enabled: this.battle.protectTargets(actor.id).length > 0, action: () => select('protect') },
           { label: '防御', enabled: true, action: () => send('defend') },
           { label: '撤退', enabled: true, action: () => send('retreat') },
@@ -1859,6 +1910,10 @@ export class BattleView extends Component {
         const { x, y } = COMMAND_LAYOUT[choice.label];
         this.commandButton(choice.label, x, y, choice.enabled, choice.action);
       });
+    }
+    if (this.spellOpen && actor && !this.playing && !this.rosterOpen) {
+      this.layer = resultLayer;
+      this.renderSpellList(actor);
     }
     if (this.summonOpen && actor?.id === 'hero' && !this.playing && !this.rosterOpen) {
       this.layer = resultLayer;
