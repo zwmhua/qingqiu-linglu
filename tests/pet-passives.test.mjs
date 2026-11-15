@@ -12,6 +12,26 @@ const { PET_SKILLS } = await import('../assets/battle/logic/pet-skills.ts');
 const { wildCombat } = await import('../assets/battle/logic/wild-encounter.ts');
 const skills = ['power', 'armor', 'swift', 'regen'];
 const values = p => [p.attack, p.defense, p.speed];
+test('victory and defeat never heal surviving regen units, including later command attempts', () => {
+  for (const result of ['victory', 'defeat']) {
+    const b = make(), survivor = result === 'victory' ? b.pets[1] : b.enemies[0];
+    Object.assign(survivor, { hp: 100, level: 10, skillIds: ['regen'] });
+    if (result === 'victory') {
+      b.enemies.forEach(enemy => { enemy.hp = 1; });
+      orders(b, 'attack', 'enemy-0', 'attack');
+    } else {
+      b.allies[0].hp = 0; b.pets[1].hp = 1;
+      b.command('pet-2', 'attack', 'enemy-0');
+    }
+    assert.equal(b.result, result);
+    const afterDamage = b.attackEvents.filter(event => event.targetId === survivor.id).at(-1).targetAfter;
+    assert.equal(survivor.hp, afterDamage);
+    const auto = new AutoCommands(); auto.toggle();
+    b.timeout(); b.tick(60); auto.issue(b); b.checkWinner();
+    assert.equal(survivor.hp, afterDamage);
+    assert.deepEqual(b.log.filter(line => line.includes('回血')), []);
+  }
+});
 function fixture(id, skillIds = []) {
   const pet = { id, name: '汀蛙', species: 'tingwa', level: 10, growth: 0.9, exp: 0, potential: 0,
     isBaby: false, isMutated: false, origin: 'initial', skillIds,
