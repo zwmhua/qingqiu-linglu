@@ -219,7 +219,7 @@ test('real spell playback keeps mana and HP separate until cast and impact, then
   const { Battle } = await import('../assets/battle/scripts/Battle.ts');
   const v = new BattleView(), pulses = [];
   v.townPreview = false;
-  const b = v.battle = new Battle(() => 0.5, 1, 0, new SessionProgress(initialHero()));
+  const b = v.battle = new Battle(() => 0.5, 1, 0, new SessionProgress(initialHero(), undefined, undefined, () => 0));
   Object.assign(b.pets[0], { skillIds: ['thunder'], mana: 5, speed: 100 });
   b.roster.entries[0].exp = 19;
   b.enemies[0].hp = 1;
