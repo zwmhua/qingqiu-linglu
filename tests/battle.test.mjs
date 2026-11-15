@@ -16,7 +16,7 @@ const { targetCommand, toggleTarget } = await import('../assets/battle/logic/tar
 
 const fixed = () => 0.5;
 const make = (count = 1) => {
-  const battle = new Battle(fixed, count);
+  const battle = new Battle(fixed, count, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => 0);
   Object.assign(battle.pets[0], { hp: 38, maxHp: 38, attack: 11, defense: 10, speed: 10 });
   return battle;
 };
@@ -45,7 +45,7 @@ test('capture continues until the last enemy; victory rewards are applied exactl
   const { SessionProgress } = await import('../assets/battle/logic/session-progress.ts');
   const { initialHero } = await import('../assets/battle/logic/hero-progress.ts');
   const session = new SessionProgress(initialHero(), undefined, undefined, () => 0);
-  const battle = new Battle(() => 0, 2, 0, session, () => 1);
+  const battle = new Battle(() => 0, 2, 0, session, () => 1, undefined, undefined, undefined, undefined, undefined, undefined, () => 0);
   battle.command('hero', 'capture', 'enemy-0');
   battle.command('pet', 'defend');
   assert.equal(battle.result, undefined);
@@ -77,9 +77,9 @@ test('attack button then enemy and direct enemy click submit the same order and 
 });
 
 test('encounter weights select one, two, or three enemies', () => {
-  assert.equal(new Battle(() => 0, undefined).enemies.length, 1);
-  assert.equal(new Battle(() => 0.5, undefined).enemies.length, 2);
-  assert.equal(new Battle(() => 0.99, undefined).enemies.length, 3);
+  assert.equal(new Battle(() => 0, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => 0).enemies.length, 1);
+  assert.equal(new Battle(() => 0.5, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => 0).enemies.length, 2);
+  assert.equal(new Battle(() => 0.99, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => 0).enemies.length, 3);
 });
 
 test('both allies choose commands, then speed and ties determine order', () => {
@@ -224,5 +224,5 @@ test('hero rage follows actual health lost, caps at 150, and can carry into the 
   battle.heroRage = 149;
   battle.command('hero', 'defend');
   assert.equal(battle.heroRage, 150);
-  assert.equal(new Battle(fixed, 1, battle.heroRage).heroRage, 150);
+  assert.equal(new Battle(fixed, 1, battle.heroRage, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => 0).heroRage, 150);
 });

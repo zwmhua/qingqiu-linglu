@@ -60,3 +60,5 @@
 - 2026-11-13，Windows 模拟器出现 Cocos 着色器错误 16323、16324，随后 D3D11 缓冲区分配失败并丢失 WebGL 上下文。关闭 GPU 后首屏无法创建 WebGL 缓冲区。恢复默认渲染并重新编译后，模拟器完成玩法回归。
 - 2026-11-13，工具曾报告 `ReactiveCache cleared`。再次编译后进入游戏。游戏内测试重置恢复初始进度时，工具另报 `worker path empty`，堆栈来自开发者工具内部，游戏继续运行。
 - 2026-11-13，Windows 可用提交内存不足时，Creator 的 Terser worker 重试耗尽或报 spawn UNKNOWN。结束本卡卡住的构建进程后串行重建，微信与 web-mobile 均生成产物。微信工具首次打开模拟器黑屏，重开本卡项目并点「编译」后恢复。
+
+- 2026-11-15｜P2-07 开发中 petPanel 可选参数误接收 Array.map 索引：entries.map(petPanel) 报 ids.includes 非函数；已恢复公开单参数接口，将技能选项留在内部计算函数。原 hero-progress 断言保留，全量回归168项成功。

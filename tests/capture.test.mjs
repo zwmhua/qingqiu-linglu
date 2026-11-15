@@ -17,7 +17,7 @@ test('capture uses the confirmed health formula and injected roll', () => {
 });
 
 test('only a living hero may target a living enemy', () => {
-  const battle = new Battle(() => 0, 2);
+  const battle = new Battle(() => 0, 2, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => 0);
   assert.throws(() => battle.command('pet', 'capture', 'enemy-0'));
   assert.throws(() => battle.command('hero', 'capture', 'missing'));
   battle.enemies[0].hp = 0;
@@ -28,7 +28,7 @@ test('only a living hero may target a living enemy', () => {
 });
 
 test('success removes target in speed order without a kill; other enemies continue', () => {
-  const battle = new Battle(() => 0, 2);
+  const battle = new Battle(() => 0, 2, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => 0);
   battle.command('hero', 'capture', 'enemy-0');
   battle.command('pet', 'defend');
   assert.equal(battle.enemies[0].left, true);
@@ -42,7 +42,7 @@ test('success removes target in speed order without a kill; other enemies contin
 });
 
 test('failed capture keeps the target active', () => {
-  const battle = new Battle(() => 0.99, 1);
+  const battle = new Battle(() => 0.99, 1, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => 0);
   battle.command('hero', 'capture', 'enemy-0');
   battle.command('pet', 'defend');
   assert.equal(battle.enemies[0].left, false);
@@ -51,7 +51,7 @@ test('failed capture keeps the target active', () => {
 });
 
 test('capture of the final enemy wins without dealing damage', () => {
-  const battle = new Battle(() => 0, 1);
+  const battle = new Battle(() => 0, 1, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => 0);
   battle.command('hero', 'capture', 'enemy-0');
   battle.command('pet', 'defend');
   assert.equal(battle.winner, 'ally');
@@ -64,7 +64,7 @@ test('a dead capture target retargets randomly among other living enemies', () =
   for (const [choice, expected] of [[0, 'enemy-1'], [0.999, 'enemy-2']]) {
     const values = [0, choice, 0];
     let rolls = 0;
-    const battle = new Battle(() => values[rolls++] ?? 0, 3, 0, undefined, () => 1);
+    const battle = new Battle(() => values[rolls++] ?? 0, 3, 0, undefined, () => 1, undefined, undefined, undefined, undefined, undefined, undefined, () => 0);
     battle.pets[0].speed = 10;
     battle.enemies[0].hp = 1;
     battle.command('hero', 'capture', 'enemy-0');
@@ -81,7 +81,7 @@ test('a dead capture target retargets randomly among other living enemies', () =
 test('a redirected capture can fail without removing the new target', () => {
   const values = [0, 0.999, 0.99];
   let rolls = 0;
-  const battle = new Battle(() => values[rolls++] ?? 0, 3, 0, undefined, () => 1);
+  const battle = new Battle(() => values[rolls++] ?? 0, 3, 0, undefined, () => 1, undefined, undefined, undefined, undefined, undefined, undefined, () => 0);
   battle.pets[0].speed = 10;
   battle.enemies[0].hp = 1;
   battle.command('hero', 'capture', 'enemy-0');
@@ -94,7 +94,7 @@ test('a redirected capture can fail without removing the new target', () => {
 
 test('when the last enemy dies before capture, no capture roll occurs', () => {
   let rolls = 0;
-  const battle = new Battle(() => { rolls++; return 0; }, 1, 0, undefined, () => 1);
+  const battle = new Battle(() => { rolls++; return 0; }, 1, 0, undefined, () => 1, undefined, undefined, undefined, undefined, undefined, undefined, () => 0);
   battle.pets[0].speed = 10;
   battle.enemies[0].hp = 1;
   battle.command('hero', 'capture', 'enemy-0');

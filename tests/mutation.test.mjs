@@ -88,7 +88,7 @@ test('redirected capture keeps the new wild target mutation without reroll', () 
 
 test('baby mutation keeps growth, base stats and combat values through summon and next battle', () => {
   const battle = new Battle(() => 0, 2, 0, undefined, () => 0,
-    () => 1, () => 0, () => 0.6, () => 0);
+    () => 1, () => 0, () => 0.6, () => 0, undefined, undefined, () => 0);
   const baby = battle.enemies[0];
   assert.equal(baby.isBaby, true);
   assert.equal(baby.isMutated, true);

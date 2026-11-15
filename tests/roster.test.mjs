@@ -45,7 +45,7 @@ test('successful capture adds one independent wild pet with summon eligibility',
 });
 
 test('a captured pet can be summoned from the next hero command with its captured HP', () => {
-  const battle = new Battle(() => 0, 2);
+  const battle = new Battle(() => 0, 2, 0, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => 0);
   battle.enemies[0].hp = 8;
   battle.command('hero', 'capture', 'enemy-0');
   assert.throws(() => battle.command('hero', 'summon', 'pet-2'));

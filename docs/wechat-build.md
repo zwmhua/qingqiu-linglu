@@ -539,3 +539,113 @@ QA 回修预览初次仍为旧脚本；最终重新构建后，忽略当前页�
 主包低于 3.5 MB。没有新增资源、Bundle、Boot 依赖或构建配置。微信模拟器、真机、发布构建中 townPreview 入口均 NOT_TESTED；Creator 预览不代表上述平台已验收。180 世界单位保护距离、暗雷、掉落和正式入口切换未实现也未验证，按卡留后续。
 
 STATUS 建议（仅供华周最终试玩后使用，本轮未写 STATUS）：P2-04 固定战斗往返与结果（qa）完成，填入本轮最终验收 SHA；下一步 P2-05 待另行授权。不得把此建议当作已经完成 Human 验收。
+
+## P2-07 开工核对与 X2（2026-11-15，尚未实施）
+
+- 原 X1（2026-11-15）：首轮未取得完整附件，原工作区 task/26-boot-subpackage 有 assets/battle/logic.meta 修改及 art-source/ 未跟踪素材；停止且保留现场。
+- X1 处置（2026-11-15）：Human 补充附件路径并明确授权保留原工作区、该分支、现有修改、素材及其他工作树，允许 fetch 后新建独立工作树。未清理或覆盖这些现场。
+- 附件 C:/Users/hua/Downloads/card-P2-07-stat-passives.md 已原字节复制到 docs/cards/card-P2-07.md；源文件和副本 SHA-256 均为 7433cd1b883cb0b99f4e32a12a3452edb48665e6d2e72c8bf4ec23454992b7b3。
+- fetch 后 origin/main 为 3b6361d4c80c8036f044569fb2184f5104e3b605，与发卡基线一致；STATUS 已记录 P2-06 验收，git merge-base --is-ancestor 核实包含 0490c95b17482ab3f9535202b954a0ec6bc8c20f。
+- 已核对已有分支和工作树，新建 task/40-p2-07-stat-passives，路径 C:/Users/hua/cocos/Project/qingqiu-linglu-task40，起始 SHA 为上述 origin/main。创建后、复制卡片前 git status --short 为空。既有 qingqiu-linglu-p2-07-prep 为独立 detached 工作树，未复用或改动。
+
+### 实际基线的逐文件估算
+
+统计口径：相对起始 SHA 的业务与测试新增行加删除行，改写两侧均计入。以下仅为实施前估算，不是实际 diff；文档和生成文件不计。
+
+| 文件 | 预计增删 | 必须覆盖的内容 |
+| --- | ---: | --- |
+| assets/battle/logic/pet-panel.ts | 40～48 | 复用取整前公式、配置驱动的三项有效值、真实等级回血量、有效加点预览；petCombat 保持基础整数 |
+| assets/battle/scripts/Battle.ts | 34～46 | 己方开战、敌方 wildCombat、抓获后备、升级和确认加点接线；首回合与后续回合唯一回血入口；保留召唤当前血量 |
+| assets/battle/scripts/BattleView.ts | 4～10 | 属性显示接入有效值；复用现有动画完成后 displayedHp 清空和重新显示真实血量流程 |
+| tests/pet-passives.test.mjs | 140～170 | 固定 A/B 与小数取整、0/1/20 级、野怪整数输入、同速及伤害；回血首轮/手动/自动/召唤/退出边界；真实抓取、换宠、升级、加点与 v4 保存读回 |
+| tests/town-progress-integration.test.mjs | 36～48 | 真实属性与加点视图接线、动画期间保留旧血量、动画结束后手动/自动指令前显示恢复值、重绘不重复回血 |
+| 既有测试夹具（含白名单内 battle、cross-battle-roster、wild-encounter、pet-progression，以及白名单外 aptitude） | 24～28 | 固定独立技能随机输入，保留原有资质/基础值验证目标；逐项核对磐龟必带硬甲与旧敌方面板断言的适用范围 |
+| **合计** | **278～350** | **预估上界超过 300，尚无可确认守住上限的完整方案** |
+
+### X2 依据及状态
+
+- 白名单缺口：tests/aptitude.test.mjs 中 “initial pets independently double-roll normal aptitudes once and derive their combat stats” 使用默认随机技能，再把战斗 Unit 属性断言为 petCombat 的基础值。P2-07 后若抽到 swift，速度应不同；该文件不在卡片测试白名单。另一条抓取宝宝测试也把默认随机技能的敌方速度固定断言为 9。需明确授权在该文件固定无技能输入，保留原断言及资质验收目标；未擅自修改。
+- Battle 的抓取路径已调用 Roster.addCaptured -> petCombat 重算基础缓存，可沿用；需要在新 Unit 组装时单独计算有效值。升级同步目前 Object.assign(unit, pet)，加点同步也直接复制基础攻防速，均须接线。
+- BattleView.startPlayback 保存行动前 displayedHp，playNextAttack 队列结束才清除并转入 render/runAuto；可复用该流程，但必须用实际接线测试和浏览器证据确认，不能只凭逻辑测试声明血条时序正确。
+- X2（2026-11-15）：发现必需的白名单外测试夹具调整，且完整范围预估 278～350 行、上界超过 300；停止在业务和测试修改前。未改规则、未弱化断言、未压缩代码规避门禁。
+- 建议 Human 决定：补充 tests/aptitude.test.mjs 的夹具白名单；若保持完整卡范围，可明确批准本卡 350 行上限（实际仍逐次核对，超限再停）；若维持 300 行，可将卡内实施分为三项属性/基础值隔离与回血时序两段，分别发卡重估，未自行拆分或实施。
+- 辅助脚本留痕：一次只读 PowerShell 命令误用了 shell 花括号路径，解析失败；改为 PowerShell 可用的文件读取后完成核对。没有修改产品、测试、权限或预期。
+- 当前实际业务与测试差异均为 0；仅保存原卡与本记录，尚未本地提交。STATUS、工作流、docs/nodes 未修改，未推送或合并。
+- NOT_TESTED：node:test、限定 tsc、隔离浏览器夹具、ego-browser 实操、Creator 构建与包体统计、微信模拟器和真机。原因：开工 X2 尚未解除。独立静态 QA 未启动，无最终候选 SHA；不以基线 SHA 冒充交付或 QA SHA。
+
+### P2-07 X2 授权续作与新增测试错误暂停（2026-11-15）
+
+- Human 批准在 task/40-p2-07-stat-passives 继续、不拆卡；本卡业务与测试增删上限改为 350 行，按起始 SHA 统计；补充 tests/aptitude.test.mjs 白名单，仅固定无技能输入、保留原断言。此前 X1/X2 记录保留。
+- 新增 tests/pet-passives.test.mjs，先运行 node --test tests/pet-passives.test.mjs，退出 1、5 项失败；日志 temp/p2-07/red-tests.log。有效值/回血接口尚未实现，召唤下一轮恢复断言也在基线失败。未改业务代码或任何旧断言。
+- 测试错误暂停：新增速度/伤害用例第 56 行误写现有防御系数为 0.5、随机倍率为 1.08。读取 battle-rules.ts 后确认现有 defenseFactor=0.40，randomMin=0.86、randomMax=1.14；固定随机输入 0.9 的倍率为 1.112。该错误断言目前被前置未实现接口挡住，尚未执行到，不把它列为已验证的有效失败。
+- 按 AGENTS.md 实施第 1 条“测试本身有错：停下报告，不自己改”停止。拟仅将该新断言改为 Math.round((pet.attack - b.enemies[0].defense * 0.40) * (0.86 + 0.9 * (1.14 - 0.86)))，保留伤害验收目标与其他断言；等待 Human 批准，没有据此改产品规则。
+- 当前尚未实现、未提交；tsc、浏览器实操、构建和最终 SHA 独立 QA 均未执行。只运行了上述新测试和文档差异检查。
+
+### P2-07 获批断言修正、首次实现与全量回归 X2（2026-11-15）
+
+- Human 明确批准仅纠正新增伤害断言：防御系数 0.40、固定随机输入 0.9 的倍率 1.112，最终仍 Math.round；已按授权修改，其他新增断言未改。
+- 实现前重跑 node --test tests/pet-passives.test.mjs：退出 1，0 成功/5 失败，记录 temp/p2-07/red-approved.log。随后接入取整前被动计算、有效面板与预览、开战/敌方/抓取/升级/加点装配，以及构造和后续回合的回血入口；未修改 Roster、存档、技能池和伤害公式。
+- 实现后同一定向测试：退出 0，5 成功/0 失败，记录 temp/p2-07/targeted-01.log。覆盖 A/B、小数与真实等级、排序/同速、手动与自动回血、召唤/换宠、抓获身份技能、升级加点及 v4 保存读回。
+- 全量 node --test tests/*.test.mjs（COCOS_TYPESCRIPT 指向 Creator 3.8.8 内置 TypeScript）：退出 1，152 成功/15 失败（含父测试失败计数），记录 temp/p2-07/full-01.log。不得称全量通过。
+- 本次实现问题：petPanel 增加可选第二个参数后，tests/hero-progress.test.mjs 的 entries.map(petPanel) 将索引传入技能列表，触发 ids.includes is not a function。应将计算主体收为内部函数，恢复导出的 petPanel 单参数接口，effectivePetPanel 单独传技能。不需改 hero-progress 测试或断言；当前因下述 X2 一并保留待续修。
+- X2 新白名单缺口：tests/growth.test.mjs 的初始宠基础属性比较出现速度 10/9 差异；tests/capture.test.mjs 两条倒地改抓用例因随机迅捷改变行动与随机数消费顺序，实际目标/抓取结果偏离固定序列。两文件均不在当前授权白名单；拟只补固定无技能随机输入，保留原断言、随机序列和验证目标。
+- 旧契约冲突待明确：tests/wild-encounter.test.mjs 已在白名单，但磐龟固定技能随机源仍必带 armor。旧断言比较的是战斗 Unit 与无技能基础面板；1 级防御原预期 13、本卡正确有效值为 14，5 级原预期 17、本卡有效值为 20。不能通过随机输入消除天生硬甲，也不能修改正式技能池来迁就测试。建议保留全部原 wildCombat 基础预期，并增加/调整战斗有效值和抓取后有效值断言，继续分别验证基础缓存与战斗结果；等待 Human 明确批准这类断言适配。
+- aptitude.test.mjs 的无技能夹具调整已经获批；battle/cross-battle-roster/pet-progression 等白名单内随机夹具调整仍按原卡执行。当前尚未改这些旧测试，避免在发现新 X2 后继续实施。
+- 实际增删：pet-panel.ts +27/-8=35，Battle.ts +18/-8=26，BattleView.ts +1/-1=2，新 tests/pet-passives.test.mjs +137/-0=137，总计 200/350 行；尚未提交。预计上述修正与剩余视图测试可继续在 350 行内，实际仍逐次统计。
+- 当前保留三份业务修改、新测试、原卡和执行文档；原工作区与其他工作树未动。浏览器夹具/试玩、限定 tsc、构建/包体及独立最终 SHA QA 尚未执行，均未宣称完成。新 X2 等待白名单和旧契约适配授权，不自动扩大范围。
+
+### P2-07 已批夹具修复与剩余随机夹具 X2（2026-11-15）
+
+- Human 批准 growth/capture 白名单仅固定无技能输入、原断言不变；批准 wild-encounter 保留基础面板断言并验证磐龟硬甲有效防御 1/5 级为 14/20；批准恢复 petPanel 单参数接口。已按授权实施，未改伤害、技能生成或持久化规则。
+- petPanel 恢复单参数导出，内部 calculatePanel 由有效面板入口传入技能；原 entries.map(petPanel) 调用无需改测试。aptitude/growth/capture/battle/cross-battle-roster/pet-progression 仅为已有 Battle 构造调用补固定技能随机源，保留其全部原断言。wild-encounter 固定技能随机源、保留基础预期，区分野外与携带有效值，并增加硬甲 14/20 明确断言。
+- 按要求先跑全量 node --test tests/*.test.mjs：退出 1，166 成功/1 失败，日志 temp/p2-07/full-02.log。上一轮的 15 个失败项在本轮均成功；剩余失败是本轮随机暴露的另一旧夹具，并非已解决项仍失败。
+- 新 X2：tests/mutation.test.mjs:105 的变异宝宝基础战斗值断言，实际 [33,10,9,10]、预期 [33,10,9,9]；该构造调用未固定技能源，抽到 swift 导致速度不同，文件在白名单外。拟仅为该夹具固定 skillRandom=()=>0，普通汀蛙无随机技能，变异宝宝依原规则保留一次技能（regen，真实0级回血为0）；不改变异规则或原断言。
+- 同类静态核对发现 tests/baby.test.mjs:27 的宝宝/普通怪属性相等用例，两次构造也独立随机抽技能；本轮成功不代表没有同类不稳定性。拟仅固定两次构造的 skillRandom=()=>0，保留身份随机源和原断言；该文件同样在白名单外。未以潜在失败冒充本轮实际失败。
+- 因白名单门禁再次停止，mutation/baby 均未修改。实际业务与测试共 282 行，仍低于 350；预计上述最小夹具调整及视图时序测试仍可守住上限，实际继续逐次核对。已保留全部原 X1/X2 记录，没有通过删测试或压缩业务代码降低计数。
+- 当前尚未提交，HEAD 仍为起始 3b6361d4c80c8036f044569fb2184f5104e3b605。原工作区与其他工作树未动；限定 tsc、浏览器、构建和最终候选 QA 尚未执行。
+
+## P2-07 本地交付记录（2026-11-15，qa，待华周最终试玩）
+
+### 授权与实现范围
+
+- 前述 X1/X2 与测试错误记录全部保留。Human 逐项批准 350 行单卡上限、不拆卡，并补充 aptitude/growth/capture/mutation/baby 测试夹具白名单；只固定技能随机输入、保留原断言。wild-encounter 获准保留原基础预期并分别验证有效值，磐龟 1/5 级硬甲防御为 14/20。最后的 mutation/baby X2 已按授权解除。
+- 起始 SHA：3b6361d4c80c8036f044569fb2184f5104e3b605；分支 task/40-p2-07-stat-passives，工作树 C:/Users/hua/cocos/Project/qingqiu-linglu-task40。最终完整 SHA 随本地提交后的交付报告与独立静态 QA 报告提供，不能把起始 SHA 当作所测最终候选。
+- 实际业务 +47/-17=64 行；测试 +220/-42=262 行；合计 326/350 行（相对起始 SHA 的增删，不含文档与生成文件）。没有新增依赖、修改技能池/生成概率、存档格式或人物伤害规则；未修改 STATUS、工作流、docs/nodes，未推送或合并。
+- petPanel 保持单参数基础面板 API；内部 calculatePanel 共用原始公式，effectivePetPanel/预览只在计算末尾取整一次。Battle 装配、抓取后备、升级、加点使用有效结果，Roster 与 v4 始终基础缓存。首轮及继续战斗的下一轮入口统一回血；召唤不重置当前血量。现有动画显示缓存直到播放结束才切回恢复后的逻辑血量。
+
+### 实际检查
+
+- 失败用例先行日志：temp/p2-07/red-approved.log（5 失败），实现后 targeted-01.log（5 成功）。最后全量 all-delivery.log：168 成功、0 失败，退出 0；包含新增视图接线用例与已获准的全部旧夹具修复。
+- 限定严格 tsc 退出 0，日志 temp/p2-07/tsc.log。命令为 node <Creator 3.8.8 内置 typescript>/bin/tsc --noEmit --skipLibCheck --strict --target ES2022 --module ESNext --moduleResolution node <assets/battle/logic/*.ts全部文件> assets/battle/scripts/Battle.ts assets/logic/platform.ts；覆盖实际纯逻辑传递依赖，无新依赖。
+- git diff --check 无空白错误。Creator 自动改写 engine.json 的换行，核对与起始字节仅换行不同后仅恢复 task40 原字节，未变更配置或其他工作树。
+- Web 手机构建使用 settings/web-mobile-build.json；日志 web-build.log 显示 Finished，产物生成。最初后台启动未保留退出码，故不声称该次退出码为36。微信构建使用 settings/wechat-build.json，wechat-build.exit=36，日志 wechat-build.log 显示 Finished；两者均为正式游戏流程，不含夹具逻辑。
+
+### 隔离夹具与复现入口
+
+- 实际入口：http://127.0.0.1:18390/?scene=3ca2435e-bec8-4656-9bf9-63cfaadc18b7&devPreview=1&roundTripSample=single 。本工作树 Creator 预览为 7460，18390 仅本机代理，独立浏览器 origin；写入前已实际核对 localStorage 为空。没有读取、清理或覆盖华周其他 origin 的存档。
+- temp/p2-07/fixture.mjs 以当前 petCombat 生成并用 readProgress 验证 fixture-v4.json。两只 10 级普通汀蛙资料按卡，共同基础 61/53/22、236 HP；A=pet 无技能，B=pet-2 四技能，资料只差 id/skillIds。另有 caught-1/2 为真实 0/1 级回血宝宝。人物为合法 10 级，仅便于承受验收攻击。
+- 制作新空 origin 时：运行 node temp/p2-07/fixture.mjs；启动仅指向本工作树的代理，在标题页核对存储为空后写入该 JSON 的原游戏键，再点开始游戏。现有18390已留有夹具，勿反复覆盖。browser-05.mjs 记录首次写入与空档保护，browser-06～13.mjs 记录实际点击与读数。
+- 面板入口：点击“宠物”，从左下第一格 A、第二格 B 切换；当前留在刷新后的 B 属性页，可直接查看。第三/四格为0/1级样本。刷新仍保留夹具，默认出战B。
+- 对照战斗输入准备：城镇点出城，再点“固定开战（测试）”。本轮仅对当前页面的 Battle 输入设置同一对手 speed=24、attack=50、hp=maxHp=10000、skillIds=[]，战斗随机源固定0.9；出战宠当前hp设100。计时初值临时设999，避免读画面时自行超时，不修改伤害、回血、排序或回合函数。A/B各开一场，人物防御、宠物直接点击对手攻击。开始下一场前设置会话 selectedPetId 为 pet 或 pet-2；这些是验收夹具输入，不进入正式构建。
+- 缺2点样本：B当前hp=234，敌人本轮攻击人物，双防御；召唤样本：人物速度100、敌方攻击1、随机0.9，两个低级宝宝后备hp各40，再按召唤列表依次换上0级、1级和hp=77的B。browser-11/12.mjs保留准确步骤。刷新会移除临时战斗参数，重新对照时按上述步骤准备；固定敌人不是正式游戏新增行为。
+
+### ego-browser 已实际验证
+
+| 验收 | 实测结果 |
+| --- | --- |
+| A/B面板 | A伤害/防御/速度61/53/22；B65/59/25；气血均236，截图panel-a.png/panel-b.png |
+| 相同速度24的对手、相同指令 | A顺序enemy-0 → pet → hero；B顺序pet-2 → enemy-0 → hero，browser-10.log |
+| 伤害与回血 | A受32伤害100→68、不回血；B受29伤害100→71，第2回合恢复5到76，且日志带回合/单位；普通攻击A64/B68 |
+| 恢复上限 | B234→236，仅日志回血2，未超上限 |
+| 0/1级 | 两次召唤均从40受击到39，下一回合保持39，无回血提示 |
+| 残血召回 | B后备77，召唤后敌方事件targetBefore=77、受击到76；第6回合才回5到81。攻防速仍65/59/25，未重置或叠加 |
+| 自动与取消 | 实点自动再取消，第7回合81受击到80、恢复5到85，只一条本轮回血日志 |
+| 保存与刷新 | 逃跑保存后v4的B仍attack61/defense53/speed22、原有序skillIds；刷新重新进入并点宠物，B面板仍65/59/25，236/236 |
+
+截图和步骤位于本工作树 temp/p2-07/。已保留ego任务空间34的结果页供华周查看。首次预览在编辑器尚未完成启动时返回404，等待就绪后刷新恢复；未改产品修复此启动状态。期间computer-use只读取窗口清单，没有操作其他工作树编辑器。
+
+### 包体与未测项
+
+微信产物逐文件字节求和：主包919168，battle3035784，town1923710，outskirts594500，inventory57666，总计6530828；记录 package-bytes.json。主包低于3.5MB，分包结构沿用原配置。build/web-mobile 和 build/wechatgame 为本工作树忽略产物。
+
+NOT_TESTED：微信模拟器、真机、真实手机浏览器；未把桌面尺寸当成手机实测。浏览器未逐项重演升级、加点、倒地/胜利结束与全部v1～v3迁移负例，这些由本轮实际运行的逻辑/存档测试覆盖；不声称Human已验收。独立QA只读最终完整SHA及必要上下文，不跑测试或另写用例；结果由提交后的QA报告绑定SHA提供。下一步由华周最终试玩，STATUS及主线更新需另行明确授权。

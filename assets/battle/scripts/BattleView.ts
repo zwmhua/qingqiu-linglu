@@ -13,7 +13,7 @@ import { petTint } from '../logic/pet-visual';
 import type { CarriedPet } from '../logic/roster';
 import { SessionProgress } from '../logic/session-progress';
 import { petProgress } from '../logic/roster';
-import { petPanel, petPanelPreview } from '../logic/pet-panel';
+import { effectivePetPanel as petPanel, petPanelPreview } from '../logic/pet-panel';
 import type { HeroProgress, LevelProgress } from '../logic/hero-progress';
 import { HERO_PROGRESSION, adjustPotential, heroPanel, heroPanelPreview, initialHero, levelUpExp } from '../logic/hero-progress';
 import { HoldRepeat } from '../logic/hold-repeat';

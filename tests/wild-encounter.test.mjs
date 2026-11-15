@@ -9,7 +9,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 const { Battle } = await import('../assets/battle/scripts/Battle.ts');
 const { captureChance } = await import('../assets/battle/logic/capture.ts');
 const { wildCombat } = await import('../assets/battle/logic/wild-encounter.ts');
-const { petPanel } = await import('../assets/battle/logic/pet-panel.ts');
+const { petPanel, effectivePetPanel } = await import('../assets/battle/logic/pet-panel.ts');
 const { OUTSKIRTS } = await import('../assets/battle/logic/exploration.ts');
 const { BATTLE_RULES } = await import('../assets/battle/logic/battle-rules.ts');
 const { BABY_CONFIG } = await import('../assets/battle/logic/baby.ts');
@@ -41,7 +41,10 @@ const speciesCases = [
 ];
 const make = (count, encounter, baby = () => 1, mutation = () => 1,
   aptitude = () => 0, growth = () => 0, battleRoll = () => 0, previous) =>
-  new Battle(battleRoll, count, 0, previous, baby, aptitude, growth, () => 0.6, mutation, encounter);
+  new Battle(battleRoll, count, 0, previous, baby, aptitude, growth, () => 0.6, mutation, encounter, undefined, () => 0);
+
+const effectiveWild = (species, level, base) => base.map((value, i) =>
+  i === 2 && species === 'pangui' ? Math.round(value + level * 0.6) : value);
 
 test('count and independent species selection honor exact boundaries without a guaranteed species', () => {
   for (const [roll, count] of [[0, 1], [0.499999, 1], [0.50, 2], [0.849999, 2], [0.85, 3], [0.999999, 3]]) {
@@ -76,7 +79,9 @@ test('all three enemy panels use the confirmed level 0, 1 and 5 values', () => {
       const unit = battle.enemies[0];
       assert.deepEqual([unit.species, unit.name, unit.level, unit.hp],
         [species, level === 0 ? `${name}宝宝` : `野外${name}`, level, expected[0]]);
-      assert.deepEqual(panel(unit), expected);
+      assert.deepEqual(panel(wildCombat(species, level)), expected);
+      assert.deepEqual(panel(unit), effectiveWild(species, level, expected));
+      if (species === 'pangui') assert.equal(unit.defense, level === 5 ? 20 : level === 1 ? 14 : 13);
       assert.equal(captureChance(unit.hp, unit.maxHp), 0.20);
       for (const pet of battle.roster.entries) {
         assert.deepEqual([pet.species, pet.level, ...panel(pet)], ['tingwa', 1, ...panel(petPanel(pet))]);
@@ -166,7 +171,7 @@ for (const [species, , speciesRoll, low, high] of speciesCases) {
         assert.deepEqual([wild.species, wild.level, wild.isBaby, wild.isMutated],
           [species, level, isBaby, isBaby && isMutated]);
         assert.deepEqual(panel(wildCombat(species, level)), expectedPanel);
-        assert.deepEqual(panel(wild), expectedPanel);
+        assert.deepEqual(panel(wild), effectiveWild(species, level, expectedPanel));
 
         first.command('hero', 'defend');
         first.command('pet', 'attack', wild.id);
@@ -186,7 +191,7 @@ for (const [species, , speciesRoll, low, high] of speciesCases) {
         function assertCombatPet(unit, expectedHp) {
           assert.equal(unit.name, caught.name);
           assert.deepEqual(identity(unit), originalIdentity);
-          assert.deepEqual(panel(unit), formal);
+          assert.deepEqual(panel(unit), panel(effectivePetPanel(caught)));
           assert.equal(unit.combatLevel, Math.max(1, level));
           assert.equal(unit.hp, expectedHp);
         }
@@ -210,7 +215,7 @@ for (const [species, , speciesRoll, low, high] of speciesCases) {
 
         const next = make(1, sequence(...encounter), () => isBaby ? 0 : 1, () => 1,
           () => 1, () => 1, () => 0, first.roster);
-        assert.deepEqual(panel(next.enemies[0]), expectedPanel);
+        assert.deepEqual(panel(next.enemies[0]), effectiveWild(species, level, expectedPanel));
         assert.deepEqual(next.roster.entries[2], { ...caught, hp: formal[0] });
         assert.deepEqual(next.pets.filter(pet => pet.deployed).map(pet => pet.id), ['pet']);
         const recovered = next.summonTargets().find(pet => pet.id === caught.id);

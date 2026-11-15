@@ -86,6 +86,42 @@ const { petProgress } = await import('../assets/battle/logic/roster.ts');
 const { loadSessionProgress, saveProgress } = await import('../assets/battle/logic/local-progress.ts');
 const { OUTSKIRTS, TOWN, TOWN_PLACES } = await import('../assets/battle/logic/exploration.ts');
 
+test('passive attributes render consistently and playback reveals healing before the next commands', async () => {
+  const { Battle } = await import('../assets/battle/scripts/Battle.ts');
+  const { petCombat } = await import('../assets/battle/logic/pet-panel.ts');
+  const session = new SessionProgress(initialHero()), pet = session.roster.entries[0];
+  Object.assign(pet, { level: 10, growth: 0.9, skillIds: ['power', 'armor', 'swift', 'regen'],
+    baseStats: { constitution: 39, mana: 27, strength: 34, endurance: 31, agility: 19 },
+    aptitudes: { attack: 1000, defense: 800, stamina: 2500, mana: 1100, dodge: 950, speed: 1174 } });
+  Object.assign(pet, petCombat(pet));
+  const v = new BattleView(), labels = [];
+  v.townPreview = false;
+  v.battle = new Battle(() => 0.9, 1, 0, session, () => 1, undefined, undefined, undefined, undefined, undefined, undefined, () => 0);
+  v.text = value => labels.push(value);
+  v.petInfoBar = () => {};
+  v.renderPetAttributes(pet);
+  assert.deepEqual(labels.filter(value => /^\d+$/.test(value)).slice(0, 3), ['65', '59', '25']);
+  const b = v.battle, unit = b.pets[0];
+  unit.hp = 100;
+  const hp = v.captureHp(), deployment = v.captureDeployment();
+  b.command('hero', 'defend'); b.command('pet', 'defend');
+  assert.equal(unit.hp, b.attackEvents.at(-1).targetAfter + 5);
+  v.render = () => {};
+  const play = v.playNextAttack;
+  v.playNextAttack = () => {};
+  assert.equal(v.startPlayback(1, 'command', hp, deployment), true);
+  assert.equal(v.displayedHp.get('pet'), 100);
+  v.animationQueue = [];
+  v.auto.enabled = true;
+  let seen;
+  v.runAuto = () => { seen = [v.displayedHp, unit.hp, v.playing]; };
+  play.call(v);
+  assert.deepEqual(seen, [null, unit.hp, false]);
+  const healed = unit.hp;
+  v.renderPetAttributes(pet); b.tick(0);
+  assert.equal(unit.hp, healed);
+});
+
 test('town and outskirts use Spine run downhill, frame run uphill and keep one foot baseline', () => {
   const v = new BattleView();
   v.render = () => {};

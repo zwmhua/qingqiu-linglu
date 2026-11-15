@@ -50,7 +50,7 @@ test('each aptitude uses two independent integer rolls and rounds half upward', 
 test('separate wild frogs receive separate six-aptitude samples', () => {
   let rolls = 0;
   const battle = new Battle(() => 0.5, 2, 0, undefined, () => 1,
-    () => rolls++ < 36 ? 0 : 1, undefined, undefined, () => 1);
+    () => rolls++ < 36 ? 0 : 1, undefined, undefined, () => 1, undefined, undefined, () => 0);
   assert.equal(rolls, 48);
   assert.notStrictEqual(battle.enemies[0].aptitudes, battle.enemies[1].aptitudes);
   for (const key of APTITUDE_KEYS) {
@@ -61,7 +61,7 @@ test('separate wild frogs receive separate six-aptitude samples', () => {
 
 test('initial pets independently double-roll normal aptitudes once and derive their combat stats', () => {
   let rolls = 0;
-  const battle = new Battle(() => 0.5, 1, 0, undefined, () => 1, () => rolls++ < 12 ? 0 : 1);
+  const battle = new Battle(() => 0.5, 1, 0, undefined, () => 1, () => rolls++ < 12 ? 0 : 1, undefined, undefined, undefined, undefined, undefined, () => 0);
   assert.equal(rolls, 36);
   for (const pet of battle.pets) {
     assert.equal(pet.level, 1);
@@ -73,13 +73,13 @@ test('initial pets independently double-roll normal aptitudes once and derive th
     assert.equal(battle.pets[1].aptitudes[key], APTITUDE_RANGES[key][1]);
   }
   assert.notStrictEqual(battle.pets[0].aptitudes, battle.pets[1].aptitudes);
-  const next = new Battle(() => 0.5, 1, 0, battle.roster, () => 1, () => rolls++);
+  const next = new Battle(() => 0.5, 1, 0, battle.roster, () => 1, () => rolls++, undefined, undefined, undefined, undefined, undefined, () => 0);
   assert.deepEqual(next.roster.entries.map(pet => pet.aptitudes), battle.roster.entries.map(pet => pet.aptitudes));
   assert.equal(rolls, 48);
 });
 
 test('capture, summon and next battle keep each pet aptitude and battle values', () => {
-  const battle = new Battle(() => 0, 2, 0, undefined, () => 0, () => 0);
+  const battle = new Battle(() => 0, 2, 0, undefined, () => 0, () => 0, undefined, undefined, undefined, undefined, undefined, () => 0);
   const baby = battle.enemies[0];
   const original = { ...baby.aptitudes };
   assert.deepEqual([baby.hp, baby.attack, baby.defense, baby.speed], [33, 10, 9, 9]);
@@ -93,7 +93,7 @@ test('capture, summon and next battle keep each pet aptitude and battle values',
   battle.command('hero', 'summon', caught.id);
   battle.command('pet', 'defend');
   assert.deepEqual(battle.pets.find(pet => pet.id === caught.id).aptitudes, original);
-  const next = new Battle(() => 0.5, 1, 0, battle.roster, () => 1, () => 1);
+  const next = new Battle(() => 0.5, 1, 0, battle.roster, () => 1, () => 1, undefined, undefined, undefined, undefined, undefined, () => 0);
   assert.deepEqual(next.roster.entries[0].aptitudes, battle.roster.entries[0].aptitudes);
   assert.deepEqual(next.roster.entries[2].aptitudes, original);
   assert.deepEqual(next.summonTargets().find(pet => pet.id === caught.id)?.aptitudes, original);

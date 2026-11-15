@@ -26,18 +26,18 @@ test('normal and baby growth include their configured endpoints and use thousand
 
 test('each initial pet rolls once and next battle keeps its own growth and combat stats', () => {
   let calls = 0;
-  const battle = new Battle(() => 0.5, 1, 0, undefined, () => 1, () => 0, () => calls++ === 0 ? 0 : 1);
+  const battle = new Battle(() => 0.5, 1, 0, undefined, () => 1, () => 0, () => calls++ === 0 ? 0 : 1, undefined, undefined, undefined, undefined, () => 0);
   assert.equal(calls, 3);
   assert.deepEqual(battle.roster.entries.map(pet => pet.growth), [0.882, 0.918]);
   assert.deepEqual(battle.pets.map(({ hp, maxHp, attack, defense, speed }) => ({ hp, maxHp, attack, defense, speed })),
     battle.roster.entries.map(petCombat));
-  const next = new Battle(() => 0.5, 1, 0, battle.roster, () => 1, () => 1, () => { calls++; return 0; });
+  const next = new Battle(() => 0.5, 1, 0, battle.roster, () => 1, () => 1, () => { calls++; return 0; }, undefined, undefined, undefined, undefined, () => 0);
   assert.equal(calls, 4);
   assert.deepEqual(next.roster.entries.map(pet => pet.growth), [0.882, 0.918]);
 });
 
 test('captured baby keeps growth through summon and another battle', () => {
-  const battle = new Battle(() => 0, 2, 0, undefined, () => 0, () => 0, () => 0);
+  const battle = new Battle(() => 0, 2, 0, undefined, () => 0, () => 0, () => 0, undefined, undefined, undefined, undefined, () => 0);
   const baby = battle.enemies[0];
   assert.equal(baby.growth, 0.900);
   battle.command('hero', 'capture', baby.id);
@@ -47,7 +47,7 @@ test('captured baby keeps growth through summon and another battle', () => {
   battle.command('hero', 'summon', caught.id);
   battle.command('pet', 'defend');
   assert.equal(battle.pets.find(pet => pet.id === caught.id).growth, 0.900);
-  const next = new Battle(() => 0.5, 1, 0, battle.roster, () => 1, () => 1, () => 1);
+  const next = new Battle(() => 0.5, 1, 0, battle.roster, () => 1, () => 1, () => 1, undefined, undefined, undefined, undefined, () => 0);
   assert.equal(next.roster.entries[2].growth, 0.900);
   assert.equal(next.summonTargets().find(pet => pet.id === caught.id).growth, 0.900);
 });

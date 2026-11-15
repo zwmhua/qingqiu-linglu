@@ -15,7 +15,7 @@ const { petPanel, petPanelPreview } = await import('../assets/battle/logic/pet-p
 const { readProgress, saveProgress, resetProgress } = await import('../assets/battle/logic/local-progress.ts');
 const make = ({ count = 1, previous, selectedPetId, babies = [], roll = 0 } = {}) =>
   new Battle(() => 0, count, 0, previous, () => babies.shift() ?? 1,
-    () => 0, () => 0, () => 0, () => 0, () => roll, { hero: initialHero(), selectedPetId, petRandom: () => 0 });
+    () => 0, () => 0, () => 0, () => 0, () => roll, { hero: initialHero(), selectedPetId, petRandom: () => 0 }, () => 0);
 const points = pet => Object.values(pet.baseStats).reduce((sum, value) => sum + value, 0);
 const panel = pet => [pet.maxHp, pet.attack, pet.defense, pet.speed];
 const state = pet => [pet.level, pet.exp, pet.potential];

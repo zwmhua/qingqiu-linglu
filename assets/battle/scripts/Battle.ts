@@ -7,6 +7,7 @@ import { generateAptitudes } from '../logic/aptitude';
 import { generateGrowth } from '../logic/growth';
 import { generateBaseStats } from '../logic/base-stats';
 import { generateSkills } from '../logic/pet-skills';
+import { effectivePetPanel, statPassives, regenAmount } from '../logic/pet-panel';
 import type { Aptitudes } from '../logic/aptitude';
 import type { BaseStats } from '../logic/base-stats';
 import { MUTATION_CONFIG, isMutation, mutateAptitudes } from '../logic/mutation';
@@ -93,8 +94,8 @@ export class Battle {
       baseStats: pet.baseStats,
       skillIds: [...(pet.skillIds ?? [])],
       isMutated: pet.isMutated,
-      hp: pet.maxHp, maxHp: pet.maxHp, attack: pet.attack, defense: pet.defense,
-      speed: pet.speed, skill: pet.skill, defending: false, left: false, deployed: pet.id === this.selectedPetId,
+      hp: pet.maxHp, ...effectivePetPanel(pet),
+      skill: pet.skill, defending: false, left: false, deployed: pet.id === this.selectedPetId,
     })));
     this.participatedPets.add(this.selectedPetId);
     const quantity = count ?? this.pickCount();
@@ -116,9 +117,20 @@ export class Battle {
         skillIds: generateSkills(species, isMutated, skillRandom),
         ...wildCombat(species, level), defending: false, left: false, deployed: true });
     }
+    for (const enemy of this.enemies) Object.assign(enemy, statPassives(enemy, enemy.level, enemy.skillIds));
     const { enemyBaseExp, enemyLevelExp } = HERO_PROGRESSION;
     this.victoryExp = this.enemies.reduce((sum, unit) => sum + enemyBaseExp + enemyLevelExp * effectiveLevel(unit.level), 0);
     this.log.push(`遭遇：${this.enemies.map(enemy => enemy.name).join('、')}。`);
+    this.beginRound();
+  }
+
+  private beginRound(): void {
+    for (const unit of this.units) {
+      const amount = regenAmount(unit);
+      if (!amount) continue;
+      unit.hp += amount;
+      this.log.push(`第 ${this.round} 回合：${unit.name} 回血 ${amount} 点。`);
+    }
   }
 
   private pickCount(): number {
@@ -198,10 +210,7 @@ export class Battle {
     if (!this.session.confirmPetAllocation(this.phase !== 'ended', id, preview, persist)) return false;
     const pet = this.roster.entries.find(entry => entry.id === id)!;
     const unit = this.pets.find(entry => entry.id === id);
-    if (unit) {
-      const { maxHp, attack, defense, speed, baseStats } = pet;
-      Object.assign(unit, { maxHp, attack, defense, speed, baseStats });
-    }
+    if (unit) Object.assign(unit, effectivePetPanel(pet), { baseStats: pet.baseStats });
     return true;
   }
 
@@ -238,7 +247,7 @@ export class Battle {
       for (const unit of this.pets) {
         const pet = this.roster.entries.find(entry => entry.id === unit.id);
         if (pet && pet.level !== unit.level)
-          Object.assign(unit, pet, { combatLevel: effectiveLevel(pet.level) });
+          Object.assign(unit, pet, effectivePetPanel(pet), { combatLevel: effectiveLevel(pet.level) });
       }
     }
     return this.winner;
@@ -313,7 +322,7 @@ export class Battle {
         if (success) {
           if (!this.roster.addCaptured(target)) throw new Error('携带记录无法新增');
           const carried = this.roster.entries[this.roster.entries.length - 1];
-          this.allies.push({ ...target, ...carried, side: 'ally', slot: 0,
+          this.allies.push({ ...target, ...carried, ...effectivePetPanel(carried), side: 'ally', slot: 0,
             defending: false, left: false, deployed: false });
           target.left = true;
         }
@@ -365,6 +374,7 @@ export class Battle {
       this.round++;
       this.seconds = BATTLE_RULES.commandSeconds;
       for (const ally of this.allies) ally.defending = false;
+      this.beginRound();
     } else {
       this.log.push(this.winner === 'ally' ? '战斗胜利！' : '战斗失败。');
     }

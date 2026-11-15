@@ -14,7 +14,7 @@ function capture(battle, enemyId = 'enemy-0') {
 }
 
 test('a captured pet keeps its real stats and identity, then returns at full health after victory', () => {
-  const first = new Battle(() => 0, 2);
+  const first = new Battle(() => 0, 2, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => 0);
   assert.equal(first.roster.entries.length, 2);
   assert.equal(first.roster.capacity, 5);
   Object.assign(first.enemies[0], { hp: 8, maxHp: 41, level: 3,
@@ -31,7 +31,7 @@ test('a captured pet keeps its real stats and identity, then returns at full hea
   const oldRoster = structuredClone(first.roster.entries);
   const oldLog = [...first.log];
 
-  const next = new Battle(() => 0, 1, first.heroRage, first.roster);
+  const next = new Battle(() => 0, 1, first.heroRage, first.roster, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => 0);
   assert.equal(next.roster.entries.length, 3);
   assert.equal(next.roster.capacity, 5);
   assert.deepEqual(next.roster.entries.map(pet => pet.id), first.roster.entries.map(pet => pet.id));
@@ -54,31 +54,31 @@ test('a captured pet keeps its real stats and identity, then returns at full hea
 });
 
 test('a defeat also retains captured pets; a fresh session starts with two', () => {
-  const first = new Battle(() => 0, 2);
+  const first = new Battle(() => 0, 2, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => 0);
   capture(first);
   for (const ally of first.allies.filter(unit => unit.deployed)) ally.hp = 0;
   assert.equal(first.checkWinner(), 'enemy');
-  const next = new Battle(() => 0, 1, first.heroRage, first.roster);
+  const next = new Battle(() => 0, 1, first.heroRage, first.roster, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => 0);
   assert.equal(next.roster.entries.length, 3);
   assert.equal(next.pets[2].hp, next.pets[2].maxHp);
-  assert.equal(new Battle(() => 0, 1).roster.entries.length, 2);
+  assert.equal(new Battle(() => 0, 1, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => 0).roster.entries.length, 2);
 });
 
 test('reused enemy IDs across battles make unique pets and capacity still blocks capture', () => {
-  const first = new Battle(() => 0, 2);
+  const first = new Battle(() => 0, 2, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => 0);
   capture(first);
   const firstId = first.roster.entries[2].id;
-  const second = new Battle(() => 0, 2, 0, first.roster);
+  const second = new Battle(() => 0, 2, 0, first.roster, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => 0);
   capture(second);
   const secondId = second.roster.entries[3].id;
   assert.notEqual(secondId, firstId);
   assert.equal(first.roster.entries.length, 3);
   assert.equal(second.roster.entries.length, 4);
-  const third = new Battle(() => 0, 1, 0, second.roster);
+  const third = new Battle(() => 0, 1, 0, second.roster, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => 0);
   capture(third);
   assert.equal(third.roster.entries.length, 5);
   assert.equal(new Set(third.roster.entries.map(pet => pet.id)).size, 5);
-  const full = new Battle(() => 0, 1, 0, third.roster);
+  const full = new Battle(() => 0, 1, 0, third.roster, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => 0);
   assert.throws(() => full.command('hero', 'capture', 'enemy-0'), /携带已满/);
   assert.equal(full.commands.size, 0);
   assert.equal(full.enemies[0].left, false);

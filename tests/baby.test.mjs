@@ -24,8 +24,8 @@ test('each encountered frog gets an independent 5% baby roll', () => {
 });
 
 test('level-zero baby fights with the existing level-one stats', () => {
-  const baby = new Battle(() => 0.5, 1, 0, undefined, () => 0).enemies[0];
-  const normal = new Battle(() => 0.5, 1, 0, undefined, () => 1).enemies[0];
+  const baby = new Battle(() => 0.5, 1, 0, undefined, () => 0, undefined, undefined, undefined, undefined, undefined, undefined, () => 0).enemies[0];
+  const normal = new Battle(() => 0.5, 1, 0, undefined, () => 1, undefined, undefined, undefined, undefined, undefined, undefined, () => 0).enemies[0];
   assert.equal(baby.level, 0);
   assert.equal(baby.combatLevel, 1);
   assert.deepEqual([baby.hp, baby.attack, baby.defense, baby.speed],
