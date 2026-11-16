@@ -946,3 +946,60 @@ Cocos Creator 3.8.8 以当前配置分别构建 Web mobile 和微信小游戏，
 - Web 首次构建停在脚本打包，终止本轮构建进程树保留日志；微信构建退出 36、Finished。Web 使用同一构建副本再次构建，日志 Finished。构建副本全部 TypeScript 与实际源码逐字节一致。包体见 package-bytes.json。
 - 本轮证据均在 temp/p2-11-revision/。试玩入口 http://127.0.0.1:18416/?scene=3ca2435e-bec8-4656-9bf9-63cfaadc18b7&devPreview=1&roundTripSample=single&p2Books=1 。保留已顶掉硬甲并出战的磐龟；固定序列仅由验收脚本注入。
 - 微信真机/模拟器、手机实机与发布包 UI 实点为 NOT_TESTED；失败保存、待结算禁用及城野切换由定向集成测试覆盖，浏览器实际验证以上两条。独立 QA 在本地提交后只读 diff，结论绑定最终完整 SHA，另存 temp/p2-11-revision/qa-final.md；不宣称 CI 或 Human 最终验收。仅本地提交，无推送合并。
+
+## P2-12 开工核对与额度 X2（2026-11-16）
+
+- Human 本轮明确解除原 task/26-boot-subpackage 工作区的 X1；该工作区全部修改与未跟踪素材原样保留。P2-12 业务与测试合计增删仍限 300 行，只本地提交。
+- 已执行 git fetch origin main，最新远端及本卡起始 SHA 为 `6c4cdc65916aa96d45ed2a4b14d4a68c7b62cd09`。
+- 已核对聊天「青丘灵录｜P2-11｜打书」（01a1dfea-7700-7f61-b2d8-7f5d39898402）：华周明确回复「验收通过，合并」，随后回复「可以推送了」；该聊天的合并、推送记录均绑定上述 SHA。仓库 STATUS 尚未补登，本次不修改受保护 STATUS。
+- 独立工作树 `C:/Users/hua/cocos/Project/qingqiu-linglu-task48`，分支 `task/48-p2-12-rejuvenation`；创建后、落卡前 git status --short 为空。附件原样复制至 docs/cards/card-P2-12.md，源与目标 SHA-256 均为 `27cb23f8f8f92f235fe7a16536944291530885b81d995cf0b492982c39c377b8`。
+- 已读取本基线 AGENTS、ARCHITECTURE、卡片、phase2-design 对应规则及现有生成器、背包确认、会话保存、来源校验与测试。当前 v5 可以表达结果；复用完整范围生成器、现有变异倍率、技能池与 progressSnapshot，无需新依赖。
+
+### 实施前逐文件复估
+
+下列统计业务与测试相对起始提交的新增和删除总数，非净增加；保留可读代码和有效断言，不通过压行或删除验收项满足额度。尚未实施，不是实际 diff。
+
+| 文件 | 预计增删行 | 必需范围 |
+| --- | ---: | --- |
+| assets/battle/logic/rejuvenation.ts | 36～42 | 两种材料资格、非出战校验、完整物种范围生成、一次变异倍率、缓存重算 |
+| assets/battle/logic/inventory.ts | 4 | 替换两种材料说明 |
+| assets/battle/logic/session-progress.ts | 32～38 | 一次确认、执行时重查、同候选保存、成功发布及清理失效自动灵术 |
+| assets/battle/logic/local-progress.ts | 2～4 | 仅 v5 放开 initial 宝宝，保留其它来源约束 |
+| assets/battle/scripts/BattleView.ts | 46～56 | 复用选宠和确认、完整损失说明、还童按钮、失败与成功提示及失效回调保护 |
+| tests/rejuvenation.test.mjs | 48～56 | 各物种上下界、普通/变异/宝宝、50 点、成长、重复倍率及技能范围 |
+| tests/session-progress.test.mjs | 62～74 | 缺材料/缺宠/身份/出战/上下文变化，零随机零保存，故障与重复确认、完整快照及自动指令 |
+| tests/progress-migration.test.mjs | 32～40 | initial 宝宝与升级读回、捕获来源、旧版本拒绝与非法身份/缓存负例 |
+| tests/town-progress-integration.test.mjs | 48～56 | 城野 UI、取消、确认信息、出战、失败重试、重复与失效回调、战斗及待保存阻断 |
+| 合计 | 310～370 | 超过当前 300 行门限 |
+
+X2（2026-11-16）：完整范围复估 310～370 行，超过本卡 300 行上限。停止在测试与产品代码修改之前；目前仅落原卡与本开工记录，未提交、推送或合并。
+
+建议拆分（待 Human 决定，不自动修改原定稿卡）：
+- P2-12A：纯规则、会话原子保存、v5 来源兼容及对应三组逻辑测试，预计 212～254 行；不开放玩家消耗入口。
+- P2-12B：道具说明、背包确认与集成测试，预计 98～116 行；完成整体验收所需的城野实际试玩、刷新、全量回归、两端构建及最终 SHA 独立静态 QA。
+- 若保持原卡完整范围一次交付，需要 Human 明确批准新的单卡额度；上述最大估算为 370 行，实际超新额度仍须停止。
+
+本轮仅完成开工只读核对、独立工作树与原卡哈希验证。定向/全量 node:test、严格 tsc、ego-browser 实际试玩、Web/微信构建和独立静态 QA 均为 NOT_TESTED，原因是实施前额度 X2。尚无 P2-12 试玩入口或最终实现 SHA。
+
+2026-11-16 Human 批准 P2-12 完整单卡上限 370 行，按起始 6c4cdc65916aa96d45ed2a4b14d4a68c7b62cd09 计数，解除本次 X2；先规则及原子保存，再界面及集成测试，共同试玩验收，仅本地提交。
+
+### P2-12 第一阶段实现与测试暂停（2026-11-16）
+
+- 先新增规则、会话和迁移测试，红测记录 temp/p2-12/rules-red.log：缺少 rejuvenation 模块与 prepareRejuvenation 方法，失败符合实施前预期。
+- 随后实现完整物种范围重抽、变异倍率一次、0级50点及自然技能重置；会话一次确认重查实际出战和目标资料，完整快照写成功后才发布宠物与库存，清除失效灵术记忆；仅 v5 放开 initial 宝宝限制。
+- 定向执行 node --test tests/rejuvenation.test.mjs tests/session-progress.test.mjs tests/progress-migration.test.mjs：14 项中 13 成功、1 失败。保留日志 temp/p2-12/rules-green.log（文件名不代表全绿）。
+- 暂停原因：新增 progress-migration.test.mjs 最后一个完整对象断言遗漏现有 validateSnapshot 返回时补入的 skill: undefined。前一条完整 progressSnapshot 字符串一致性断言已经成功；当前失败仅是自有 undefined 属性与缺失属性的对象差别。依据 AGENTS「测试本身有错：停下报告，不自己改」，保持失败用例和现场，等待 Human 授权修正该预期为 { ...captured, skill: undefined }，保留完整 deepEqual 及其它全部断言；不修改产品读取行为。
+- 尚未接界面。全量测试、严格 tsc、ego-browser 试玩、两端构建及最终 SHA 独立静态 QA 均 NOT_TESTED。所有本轮改动未提交；原工作区保持不变。
+
+2026-11-16 Human 明确批准仅将上述新增测试预期改为 { ...captured, skill: undefined }，完整对象、存档字符串及其它断言保留；继续整卡，370 行上限不变。
+
+
+### P2-12 实现检查与环境阻断
+
+- 业务及测试相对起始提交共增删 262/370 行（含新增文件，meta不计）。还童 UI 共用打书的确认遮罩、取消和一次回调保护；材料/对象/全项重置损失逐行显示，成功提示打开原宠物面板查看。
+- 批准修正测试预期后，规则与存档定向14项成功；新增界面用例先红测缺少还童按钮，再实现接线。最终定向39项成功、0失败；全量 node --test tests/*.test.mjs 共201项成功、0失败；限定严格tsc退出0，覆盖全部battle/logic、Battle.ts、platform.ts和传递依赖。日志分别为 temp/p2-12/rules-recheck.log、ui-red-actual.log、targeted.log、full.log、tsc.log。
+- 工具留痕：首次集成测试把 TypeScript 路径误指向 app.asar，改为仓库既有 app.asar.unpacked 路径后才采用实际红测；一次 rg Windows通配路径失败改为读取已有文档。未改断言或依赖。代理文件准备、启动与浏览器操作的组合请求被自动策略阻断，拆成可检查的文件准备与独立启动后执行成功，未改变权限。
+- Creator首轮预览41920和Web构建40420停在初始化，GPU缓存报错；只停止本轮进程树，保留 creator.log/.err 和 web-mobile-final-process.log/.err。第二轮加入 --disable-gpu 后，预览38864曾监听7469，但因引擎内部 UNKNOWN: unknown error, read / READ FILE ERROR 退出，见 creator-retry.err；未改Creator安装或权限。
+- ego-browser 新建本卡空间14，实际打开 http://127.0.0.1:18418/?scene=3ca2435e-bec8-4656-9bf9-63cfaadc18b7&devPreview=1&roundTripSample=single&p2Rejuvenation=1 ，返回 connect ECONNREFUSED 127.0.0.1:7469。此为失败入口，不能交作可用试玩地址；title.png与browser-02.mjs保留。未进入游戏，城野实点、刷新及负例实际试玩全部NOT_TESTED。确定性三宠与两种露水样本已经准备，fixture.mjs/json及proxy.cjs留在temp/p2-12，但不计作试玩证据。
+- 第二轮构建29828停在引擎插件初始化，尚无Finished或构建退出码；已停止本轮驱动47660及子进程，保留web-mobile-retry-process日志。微信构建尚未轮到执行。Web构建未完成、微信构建NOT_TESTED、包体NOT_TESTED。未将进程存活或启动成功当作构建成功。
+- 依据AGENTS同类辅助错误最多两轮，本次不进入第三轮环境重试。未改原工作区或其它预览实例；Creator只产生的engine.json换行差异经无内容diff核实后恢复。代码拟本地提交后做独立静态QA，不能代替仍待完成的浏览器、构建与Human最终试玩验收。本卡尚未完成交付。

@@ -8,8 +8,8 @@ export const ITEMS: Record<string, { name: string; description: string }> = Obje
   ...Object.entries(PET_SKILLS).map(([id, skill]) => [`book:${id}`, {
     name: `${skill.name}技能书`, description: `城野选宠打书，消耗一本${skill.name}书。`,
   }]),
-  ['rejuvenation', { name: '还童露', description: '用于后续灵宠还童，目前仅可查看。' }],
-  ['mutation-rejuvenation', { name: '变异还童露', description: '用于后续变异灵宠还童，目前仅可查看。' }],
+  ['rejuvenation', { name: '还童露', description: '消耗1个，将未出战普通灵宠还童为0级宝宝，重抽属性与技能。' }],
+  ['mutation-rejuvenation', { name: '变异还童露', description: '消耗1个，将未出战变异灵宠还童为0级宝宝，保留变异身份。' }],
 ]);
 export const DROP_RATES = Object.freeze({ formal: Object.freeze([0.08, 0.03, 0.01]), test: Object.freeze([0.5, 0.3, 0.1]) });
 

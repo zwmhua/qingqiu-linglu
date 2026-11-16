@@ -183,3 +183,33 @@ test('v4 keeps exact ordered skills and progress, v5 validates inventory and set
     }
   }
 });
+
+
+test('v5 initial babies and captured mutation babies reload; old initial constraints and invalid data remain rejected', async () => {
+  const { rejuvenate } = await import('../assets/battle/logic/rejuvenation.ts');
+  const session = new SessionProgress(initialHero());
+  Object.assign(session.roster.entries[1], rejuvenate(session.roster.entries[1], () => 0));
+  const saved = JSON.parse(progressSnapshot(session));
+  assert.equal(new ProgressLoader().load(disk(saved)).roster.entries[1].isBaby, true);
+  for (const version of [1, 2, 3, 4]) {
+    const legacy = structuredClone(saved); legacy.version = version;
+    delete legacy.inventory; delete legacy.lastSettledId;
+    if (version < 4) legacy.pets.forEach(p => { delete p.skillIds; });
+    if (version < 3) legacy.pets.forEach(p => Object.assign(p, wildCombat(p.species, p.level)));
+    if (version === 1) legacy.pets.forEach(p => { delete p.exp; delete p.potential; });
+    const storage = disk(legacy), raw = storage.values.get(key);
+    assert.throws(() => new ProgressLoader().load(storage));
+    assert.equal(storage.values.get(key), raw); assert.equal(storage.attempts.length, 0);
+  }
+  for (const patch of [{ id: 'pet-3' }, { species: 'pangui' }, { isMutated: true }, { skillIds: ['unknown'] },
+    { potential: 1 }, { level: 1 }, { attack: 999 }]) {
+    const bad = structuredClone(saved); Object.assign(bad.pets[1], patch);
+    assert.throws(() => new ProgressLoader().load(disk(bad)));
+  }
+  const captured = { ...session.roster.entries[1], id: 'caught-1', origin: 'captured', sourceEnemyId: 'enemy-0', isMutated: true };
+  Object.assign(captured, rejuvenate(captured, () => 0));
+  const next = new SessionProgress(initialHero(), { entries: [session.roster.entries[0], captured], nextCapturedId: 2 });
+  const raw = progressSnapshot(next), restored = new ProgressLoader().load(disk(JSON.parse(raw)));
+  assert.equal(progressSnapshot(restored), raw);
+  assert.deepEqual(restored.roster.entries[1], { ...captured, skill: undefined });
+});

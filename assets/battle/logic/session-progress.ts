@@ -1,3 +1,4 @@
+import { rejuvenate, rejuvenationPlan } from './rejuvenation';
 import { generateAptitudes } from './aptitude';
 import { BATTLE_RULES, INITIAL_PET_IDS } from './battle-rules';
 import { generateBaseStats } from './base-stats';
@@ -85,6 +86,29 @@ export class SessionProgress {
       const order = this.autoOrders.get(id);
       if (order?.command === 'spell' && order.skillId === result.replaced) this.autoOrders.delete(id);
       return result;
+    } };
+  }
+
+  prepareRejuvenation(blocked: boolean, id: string, item: string) {
+    const find = () => this.roster.entries.find(pet => pet.id === id);
+    rejuvenationPlan(find(), item, this.inventory, this.selectedPetId, blocked);
+    const original = JSON.stringify(find());
+    let consumed = false;
+    return { execute: (nowBlocked: boolean,
+      persist: (pet: CarriedPet, inventory: Inventory) => void, random = Math.random) => {
+      if (consumed) return;
+      consumed = true;
+      const pet = find();
+      rejuvenationPlan(pet, item, this.inventory, this.selectedPetId, nowBlocked);
+      if (JSON.stringify(pet) !== original) throw new Error('宠物资料已变化，请重新确认');
+      const updated = rejuvenate(pet, random);
+      const inventory = { ...this.inventory, [item]: this.inventory[item] - 1 };
+      persist(updated, inventory);
+      Object.assign(pet, updated);
+      this.inventory = inventory;
+      const order = this.autoOrders.get(id);
+      if (order?.command === 'spell' && !updated.skillIds!.includes(order.skillId!)) this.autoOrders.delete(id);
+      return { message: `${pet.name}还童成功，请在宠物面板查看新资料` };
     } };
   }
 

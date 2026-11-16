@@ -154,3 +154,54 @@ test('skill books save one complete candidate before publishing, preserve failur
   }
   assert.equal(writes, 1); assert.equal(rolls, 2);
 });
+
+
+test('rejuvenation rechecks live state and saves exactly once before publishing the full candidate', async () => {
+  const { progressSnapshot } = await import('../assets/battle/logic/local-progress.ts');
+  const session = new SessionProgress(initialHero(), undefined, undefined, () => 0), disk = storage();
+  const pet = session.roster.entries[1];
+  pet.skillIds = ['thunder']; session.inventory = { rejuvenation: 3, 'book:fireball': 4 };
+  session.autoOrders.set(pet.id, { command: 'spell', skillId: 'thunder' });
+  session.autoOrders.set('pet', { command: 'defend' });
+  saveProgress(disk, session);
+  const before = disk.raw, original = structuredClone(pet), orders = [...session.autoOrders];
+  let writes = 0, rolls = 0;
+  const random = () => { rolls++; return 0; };
+  const persist = (next, inventory) => { disk.setItem('', progressSnapshot(session, undefined, next, undefined, inventory)); writes++; };
+  for (const change of ['battle', 'selected', 'stock', 'missing', 'mutation', 'changed']) {
+    const tx = session.prepareRejuvenation(false, pet.id, 'rejuvenation');
+    if (change === 'selected') session.selectedPetId = pet.id;
+    if (change === 'stock') session.inventory.rejuvenation = 0;
+    if (change === 'missing') session.roster.entries.pop();
+    if (change === 'mutation') pet.isMutated = true;
+    if (change === 'changed') pet.exp++;
+    assert.throws(() => tx.execute(change === 'battle', persist, random));
+    assert.equal(tx.execute(false, persist, random), undefined);
+    session.selectedPetId = 'pet'; session.inventory.rejuvenation = 3;
+    if (change === 'missing') session.roster.entries.push(pet);
+    Object.assign(pet, structuredClone(original));
+  }
+  assert.equal(rolls, 0); assert.equal(writes, 0); assert.equal(disk.raw, before);
+  disk.fail = true;
+  const failed = session.prepareRejuvenation(false, pet.id, 'rejuvenation');
+  assert.throws(() => failed.execute(false, persist, random), /写入失败/);
+  const failedRolls = rolls;
+  assert.equal(failed.execute(false, persist, random), undefined); assert.equal(rolls, failedRolls);
+  assert.equal(disk.raw, before); assert.deepEqual(pet, original); assert.deepEqual([...session.autoOrders], orders);
+  assert.equal(progressSnapshot(session), before);
+  disk.fail = false;
+  const tx = session.prepareRejuvenation(false, pet.id, 'rejuvenation');
+  assert.match(tx.execute(false, persist, random).message, /还童成功/);
+  assert.equal(tx.execute(false, persist, random), undefined); assert.equal(writes, 1);
+  assert.equal(session.inventory.rejuvenation, 2); assert.equal(session.autoOrders.has(pet.id), false);
+  assert.deepEqual(session.autoOrders.get('pet'), { command: 'defend' });
+  const restored = loadSessionProgress(disk);
+  assert.equal(progressSnapshot(restored), disk.raw);
+  const old = JSON.parse(before), saved = JSON.parse(disk.raw);
+  for (const field of ['hero', 'selectedPetId', 'nextCapturedId', 'lastSettledId']) assert.deepEqual(saved[field], old[field]);
+  assert.deepEqual(saved.pets[0], old.pets[0]); assert.equal(saved.inventory['book:fireball'], 4);
+  restored.roster.awardExperience(new Set([pet.id]), 20, () => assert.fail('baby upgrade reroll'));
+  assert.equal(restored.roster.entries[1].potential, 5);
+  saveProgress(disk, restored);
+  assert.equal(progressSnapshot(loadSessionProgress(disk)), disk.raw);
+});

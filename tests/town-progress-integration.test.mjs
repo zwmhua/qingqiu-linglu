@@ -1077,3 +1077,49 @@ test('map deployment saves before changing selection; battle and pending settlem
   v.startFixedBattle(); assert.equal(v.battle.pets.find(pet => pet.deployed).id, target.id);
   assert.equal(draw().enabled, false);
 });
+
+
+test('rejuvenation UI covers maps, cancellation, failure, stale confirmation, selection and settlement guards', async () => {
+  const { v, session, complete } = await roundTripView(), pet = session.roster.entries[1];
+  v.mapBattle = false; session.inventory = { rejuvenation: 5, 'mutation-rejuvenation': 2 };
+  const labels = [], actions = new Map();
+  v.text = text => labels.push(text); v.rect = () => ({ addComponent() {} });
+  v.button = (text, _x, _y, _w, _h, enabled, click) => { if (enabled) actions.set(text, click); return { addComponent() {} }; };
+  const draw = () => { labels.length = 0; actions.clear(); v.renderInventory(); };
+  let rolls = 0; v.bookRandom = () => { rolls++; return 0; };
+  saveProgress(townDisk, session);
+  const before = townDisk.raw, writes = townDisk.writes;
+  v.openInventory(); v.inventoryItem = 'rejuvenation'; draw(); actions.get('还童')();
+  assert.match(v.bookMessage, /出战/);
+  v.inventoryPet = pet.id; v.inventoryItem = 'mutation-rejuvenation'; draw(); actions.get('还童')();
+  assert.match(v.bookMessage, /身份不匹配/);
+  v.inventoryItem = 'rejuvenation'; draw(); actions.get('还童')(); draw();
+  for (const field of ['还童露', '消耗 1 个', '等级', '经验', '潜能', '五项', '资质', '成长', '技能']) assert.ok(labels.some(t => t.includes(field)));
+  const cancelled = actions.get('确认还童'); actions.get('取消')(); cancelled();
+  assert.equal(townDisk.raw, before); assert.equal(townDisk.writes, writes); assert.equal(rolls, 0);
+  draw(); actions.get('还童')(); draw(); townDisk.fail = true; actions.get('确认还童')();
+  assert.match(v.bookMessage, /还童失败.*write failed/); assert.equal(townDisk.raw, before);
+  assert.equal(session.inventory.rejuvenation, 5); assert.equal(pet.isBaby, false);
+  townDisk.fail = false;
+  for (const region of ['town', 'outskirts']) {
+    v.town.load(region); complete(); draw(); actions.get('还童')(); draw();
+    const confirm = actions.get('确认还童'), count = session.inventory.rejuvenation;
+    confirm(); const usedRolls = rolls; confirm(); cancelled();
+    assert.equal(rolls, usedRolls); assert.equal(session.inventory.rejuvenation, count - 1);
+    assert.match(v.bookMessage, /还童成功/); assert.equal(pet.level, 0); assert.equal(pet.isBaby, true);
+    assert.equal(loadSessionProgress(townDisk).roster.entries[1].level, 0);
+  }
+  const saved = townDisk.raw, savedWrites = townDisk.writes;
+  draw(); actions.get('还童')(); draw(); const switched = actions.get('确认还童');
+  session.selectedPetId = pet.id; const usedRolls = rolls; switched();
+  assert.match(v.bookMessage, /出战/); assert.equal(rolls, usedRolls); session.selectedPetId = 'pet';
+  draw(); actions.get('还童')(); draw(); const closed = actions.get('确认还童');
+  actions.get('关闭')(); closed(); assert.equal(townDisk.raw, saved);
+  v.openInventory(); v.inventoryPet = pet.id; draw(); actions.get('还童')(); draw();
+  const stale = actions.get('确认还童'); v.mapBattle = true; stale();
+  assert.match(v.bookMessage, /战斗/); draw(); assert.equal(actions.has('还童'), false);
+  v.battle.command('hero', 'capture', 'enemy-0'); v.battle.command('pet', 'defend');
+  townDisk.fail = true; v.finishBattle(); draw();
+  assert.equal(actions.has('还童'), false); stale();
+  assert.equal(townDisk.raw, saved); assert.equal(townDisk.writes, savedWrites); assert.equal(rolls, usedRolls);
+});

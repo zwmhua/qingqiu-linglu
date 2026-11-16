@@ -86,7 +86,7 @@ function validateSnapshot(saved: Snapshot, capacity: number = BATTLE_RULES.maxCa
   if (new Set(ids).size !== ids.length || !ids.includes(saved.selectedPetId)
     || !pets.every((pet, index) => pet.origin === 'initial'
       ? (legacy ? pet.id === ['pet', 'pet-2'][index] : pet.id === 'pet' || pet.id === 'pet-2')
-        && pet.species === 'tingwa' && !pet.isBaby && !pet.isMutated
+        && pet.species === 'tingwa' && (saved.version === VERSION || !pet.isBaby) && !pet.isMutated
       : pet.origin === 'captured' && (!legacy || index >= 2) && /^caught-[1-9]\d*$/.test(pet.id)))
     throw new Error('本地携带名单或出战选择无效');
   return { ...saved, version: Math.max(saved.version, 3),
