@@ -166,7 +166,7 @@ export class Battle {
   }
 
   get units(): Unit[] { return [...this.allies, ...this.enemies]; }
-  get pets(): Unit[] { return this.allies.filter(u => u.id.startsWith('pet') || u.id.startsWith('caught-')); }
+  get pets(): Unit[] { return this.allies.filter(u => u.id.startsWith('pet') || u.id.startsWith('caught-') || u.id.startsWith('fused-')); }
   get pending(): Unit[] { return this.allies.filter(u => u.deployed && u.hp > 0 && !u.left && !this.commands.has(u.id)); }
   summonTargets(): Unit[] {
     if (this.summonsUsed >= BATTLE_RULES.summon.maxPerBattle) return [];

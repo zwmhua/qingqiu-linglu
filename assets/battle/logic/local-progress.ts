@@ -11,9 +11,9 @@ import { generateSkills, validSkills } from './pet-skills';
 import { validateInventory, type Inventory } from './inventory';
 
 import { progressIO, type ProgressStorage } from '../../logic/platform';
-const VERSION = 5;
+const VERSION = 6;
 type Snapshot = { version: number; hero: HeroProgress; pets: CarriedPet[]; selectedPetId: string;
-  nextCapturedId?: number; inventory?: Inventory; lastSettledId?: number };
+  nextCapturedId?: number; nextFusedId?: number; inventory?: Inventory; lastSettledId?: number };
 type Progress = Pick<SessionProgress, 'heroProgress' | 'roster' | 'selectedPetId' | 'inventory' | 'lastSettledId'>;
 function validateSettlement(id: unknown): void {
   if (!Number.isSafeInteger(id) || (id as number) < 0) throw new Error('结算标识无效，原档已保留');
@@ -52,13 +52,14 @@ function onlyKeys(value: object, allowed: string[]): void {
 
 function validateSnapshot(saved: Snapshot, capacity: number = BATTLE_RULES.maxCarriedPets): Snapshot {
   onlyKeys(saved, ['version', 'hero', 'pets', 'selectedPetId', 'nextCapturedId',
-    ...(saved?.version === VERSION ? ['inventory', 'lastSettledId'] : [])]);
-  if (saved.version === VERSION) { validateInventory(saved.inventory); validateSettlement(saved.lastSettledId); }
+    ...(saved?.version >= 5 ? ['inventory', 'lastSettledId'] : []),
+    ...(saved?.version === VERSION ? ['nextFusedId'] : [])]);
+  if (saved.version >= 5) { validateInventory(saved.inventory); validateSettlement(saved.lastSettledId); }
   const hero = saved?.hero;
   const { maxLevel, initialStat, statPerLevel, potentialPerLevel } = HERO_PROGRESSION;
   const minimum = initialStat + (hero?.level ?? 0) * statPerLevel;
   const budget = (hero?.level ?? 0) * potentialPerLevel;
-  if (![1, 2, 3, 4, VERSION].includes(saved?.version) || !hero || !inRange(hero.level, 0, maxLevel)
+  if (![1, 2, 3, 4, 5, VERSION].includes(saved?.version) || !hero || !inRange(hero.level, 0, maxLevel)
     || !inRange(hero.exp, 0, hero.level === maxLevel ? 0 : levelUpExp(hero.level) - 1)
     || !inRange(hero.potential, 0, budget)
     || !BASE_STAT_KEYS.every(key => inRange(hero.stats?.[key], minimum, minimum + budget))
@@ -86,9 +87,14 @@ function validateSnapshot(saved: Snapshot, capacity: number = BATTLE_RULES.maxCa
   if (new Set(ids).size !== ids.length || !ids.includes(saved.selectedPetId)
     || !pets.every((pet, index) => pet.origin === 'initial'
       ? (legacy ? pet.id === ['pet', 'pet-2'][index] : pet.id === 'pet' || pet.id === 'pet-2')
-        && pet.species === 'tingwa' && (saved.version === VERSION || !pet.isBaby) && !pet.isMutated
+        && pet.species === 'tingwa' && (saved.version >= 5 || !pet.isBaby) && !pet.isMutated
+      : pet.origin === 'fused' ? saved.version === VERSION && /^fused-[1-9]\d*$/.test(pet.id)
+        && Number.isSafeInteger(Number(pet.id.slice(6))) && Number(pet.id.slice(6)) < saved.nextFusedId!
+        && pet.sourceEnemyId === undefined
       : pet.origin === 'captured' && (!legacy || index >= 2) && /^caught-[1-9]\d*$/.test(pet.id)))
     throw new Error('本地携带名单或出战选择无效');
+  if (saved.version === VERSION && (!Number.isSafeInteger(saved.nextFusedId) || saved.nextFusedId! < 1))
+    throw new Error('合宠序号无效，原档已保留');
   return { ...saved, version: Math.max(saved.version, 3),
     pets: pets.map(pet => ({ ...pet, ...(legacy ? petCombat(pet) : {}), skill: pet.skill })) };
 }
@@ -111,7 +117,8 @@ export class ProgressLoader {
       if (backup !== null && backup !== raw) throw new Error('旧档备份冲突，请保留档案并联系华周');
       if (backup === null) storage.setItem(backupKey, raw);
       if (!this.pending) {
-        saved = { ...saved, version: VERSION, inventory: {}, lastSettledId: 0,
+        saved = { ...saved, version: VERSION, nextFusedId: 1,
+          inventory: saved.version >= 5 ? saved.inventory : {}, lastSettledId: saved.version >= 5 ? saved.lastSettledId : 0,
           pets: saved.pets.map(({ skill: _old, ...pet }) => ({ ...pet,
             skillIds: saved.version >= 4 ? pet.skillIds : generateSkills(pet.species, pet.isMutated, random) })) };
         validateSnapshot(saved);
@@ -122,7 +129,7 @@ export class ProgressLoader {
       saved = validateSnapshot(JSON.parse(this.pending.candidate));
       this.pending = undefined;
     }
-    const session = new SessionProgress(saved.hero, { entries: saved.pets, nextCapturedId: saved.nextCapturedId }, saved.selectedPetId);
+    const session = new SessionProgress(saved.hero, { entries: saved.pets, nextCapturedId: saved.nextCapturedId, nextFusedId: saved.nextFusedId }, saved.selectedPetId);
     session.inventory = saved.inventory!;
     session.lastSettledId = saved.lastSettledId!;
     return session;
@@ -136,12 +143,12 @@ export function saveProgress(storage: ProgressStorage, progress: Progress,
 
 export function progressSnapshot(progress: Progress,
   hero = progress.heroProgress, updatedPet?: CarriedPet, roster = progress.roster.entries,
-  inventory = progress.inventory, lastSettledId = progress.lastSettledId): string {
+  inventory = progress.inventory, lastSettledId = progress.lastSettledId, nextFusedId = progress.roster.nextFusedId): string {
   if (!hero) throw new Error('人物进度尚未初始化');
   validateInventory(inventory);
   validateSettlement(lastSettledId);
   const saved: Snapshot = { version: VERSION, hero, selectedPetId: progress.selectedPetId,
-    inventory, lastSettledId,
+    inventory, lastSettledId, nextFusedId,
     nextCapturedId: progress.roster.nextCapturedId,
     pets: roster.map(pet => {
       const entry = updatedPet?.id === pet.id ? updatedPet : pet;

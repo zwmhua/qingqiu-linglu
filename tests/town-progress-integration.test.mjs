@@ -489,6 +489,7 @@ test('outskirts loading is atomic, ignores stale callbacks, and round trips with
   v.onDisable();
   assert.equal(townHide, undefined);
   v.enabledInHierarchy = true;
+  v.onEnable();
   v.detailsOpen = 'hero';
   v.rect = v.button = () => ({ addComponent() {} });
   v.text = v.renderHeroPanel = () => {};
@@ -503,7 +504,7 @@ test('outskirts loading is atomic, ignores stale callbacks, and round trips with
   };
   v.statusCard = (kind, x, unit) => portraits.push([kind, x, unit.id]);
   v.renderTown();
-  assert.deepEqual(buttons, [['下场掉率：正式', true], ['人物', true], ['宠物', true], ['背包', true], ['合宠·未开放', false], ['出城', true]]);
+  assert.deepEqual(buttons, [['下场掉率：正式', true], ['人物', true], ['宠物', true], ['背包', true], ['合宠', true], ['出城', true]]);
   assert.deepEqual(portraits, [['pet', 906, session.selectedPetId], ['hero', 1102, 'hero']]);
   assert.ok(view.movement.select({ x: 800, y: 500 }));
   let activate;
@@ -511,7 +512,10 @@ test('outskirts loading is atomic, ignores stale callbacks, and round trips with
   v.renderTown();
   for (const place of TOWN_PLACES.filter(p => ['bag', 'fuse', 'notice'].includes(p.id))) {
     activate(place);
-    assert.equal(view.message, `${place.name}·未开放`);
+    if (place.id === 'fuse') {
+      assert.equal(v.fusionOpen, true); assert.equal(view.movement.target, undefined);
+      v.fusionOpen = v.rosterOpen = false;
+    } else assert.equal(view.message, `${place.name}·未开放`);
   }
   view.load('outskirts');
   assert.equal(view.movement.target, undefined);
@@ -856,7 +860,7 @@ test('startup retries migration with the same candidate before creating a playab
   saveProgress(townDisk, source);
   const saved = JSON.parse(townDisk.raw);
   saved.version = 3;
-  delete saved.inventory; delete saved.lastSettledId;
+  delete saved.inventory; delete saved.lastSettledId; delete saved.nextFusedId;
   saved.pets.forEach(p => { delete p.skillIds; });
   const raw = JSON.stringify(saved), values = new Map([['qingqiu-linglu:test-progress', raw]]), attempts = [];
   const original = { getItem: townDisk.getItem, setItem: townDisk.setItem };
@@ -1122,4 +1126,45 @@ test('rejuvenation UI covers maps, cancellation, failure, stale confirmation, se
   townDisk.fail = true; v.finishBattle(); draw();
   assert.equal(actions.has('还童'), false); stale();
   assert.equal(townDisk.raw, saved); assert.equal(townDisk.writes, savedWrites); assert.equal(rolls, usedRolls);
+});
+
+
+test('fusion city and field UI blocks movement, cancels, retries without reroll and opens result', async () => {
+  const { v, session, complete } = await roundTripView();
+  const { petCombat } = await import('../assets/battle/logic/pet-panel.ts');
+  v.mapBattle = false; const a = session.roster.entries[1], b = { ...a, id: 'caught-1', origin: 'captured' };
+  for (const pet of [a, b]) {
+    Object.assign(pet, { level: 10, isBaby: true, potential: 50,
+      baseStats: { constitution: 20, mana: 20, strength: 20, endurance: 20, agility: 20 } });
+    Object.assign(pet, petCombat(pet));
+  }
+  session.roster.entries.push(b); saveProgress(townDisk, session);
+  const labels = [], actions = new Map(); v.drawPetPortrait = () => {};
+  v.text = text => labels.push(text); v.rect = () => ({ addComponent() {} });
+  v.button = (text, _x, _y, _w, _h, enabled, click) => { if (enabled) actions.set(text, click); return { addComponent() {} }; };
+  const draw = () => { labels.length = 0; actions.clear(); v.renderFusion(); };
+  let rolls = 0; v.fusionRandom = () => { rolls++; return 0; };
+  for (const region of ['town', 'outskirts']) {
+    v.town.load(region); complete();
+    const start = v.town.movement.position;
+    assert.equal(v.town.movement.select({ x: start.x + 20, y: start.y }), true);
+    assert.ok(v.town.movement.target); v.openFusion(); assert.equal(v.mapBlocked, true);
+    assert.equal(v.town.movement.target, undefined); v.fusionIds = [a.id, b.id]; draw();
+    assert.ok(labels.some(t => t.includes('90%'))); assert.ok(labels.some(t => t.includes('40%')));
+    const before = townDisk.raw, writes = townDisk.writes;
+    actions.get('合宠')(); draw(); assert.ok(labels.some(t => t.includes('两只原宠将消失')));
+    const cancelled = actions.get('确认合宠'); actions.get('取消')(); cancelled();
+    assert.equal(townDisk.raw, before); assert.equal(townDisk.writes, writes); assert.equal(rolls, 0);
+    actions.get('关闭')(); assert.equal(v.fusionOpen, false);
+  }
+  v.openFusion(); v.fusionIds = [a.id, b.id]; draw(); actions.get('合宠')(); draw();
+  townDisk.fail = true; const failed = actions.get('确认合宠'); failed(); const used = rolls;
+  assert.match(v.fusionMessage, /write failed/); assert.equal(session.roster.entries.length, 3);
+  failed(); assert.equal(rolls, used); townDisk.fail = false;
+  draw(); actions.get('合宠')(); draw(); const confirm = actions.get('确认合宠'); confirm(); confirm();
+  assert.equal(rolls, used); assert.equal(session.roster.entries.length, 2); assert.equal(v.selectedPetId, 'fused-1');
+  assert.equal(v.fusionOpen, false); assert.equal(v.rosterOpen, true); assert.equal(v.isPet({ id: 'fused-1' }), true);
+  assert.equal(loadSessionProgress(townDisk).roster.nextFusedId, 2);
+  v.rosterOpen = false; v.mapBattle = true; v.openFusion(); assert.equal(v.fusionOpen, false);
+  v.battle.phase = 'ended'; v.resultSaved = false; v.openFusion(); assert.equal(v.fusionOpen, false);
 });

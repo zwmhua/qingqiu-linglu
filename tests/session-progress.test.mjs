@@ -26,7 +26,7 @@ test('a turtle can lose innate armor, reload v5 unchanged and learn another book
   assert.deepEqual(restored.roster.entries[1].skillIds, ['thunder', 'crit', 'power', 'regen']);
   assert.equal(restored.inventory['book:thunder'], 0);
   assert.equal(restored.prepareSkillBook(false, pet.id, 'book:fireball').rate, 0);
-  const old = JSON.parse(raw); old.version = 4; delete old.inventory; delete old.lastSettledId;
+  const old = JSON.parse(raw); old.version = 4; delete old.inventory; delete old.lastSettledId; delete old.nextFusedId;
   disk.raw = JSON.stringify(old);
   assert.throws(() => loadSessionProgress(disk), /技能不兼容/);
 });
@@ -204,4 +204,54 @@ test('rejuvenation rechecks live state and saves exactly once before publishing 
   assert.equal(restored.roster.entries[1].potential, 5);
   saveProgress(disk, restored);
   assert.equal(progressSnapshot(loadSessionProgress(disk)), disk.raw);
+});
+
+
+test('fusion persists once before replacing parents, retries same child against current progress and never reuses IDs', async () => {
+  const { progressSnapshot } = await import('../assets/battle/logic/local-progress.ts');
+  const { petCombat } = await import('../assets/battle/logic/pet-panel.ts');
+  const session = new SessionProgress(initialHero()), disk = storage();
+  const a = session.roster.entries[1], b = { ...a, id: 'caught-1', origin: 'captured' };
+  for (const p of [a, b]) Object.assign(p, { level: 10, isBaby: true, potential: 50,
+    baseStats: { constitution: 20, mana: 20, strength: 20, endurance: 20, agility: 20 } });
+  for (const p of [a, b]) Object.assign(p, petCombat(p));
+  session.roster.entries.push(b); session.autoOrders.set(a.id, { command: 'defend' });
+  session.inventory = { rejuvenation: 4 }; saveProgress(disk, session);
+  const before = disk.raw, parents = structuredClone(session.roster.entries);
+  let rolls = 0, writes = 0, attempted;
+  const random = () => { rolls++; return 0; };
+  const persist = (pets, sequence) => {
+    assert.deepEqual(session.roster.entries, parents); assert.equal(session.roster.nextFusedId, 1);
+    attempted = progressSnapshot(session, undefined, undefined, pets, undefined, undefined, sequence);
+    disk.setItem('', attempted); writes++;
+  };
+  for (const change of ['battle', 'selected', 'level']) {
+    const tx = session.prepareFusion(false, [a.id, b.id]);
+    if (change === 'selected') session.selectedPetId = a.id;
+    if (change === 'level') a.level = 9;
+    assert.throws(() => tx.execute(change === 'battle', persist, random));
+    session.selectedPetId = 'pet'; a.level = 10;
+    assert.equal(tx.execute(false, persist, random), undefined);
+  }
+  assert.equal(rolls, 0); assert.equal(disk.raw, before);
+  const cancelled = session.prepareFusion(false, [a.id, b.id]); assert.equal(rolls, 0); // No execute means no generation/write.
+  disk.fail = true; const tx = session.prepareFusion(false, [a.id, b.id]);
+  assert.throws(() => tx.execute(false, persist, random), /写入失败/);
+  const failedChild = JSON.parse(attempted).pets.at(-1), used = rolls;
+  assert.equal(tx.execute(false, persist, random), undefined); assert.equal(rolls, used);
+  assert.equal(disk.raw, before); assert.deepEqual(session.roster.entries, parents); assert.equal(session.autoOrders.size, 1);
+  session.inventory.rejuvenation = 9; session.lastSettledId = 17; disk.fail = false;
+  const retry = session.prepareFusion(false, [b.id, a.id]);
+  const child = retry.execute(false, persist, () => assert.fail('retry reroll'));
+  assert.deepEqual(child, failedChild); assert.equal(writes, 1); assert.equal(session.roster.nextFusedId, 2);
+  assert.equal(session.selectedPetId, 'pet'); assert.equal(session.autoOrders.size, 0);
+  assert.equal(JSON.parse(disk.raw).inventory.rejuvenation, 9); assert.equal(JSON.parse(disk.raw).lastSettledId, 17);
+  assert.equal(retry.execute(false, persist, random), undefined); assert.throws(() => cancelled.execute(false, persist, random));
+  assert.equal(loadSessionProgress(disk).roster.nextFusedId, 2);
+  session.releasePet(false, child.id, pets => saveProgress(disk, session, undefined, undefined, pets));
+  const restored = loadSessionProgress(disk); assert.equal(restored.roster.nextFusedId, 2);
+  restored.roster.entries.push(...parents.slice(1));
+  const next = restored.prepareFusion(false, [a.id, b.id]).execute(false, (pets, seq) =>
+    disk.setItem('', progressSnapshot(restored, undefined, undefined, pets, undefined, undefined, seq)), random);
+  assert.equal(next.id, 'fused-2'); assert.equal(loadSessionProgress(disk).roster.nextFusedId, 3);
 });

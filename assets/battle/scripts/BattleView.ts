@@ -1,3 +1,4 @@
+import { FUSION, fusionPlan } from '../logic/pet-fusion';
 import { game, Game, _decorator, BlockInputEvents, Color, Component, EventTouch, Graphics, Label, Mask, Node, ResolutionPolicy, RichText, Sprite, SpriteFrame, sys, tween, Tween, UIOpacity, UITransform, Vec3, view } from 'cc';
 import { TownView } from './TownView';
 import { AttackEvent, Battle, BattleEvent, SpellEvent, Unit } from './Battle';
@@ -81,6 +82,11 @@ export class BattleView extends Component {
   private resultCandidate?: string;
   private resultDrops?: Inventory;
   private dropRandom = Math.random;
+  private fusionOpen = false;
+  private fusionIds = ['', ''];
+  private fusionRandom = Math.random;
+  private fusionMessage = '';
+  private fusionConfirmation?: ReturnType<SessionProgress['prepareFusion']>;
   private inventoryOpen = false;
   private inventoryItem?: string;
   private inventoryPet?: string;
@@ -501,7 +507,7 @@ export class BattleView extends Component {
   }
 
   private isHero(unit: Unit): boolean { return unit.id === 'hero' || unit.id.startsWith('layout-hero-'); }
-  private isPet(unit: Unit): boolean { return unit.id.startsWith('pet') || unit.id.startsWith('caught-') || unit.id.startsWith('layout-pet-'); }
+  private isPet(unit: Unit): boolean { return unit.id.startsWith('pet') || unit.id.startsWith('caught-') || unit.id.startsWith('fused-') || unit.id.startsWith('layout-pet-'); }
 
   private layoutUnits(): Unit[] {
     const enemy = this.battle.enemies[0];
@@ -1456,10 +1462,84 @@ export class BattleView extends Component {
   }
 
   private renderRosterList(): void {
+    if (this.fusionOpen) { this.renderFusion(); return; }
     if (this.inventoryOpen) { this.renderInventory(); return; }
     const { entries } = this.progress.roster;
     const selected = entries.find(pet => pet.id === (this.selectedPetId ?? this.progress.selectedPetId)) ?? entries[0];
     if (selected) this.renderPetPanel(selected);
+  }
+
+  private openFusion(): void {
+    if (!this.onMap || this.mapBlocked || this.town?.loading || this.playing) return;
+    this.stopTown();
+    this.inventoryOpen = false;
+    this.fusionOpen = this.rosterOpen = true;
+    this.fusionIds = ['', ''];
+    this.fusionMessage = '';
+    this.fusionConfirmation = undefined;
+    this.render();
+  }
+
+  private renderFusion(): void {
+    const close = () => { this.fusionConfirmation = undefined; this.fusionOpen = this.rosterOpen = false; this.render(); };
+    this.rect(0, 0, CONFIG.width, CONFIG.height, '#000000', '', 0, close, 150).addComponent(BlockInputEvents);
+    this.rect(95, 65, 1144, 600, '#1E3835', '#E5CB8D', 12).addComponent(BlockInputEvents);
+    this.text('合宠 · 两旧换一新', 125, 85, 28, '#F3DFAD', 700);
+    this.button('关闭', 1080, 82, 130, 48, true, close);
+    this.fusionIds.forEach((id, side) => {
+      const x = side ? 800 : 125, pet = this.progress.roster.entries.find(p => p.id === id);
+      this.text(side ? '右侧父宠' : '左侧父宠', x, 140, 22, '#F3DFAD', 390);
+      this.progress.roster.entries.forEach((entry, i) => this.button(
+        `${id === entry.id ? '✓' : ''}${entry.name} Lv.${entry.level}`, x + i % 2 * 195,
+        176 + Math.floor(i / 2) * 42, 188, 38, this.onMap && !this.fusionConfirmation, () => {
+          this.fusionIds[side] = entry.id; this.fusionMessage = ''; this.render();
+        }));
+      if (!pet) return;
+      this.drawPetPortrait(pet, x + 55, 365, 94);
+      this.text(`${WILD_SPECIES[pet.species].name} · ${pet.isMutated ? '变异' : '普通'}${pet.isBaby ? '宝宝' : '野生'}`,
+        x + 115, 328, 20, '#F3DFAD', 280);
+      this.text(`成长 ${pet.growth.toFixed(3)}`, x + 115, 364, 21, '#F3DFAD', 260);
+      APTITUDE_KEYS.forEach((key, i) => this.text(`${['攻击', '防御', '体力', '法力', '躲避', '速度'][i]}资质 ${pet.aptitudes[key]}`,
+        x + i % 2 * 195, 420 + Math.floor(i / 2) * 27, 19, '#C6DBC6', 190));
+      for (let i = 0; i < 8; i++) {
+        const skill = pet.skillIds?.[i], sx = x + i % 4 * 96, sy = 510 + Math.floor(i / 4) * 38;
+        this.rect(sx, sy, 90, 32, '#2E5048', '#93734D', 4);
+        this.text(skill ? PET_SKILLS[skill].name : '空', sx, sy + 3, 18, '#F3DFAD', 90, 1);
+      }
+    });
+    const [a, b] = this.fusionIds.map(id => this.progress.roster.entries.find(p => p.id === id));
+    this.text('丹炉', 550, 270, 36, '#E5CB8D', 230, 1);
+    const probability = a && b && a.species === b.species ? '原物种90% · 其它10%' : '左45% · 右45% · 其它10%';
+    this.text(probability, 502, 344, 18, '#F3DFAD', 330, 1);
+    this.text(`非必带遗传${FUSION.inheritance * 100}%`, 530, 380, 20, '#F3DFAD', 270, 1);
+    this.text('结果可能变弱', 530, 414, 22, '#F4DC9C', 270, 1);
+    let reason = '';
+    try { fusionPlan(this.progress.roster.entries, this.fusionIds, this.progress.selectedPetId, !this.onMap); }
+    catch (error) { reason = error instanceof Error ? error.message : String(error); }
+    this.button('合宠', 557, 470, 220, 62, !reason && !this.fusionConfirmation, () => {
+      try { this.fusionConfirmation = this.progress.prepareFusion(!this.onMap || !this.fusionOpen, this.fusionIds); }
+      catch (error) { this.fusionMessage = String(error); }
+      this.render();
+    });
+    this.text(this.fusionMessage || reason || '确认后才生成；不消耗道具。', 140, 612, 21, '#F4DC9C', 1050);
+    const pending = this.fusionConfirmation;
+    if (!pending) return;
+    const cancel = () => { this.fusionConfirmation = undefined; this.render(); };
+    this.rect(0, 0, CONFIG.width, CONFIG.height, '#000000', '', 0, cancel, 180).addComponent(BlockInputEvents);
+    this.rect(337, 205, 660, 340, '#1E3835', '#E5CB8D', 12).addComponent(BlockInputEvents);
+    this.text('两只原宠将消失，结果可能变弱', 370, 260, 28, '#F4DC9C', 595);
+    this.text('保存失败保留父宠，再确认重试同一候选。', 370, 330, 22, '#F3DFAD', 595);
+    this.button('取消', 410, 455, 180, 55, true, cancel);
+    this.button('确认合宠', 740, 455, 180, 55, true, () => {
+      if (this.fusionConfirmation !== pending) return;
+      this.fusionConfirmation = undefined;
+      try {
+        const child = pending.execute(!this.onMap || !this.fusionOpen, (pets, nextId) =>
+          progressIO.write(progressStorage(), progressSnapshot(this.progress, undefined, undefined, pets, undefined, undefined, nextId)), this.fusionRandom);
+        if (child) { this.fusionOpen = false; this.openPetPanel(child.id); }
+      } catch (error) { this.fusionMessage = `合宠失败：${error instanceof Error ? error.message : String(error)}`; }
+      this.render();
+    });
   }
 
   private openInventory(): void {
@@ -1866,6 +1946,7 @@ export class BattleView extends Component {
       place => {
         if (place.id === 'pet') openPets();
         else if (place.id === 'exit') travel();
+        else if (place.id === 'fuse') this.openFusion();
         else {
           town.error = `${place.name}·未开放`;
           this.render();
@@ -1905,15 +1986,16 @@ export class BattleView extends Component {
     this.statusCard('pet', 906, pet && { ...pet, hp: pet.maxHp });
     this.statusCard('hero', 1102, { id: 'hero', name: BATTLE_RULES.hero.name, hp: maxHp, maxHp });
     this.renderDropMode();
-    const entries = ['人物', '宠物', '背包', '合宠·未开放', town.region === 'town' ? '出城' : '回城'];
+    const entries = ['人物', '宠物', '背包', '合宠', town.region === 'town' ? '出城' : '回城'];
     entries.forEach((name, i) => {
-      const enabled = !town.loading && i !== 3;
+      const enabled = !town.loading;
       this.button(name, 444 + i * 172, 678, 164, 56, enabled, () => {
         if (!this.enabledInHierarchy || town.loading) return;
         town.stop();
         if (i === 0) this.openHeroPanel();
         else if (i === 1) openPets();
         else if (i === 2) this.openInventory();
+        else if (i === 3) this.openFusion();
         else travel();
       }).addComponent(BlockInputEvents);
     });

@@ -1028,3 +1028,99 @@ X2（2026-11-16）：完整范围复估 310～370 行，超过本卡 300 行上�
 - Human试玩入口：http://127.0.0.1:18418/?scene=3ca2435e-bec8-4656-9bf9-63cfaadc18b7 。同origin保留结果和剩余普通露7、变异露5；开始游戏→背包→露水→非出战宠→还童。第二只为普通宝宝，第三只紫色磐龟为变异宝宝；正式入口按自然随机，不注入固定序列或故障。
 - 微信模拟器、微信真机、手机浏览器实机和发布产物额外UI实点仍NOT_TESTED；本轮实点使用Creator开发预览。Human最终试玩待确认，不自动推送、合并或发布。文档提交后独立静态QA重新绑定最终SHA。
 - 辅助留痕：Python默认GBK读取中文JSON失败，改为明确UTF-8后统计成功；组合请求被自动策略拒绝后拆成独立文件准备和启动调用，未改权限或产品断言；恢复入口确认旧空间14不存在后创建15，此后始终复用15。
+
+## P2-13 开工核对与复估 X2（2026-11-16）
+
+- Human 本轮明确解除原 task/26-boot-subpackage 工作区的 X1：assets/battle/logic.meta 修改与所有未跟踪美术原样保留。本卡只本地提交，不推送、不合并，业务及测试合计增删批准上限580行。
+- 已实际执行 git fetch origin main；起始 SHA、origin/main 与本地 main 均为 `9fe48c01bc4631d1585d5a129edaec7eafc060f1`。独立工作树 `C:/Users/hua/cocos/Project/qingqiu-linglu-task49`，分支 `task/49-p2-13-pet-fusion`，创建后落卡前 git status --porcelain 为空。
+- 原附件逐字节复制到 docs/cards/card-P2-13.md，源与目标 SHA-256 均为 `ce34c65c76fe114fa1eb14337cec86d5bbe1dc5b4369126f716ddf524d6e5fc3`。
+- 已核对 P2-12 聊天 01a1e2e0-9fe6-7030-8095-f1907f5aaa91 的 Human「提交合并然后推送」及绑定上述SHA的操作记录。此前文档/独立QA仍写最终试玩待确认；本轮Human进一步明确答复「已试玩验收通过，继续 P2-13」，最终试玩前置条件已满足。STATUS受保护，本轮不改。
+- 读取本基线 AGENTS、ARCHITECTURE、原卡及phase2-design相关规则；核对roster、local-progress、session-progress、Battle、BattleView、点数/物种/技能配置及现有迁移和界面集成测试。未新增依赖，未修改业务与测试。
+
+### 逐文件复估（不是实际diff）
+
+统计相对起始SHA的新增和删除总和；文档及生成meta不计，不通过压行或删断言满足额度。
+
+| 文件 | 预估增删 | 实际接线依据 |
+| --- | ---: | --- |
+| assets/battle/logic/pet-fusion.ts（新增及meta） | 88～102 | 资格与配置、概率分流、独立属性倍率、点数重建、去父方必带、40%遗传和均匀截断、候选检查 |
+| assets/battle/logic/roster.ts | 16～20 | fused来源、独立序号恢复及成功发布接口；已发ID不随放生回退 |
+| assets/battle/logic/local-progress.ts | 38～46 | v6序号/来源校验；拆开当前版本与v5字段/initial宝宝判断；迁移保留库存与结算；候选序号入同一快照 |
+| assets/battle/logic/session-progress.ts | 40～48 | 一次确认、重入拦截、父方及序号重验、失败保留候选、按当前进度保存后发布、自动记忆清理 |
+| assets/battle/scripts/Battle.ts | 4～6 | fused宠识别及既有宠物路径 |
+| assets/battle/scripts/BattleView.ts | 102～120 | 城野/丹炉共用入口、双栏选择与属性技能图、阻断、确认、失败同候选重试及结果面板；视图识别 |
+| 业务小计 | 288～342 | |
+| tests/pet-fusion.test.mjs（新增） | 64～78 | 固定序列资格、边界、物种同权、倍率独立、封顶不托底、点数及技能截断 |
+| tests/progress-migration.test.mjs | 32～42 | 真v5数据保值、备份失败/重试、无重抽、非法v6序号/来源/重复ID；旧夹具版本字段适配 |
+| tests/p2-01-regression.test.mjs | 2 | 当前迁移目标版本断言由5改6，保留原比较 |
+| tests/pet-passives.test.mjs | 2 | 当前保存版本断言由5改6，保留原比较 |
+| tests/pet-progression.test.mjs | 2 | 旧版本夹具移除v6字段，避免以未知字段错误遮蔽原规则验证 |
+| tests/session-progress.test.mjs | 44～56 | 保存故障、重复/过期确认、候选不变但快照使用当前进度、序号与刷新/再合/放生、旧夹具适配 |
+| tests/battle.test.mjs | 10～12 | fused出战、技能和派生属性 |
+| tests/town-progress-integration.test.mjs | 50～62 | 城野双栏、停止移动/地图阻断、取消/旧回调、失败同候选重试、结果/部署及战斗/待保存限制 |
+| 测试小计 | 206～256 | |
+| 合计 | 494～598 | 超过580行批准上限的估算上界 |
+
+与原卡估计不同的主要依据：升v6不能只改版本常量，必须保留v5合法initial宝宝、被顶掉必带技能和非空库存/结算；现有多个测试由当前快照降版本构造旧档，新增nextFusedId后须显式移除，避免未知字段拒绝遮蔽原有负例。原还童/打书确认失败即消耗确认对象，合宠需另外覆盖失败后的同候选重试及重建当前完整快照，不可直接沿用其失败重抽行为。
+
+X2（2026-11-16）：完整范围复估494～598行，估算上界超过Human批准580行。停止在业务/测试修改之前；只落原卡及本开工记录，尚未提交。
+
+待Human选择：保持单卡可批准600行上限（仍按实际diff检查，超限再停）；或分A「规则/v6/fused识别及对应测试」约256～310行，B「事务/双栏/整体验收」约238～288行。拆分会改变当前整卡交付方式，不自动执行；A不开放消耗入口，B后统一试玩。
+
+本轮未运行产品测试、严格tsc、浏览器或Web/微信构建；独立静态QA尚无最终实现SHA可绑定，均NOT_TESTED。没有P2-13试玩入口或最终实现SHA。辅助留痕：一次聊天读取返回非JSON文本，解析失败；改用单轮原始响应读取成功，不影响仓库或断言。
+
+2026-11-16 Human批准P2-13保持完整单卡，上限调整为600行，按起始9fe48c01bc4631d1585d5a129edaec7eafc060f1计算，解除上述X2。继续先规则/v6，再事务/双栏，整体验收，只本地提交；预估或实际超限仍停止。
+
+### P2-13 规则/v6实现与新增测试纠错暂停
+
+- Human批准600行后继续；先写规则及迁移测试，rules-red.log记录缺模块及版本/迁移失败，再实现pet-fusion.ts、roster的fused来源与序号、v6读取/保值迁移/快照字段，以及Battle与View的fused识别。
+- 实际执行 node --test tests/pet-fusion.test.mjs tests/progress-migration.test.mjs：11项成功、0失败，见temp/p2-13/rules-green.log。覆盖资格、概率边界、独立属性倍率、宝宝/野生点数、技能遗传和截断、v5还童initial宝宝/顶掉必带的磐龟/库存及结算保值、非法v6序号与来源。该v5新增用例为代码构造样本，卡要求的真实v5存档样本仍待补证，不冒充已完成。
+- 新增事务、战斗和界面用例后运行 node --test tests/session-progress.test.mjs tests/battle.test.mjs tests/town-progress-integration.test.mjs，实际红测保留在temp/p2-13/transaction-red.log；prepareFusion/openFusion尚未实现，另有既有界面v3夹具需按卡移除新增nextFusedId字段，未调整该断言。
+- 2026-11-16暂停原因：检查新增界面用例时发现tests/town-progress-integration.test.mjs中的movement.moving属性不存在；真实WalkMovement在assets/battle/scripts/walkable-path.ts中以target表示移动目标。新断言应为assert.equal(v.town.movement.target, undefined)。当前运行先因缺openFusion而失败，尚未执行到该错误断言；不把静态发现写成运行结果。依据AGENTS“测试本身有错：停下报告，不自己改”，保留该断言并等待Human批准精确纠正；不添加虚假产品属性迎合测试。
+- 事务与双栏UI尚未实现；全量测试、限定严格tsc、ego-browser实际试玩、Web/微信构建、最终SHA独立静态QA均NOT_TESTED。尚未提交、推送、合并；没有P2-13完整试玩入口或最终实现SHA。原工作区及美术素材不动。
+- 辅助留痕：一次rg查询把WalkMovement文件猜为logic/walk-movement.ts，实际路径为scripts/walkable-path.ts，随后在现有目录查明；未更改权限或测试断言。
+
+### P2-13 事务及界面实现、第二处测试前置状态纠错（2026-11-16）
+
+- Human批准停步断言改为movement.target === undefined，并要求先设有效目标。本轮已按批准修改，城野各调用select并断言目标存在，再打开合宠检查目标清除；其余新用例断言保留。
+- 重跑定向65项，63成功、2因尚缺prepareFusion/openFusion失败；随后实现SessionProgress确认令牌、按父宠资料和序号缓存候选、写成功后发布名单及序号、父宠自动记忆清理，以及城野双栏、丹炉入口、概率风险、取消与保存失败同候选重试、成功打开新宠资料。
+- 旧界面回归期待合宠未开放，与本卡启用入口的验收行为不同。本轮保留完整按钮列表比较，更新为合宠启用；丹炉占位分支更新为打开合宠并停步的断言，其它地点仍断言未开放。
+- 实际最终全量 node --test tests/*.test.mjs：208项中207成功、1失败，见temp/p2-13/full.log。新增停步/取消/失败重试UI、事务及合成宠战斗用例成功。限定严格tsc覆盖全部battle/logic、Battle.ts、platform.ts及传递依赖，退出0，temp/p2-13/tsc.log为空。
+- 暂停：tests/town-progress-integration.test.mjs旧outskirts用例先townHide()，再onDisable()，后续仅设置enabledInHierarchy=true，没有onEnable()/showMap恢复mapHidden。故新丹炉打开断言为false，产品openFusion按mapBlocked正确拒绝后台操作。这是本轮更新测试漏恢复前台，不是产品应放开后台操作。依据AGENTS“测试本身有错：停下报告，不自己改”，保留现场，待批准在该用例enabledInHierarchy=true之后补v.onEnable()恢复前台；保留所有现有断言和产品后台拦截。
+- 当前业务加测试累计455/600行（新增未跟踪.ts/.mjs计入、meta及文档不计），尚未本地提交。ego-browser已读取技能指南，尚未启动本卡浏览器试玩；实际浏览器、两端构建、最终SHA独立静态QA均NOT_TESTED。没有完整试玩入口或最终实现SHA。
+- 环境只读检查发现可用虚拟内存约1.9GiB，多张历史卡Creator实例仍在；未停止其它实例、未修改系统配置。后续构建仍串行，不能把此检查当作实际构建失败。
+
+### P2-13 定向纠正与本地验证（2026-11-16）
+
+- Human批准仅在旧outskirts用例enabledInHierarchy=true后补onEnable。本轮按批准修改；先单跑该用例，1项成功0失败（single-recheck.log），再全量node --test tests/*.test.mjs，208项成功0失败（full-final.log）。全部既有断言与后台拦截保留。此前限定严格tsc退出0，之后没有产品代码变化。
+- 当前规则/v6、原子合宠事务与双栏全部实现，业务测试累计456/600行，尚待浏览器及最终QA。版本夹具去除v6字段与旧“未开放”预期更新属于本卡契约适配，原比较与其它地点断言仍在。
+- 实际读取P2-12浏览器保存的ordinary-success.json中原始v5主档，经当前ProgressLoader迁移，以完整对象比较核对仅version变6并增加nextFusedId=1；原始initial宝宝、变异捕获宠、库存、结算和出战资料保持，无随机调用。证据temp/p2-13/real-v5-migration.json；构造测试另覆盖被打书顶掉硬甲的磐龟。
+- 浏览器环境：启动本卡Creator 24676，预览监听7469；独立本地样本代理18419、ego-browser空间16。两次真实page.goto分别15秒、60秒超时，页面仍为新标签页；随后直接HTTP只读诊断7469根页面10秒超时。preview.err有渲染窗口已释放的IPC错误，可用虚拟内存约1.3～1.8GiB，未据此断言唯一根因。按两轮辅助错误门禁停止第三次浏览器重试，停止仅本轮Creator进程树释放资源，保留日志。
+- 因未进入游戏，城野合宠实点、失败实点重试、刷新/部署后战斗及截图全部NOT_TESTED；18419此时不是可交付试玩入口。准备的fixture.json只为后续验收，不计试玩成功（准备样本尚需按携带上限5调整后才可采用）。浏览器停在错误状态，依ego技能规则不调用finish，不接管其它空间。
+- Creator自动改写的settings已恢复本轮启动前字节；不提交其账户相关信息。一次组合准备/启动代理请求被自动策略拒绝，拆为可检查的文件准备与独立启动后执行成功，未改变权限。
+
+### P2-13 双端构建环境阻断与本地候选
+
+- 复制当前assets/settings及构建配置到temp/p2-13/build-source，31个TypeScript文件逐字节一致，source-verification.json保存哈希。先Web再微信，未并发构建。
+- Web实际执行至打包脚本，terser/jest-worker创建子进程失败（spawn UNKNOWN，Call retries were exceeded），buildScriptCommand返回-1，日志明确“打包脚本 failed”。末尾Finished仅表示任务结束，不判成功；没有完整产物，仅残留src目录。主构建进程后续自终止，Start-Process -Wait被残留子进程拖住，已停止本轮驱动及已核实的Creator子进程；未取得可用Web退出码，保留web-mobile-build.log、process日志。
+- 微信单独启动28960，停在打包脚本/构建polyfills的子进程阶段；同时新检查进程出现Stack overflow和Could not load ICU data，退出-1073740791。为结束本轮资源压力，仅终止微信构建28960及其子树，未终止历史任务或其它项目实例。微信构建未完成，不能把人工终止退出码当构建成功。
+- Web构建FAIL，微信构建INCOMPLETE；两端可交付包体均NOT_TESTED。本卡浏览器两次超时、双端构建出现进程资源故障后不继续第三轮同类环境重试，等待Human处理/授权环境恢复。准备样本已调整为合法5宠（原出战+两普通宝宝+两变异宝宝），未实测，不算验收。
+- 本地候选业务测试456/600行，原卡与文档保留完整历史记录。仅本地提交候选，独立静态QA绑定提交后完整SHA，报告存temp/p2-13/qa-final.md；静态结论不替代浏览器、构建及Human最终试玩。暂不交付不可用18419入口。
+
+### P2-13 环境恢复、补验收与Human最终确认（2026-11-16）
+
+- Human多次明确解除环境重试暂停后，在代码候选 `deffef01ca9617a7515d108d228c7b0d4e04716a` 上补验收。该SHA全量node:test 208/208、限定严格tsc退出0、独立静态QA PASS，分别记录于 `temp/p2-13/full-final.log`、`tsc.log`、`qa-final.md`。后续只有文档补登，产品与测试保持该候选。
+- ego-browser实际完成城镇普通双亲合宠、野外同种变异双亲合宠、停步与双栏、出战宠拒绝、取消零生成零写入、保存失败保留原档与父宠、重试复用同一子宠与ID，成功后两旧换一新。刷新后变异磐龟设为出战并实际进入下一场，立绘、技能及派生属性正确。证据在 `temp/p2-13/recovery/` 的JSON、截图与browser脚本，报告为 `recovery/report.md`。
+- 补测9级非出战磐龟与10级同身份后备宠，9级宠可选中查看，合宠按钮禁用并提示“合宠需要双方至少10级”。实点后无确认、无随机调用、无写入，主档字符串完全不变。证据 `temp/p2-13/supplement/nine-rejected.json` 和PNG。
+- 补测普通汀蛙与普通磐龟合成普通汀蛙，刷新核对原档，从宠物面板设为出战后出城进入下一场。实际单位fused-1、tingwa、普通宝宝10级，技能combo/waterarrow/counter，HP311、MP44、攻击29、防御24、速度8，立绘正确。证据 `supplement/ordinary-success.json`、`ordinary-battle.json` 和PNG。画面上10级文字换行，本轮未调整显示。
+- 辅助纠正留痕：首轮9级固定夹具漏重算基础战斗缓存，被读档校验拒绝。用原petCombat重算并经readProgress验证后重新注入，正式代码及测试断言未修改。恢复预览时Creator端口从7469变为7456，首次正常入口返回ECONNREFUSED；正常关闭本卡旧代理并更新目标后，实际进入正常入口城镇，固定样本钩子关闭。辅助现场及原主档备份保留在 `supplement/`。
+- 释放本卡Creator预览后串行构建Web Mobile、微信。构建副本31个TS及全部190个受跟踪assets文件与候选逐文件哈希一致，见 `supplement/source-hashes.json` 与 `asset-verification.json`。沿用release配置、debug=false、Boot入口。
+
+| 目标 | 构建结果 | 实际产物 | 文件数 | 未压缩字节 |
+| --- | --- | --- | ---: | ---: |
+| Web Mobile | 19:40:18完成，12秒，退出36，无构建错误 | index.html、application.js、assets/battle/index.js，含合宠/v6逻辑 | 167 | 8,483,737 |
+| 微信 | 19:40:47完成，14秒，退出36，无构建错误 | game.js、game.json、project.config.json、subpackages/battle/game.js，含合宠/v6逻辑 | 171 | 6,567,090 |
+
+- 微信主包919,168、battle 3,072,046、inventory 57,666、outskirts 594,500、town 1,923,710字节。统计为磁盘未压缩目录，含工具生成文件。逐文件长度与SHA256在 `supplement/web-mobile-manifest.json`、`wechatgame-manifest.json`；两端完整日志为 `supplement/web-mobile-build.log`、`wechat-build.log`，另有process.log/.err及.exit。此前失败日志保留，以上成功构建替代此前未完成状态。
+- 产物位于 `temp/p2-13/build-source/build/web-mobile` 和 `wechatgame`。正常入口恢复为 `http://127.0.0.1:18419/?scene=3ca2435e-bec8-4656-9bf9-63cfaadc18b7`，Human已最终试玩并回复“可以了 合拼推送”。本次授权据此补登STATUS、合入main并推送。
+- 微信模拟器、真机和手机浏览器实机仍为NOT_TESTED。微信真机步骤为：Human扫码登录微信开发者工具，导入上述wechatgame目录，沿用AppID及Cocos 3.8.8插件配置，编译后点预览，用拥有项目权限的微信扫码。发布包禁用开发固定样本，合宠需已有合法10级后备宠；记录权限或插件原始错误供Human处理。

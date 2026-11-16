@@ -1,3 +1,4 @@
+import { fusePets, fusionPlan } from './pet-fusion';
 import { rejuvenate, rejuvenationPlan } from './rejuvenation';
 import { generateAptitudes } from './aptitude';
 import { BATTLE_RULES, INITIAL_PET_IDS } from './battle-rules';
@@ -20,6 +21,40 @@ export class SessionProgress {
   lastSettledId = 0;
   dropMode: DropMode = 'formal';
   private battleSequence = 0;
+  private fusionCandidates = new Map<string, CarriedPet>();
+  private fusing = false;
+
+  prepareFusion(blocked: boolean, ids: readonly string[]) {
+    const chosen = [...ids];
+    const check = (blockedNow: boolean) => fusionPlan(this.roster.entries, chosen, this.selectedPetId, blockedNow);
+    const signature = () => JSON.stringify([...check(false).parents].sort((a, b) => a.id.localeCompare(b.id)));
+    check(blocked);
+    const original = signature(), sequence = this.roster.nextFusedId;
+    if (!Number.isSafeInteger(sequence + 1)) throw new Error('合宠序号超出范围');
+    let consumed = false;
+    return { execute: (nowBlocked: boolean, persist: (pets: CarriedPet[], nextId: number) => void, random = Math.random) => {
+      if (consumed || this.fusing) return;
+      consumed = true;
+      const { parents: [a, b] } = check(nowBlocked);
+      if (signature() !== original || this.roster.nextFusedId !== sequence) throw new Error('宠物资料或序号已变化，请重新确认');
+      this.fusing = true;
+      try {
+        const key = `${sequence}:${original}`;
+        let child = this.fusionCandidates.get(key);
+        if (!child) {
+          child = fusePets(a, b, `fused-${sequence}`, random);
+          this.fusionCandidates.set(key, child);
+        }
+        if (this.roster.entries.some(pet => pet.id === child!.id)) throw new Error('合宠ID已存在');
+        const entries = [...this.roster.entries.filter(pet => !chosen.includes(pet.id)), child];
+        persist(entries, sequence + 1);
+        this.roster.publishFusion(entries, sequence + 1);
+        for (const id of chosen) this.autoOrders.delete(id);
+        this.fusionCandidates.clear();
+        return child;
+      } finally { this.fusing = false; }
+    } };
+  }
 
   allocateBattleId(): number {
     const next = Math.max(this.battleSequence, this.lastSettledId) + 1;
