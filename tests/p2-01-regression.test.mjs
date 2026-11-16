@@ -79,6 +79,6 @@ test('old v1 and v2 snapshots read as v3 with the same progress and formal pet p
     assert.deepEqual(session.roster.entries.map(({ skillIds, skill, ...pet }) => pet),
       readProgress({ getItem: () => raw }).pets.map(({ skill, ...pet }) => pet));
     assert.equal(storage.get(`qingqiu-linglu:test-progress:backup:v${version}`), raw);
-    assert.equal(JSON.parse(storage.get('qingqiu-linglu:test-progress')).version, 5);
+    assert.equal(JSON.parse(storage.get('qingqiu-linglu:test-progress')).version, 6);
   }
 });

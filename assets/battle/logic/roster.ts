@@ -12,9 +12,9 @@ export type CarriedPet = PetStats & {
   species: WildSpecies;
   isBaby: boolean; aptitudes: Aptitudes; growth: number; baseStats: BaseStats;
   isMutated: boolean; exp: number; potential: number;
-  origin: 'initial' | 'captured'; sourceEnemyId?: string;
+  origin: 'initial' | 'captured' | 'fused'; sourceEnemyId?: string;
 };
-export type RosterState = { entries: CarriedPet[]; nextCapturedId?: number };
+export type RosterState = { entries: CarriedPet[]; nextCapturedId?: number; nextFusedId?: number };
 
 export const petProgress = ({ level, exp, potential, baseStats }: CarriedPet) =>
   ({ level, exp, potential, stats: baseStats });
@@ -23,6 +23,7 @@ export class Roster {
   readonly entries: CarriedPet[];
   readonly capacity: number;
   private captureId: number;
+  private fusionId: number;
   private capturedEnemies = new Set<string>();
 
   constructor(capacity: number, initial: ReadonlyArray<PetStats>, previous?: RosterState) {
@@ -36,6 +37,8 @@ export class Roster {
     const highestId = this.entries.reduce((highest, pet) =>
       pet.origin === 'captured' ? Math.max(highest, Number(pet.id.slice('caught-'.length))) : highest, 0);
     this.captureId = Math.max(highestId + 1, previous?.nextCapturedId ?? 1);
+    this.fusionId = previous?.nextFusedId ?? 1;
+
   }
 
   beginBattle(): void {
@@ -55,6 +58,13 @@ export class Roster {
       Object.assign(pet, { level: next.level, exp: next.exp, potential: next.potential, baseStats: next.stats });
       if (leveled) Object.assign(pet, petCombat(pet));
     }
+  }
+
+  get nextFusedId(): number { return this.fusionId; }
+
+  publishFusion(entries: CarriedPet[], nextFusedId: number): void {
+    this.entries.splice(0, this.entries.length, ...entries);
+    this.fusionId = nextFusedId;
   }
 
   get full(): boolean { return this.entries.length >= this.capacity; }

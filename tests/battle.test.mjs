@@ -307,3 +307,16 @@ test('hero rage follows actual health lost, caps at 150, and can carry into the 
   assert.equal(battle.heroRage, 150);
   assert.equal(new Battle(fixed, 1, battle.heroRage, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => 0).heroRage, 150);
 });
+
+
+test('fused IDs use pet combat, skills and deployment after reload', async () => {
+  const { SessionProgress } = await import('../assets/battle/logic/session-progress.ts');
+  const { initialHero } = await import('../assets/battle/logic/hero-progress.ts');
+  const { progressSnapshot, loadSessionProgress } = await import('../assets/battle/logic/local-progress.ts');
+  const session = new SessionProgress(initialHero()), pet = session.roster.entries[1];
+  Object.assign(pet, { id: 'fused-1', origin: 'fused', skillIds: ['thunder'] });
+  session.roster.publishFusion(session.roster.entries.slice(), 2); session.selectedPetId = pet.id;
+  const raw = progressSnapshot(session), battle = new Battle(fixed, 1, 0, loadSessionProgress({ getItem: () => raw }));
+  const deployed = battle.pets.find(p => p.deployed);
+  assert.equal(deployed.id, pet.id); assert.deepEqual(deployed.skillIds, ['thunder']); assert.equal(deployed.attack, pet.attack);
+});
