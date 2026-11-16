@@ -1,5 +1,5 @@
 import { FUSION, fusionPlan } from '../logic/pet-fusion';
-import { game, Game, _decorator, BlockInputEvents, Color, Component, EventTouch, Graphics, Label, Mask, Node, ResolutionPolicy, RichText, Sprite, SpriteFrame, sys, tween, Tween, UIOpacity, UITransform, Vec3, view } from 'cc';
+import { assetManager, game, Game, _decorator, BlockInputEvents, Color, Component, EventTouch, Graphics, Label, Mask, Node, ResolutionPolicy, RichText, Sprite, SpriteFrame, sys, tween, Tween, UIOpacity, UITransform, Vec3, view } from 'cc';
 import { TownView } from './TownView';
 import { AttackEvent, Battle, BattleEvent, SpellEvent, Unit } from './Battle';
 import { COMMAND_ICON_SIZE, COMMAND_LAYOUT, CONFIG, SPELL_TINTS } from './config';
@@ -35,6 +35,10 @@ const { ccclass, property } = _decorator;
 const POTENTIAL_RELEASE_EVENTS = ['pointerup', 'pointercancel', 'pointerout', 'mouseup', 'touchend', 'touchcancel', 'blur'] as const;
 const C = (hex: string) => new Color(hex);
 const COMMAND_NAMES = ['攻击', '防御', '保护', '召唤', '抓取', '道具', '逃跑', '灵术', '撤退'] as const;
+const BAG_ITEMS = Object.keys(ITEMS);
+const BAG_ART = {
+  book: 'item_skillbook', rejuvenation: 'item_rebirth_dew', 'mutation-rejuvenation': 'item_rebirth_dew_mutant',
+} as const;
 declare const wx: Parameters<typeof wechatStorage>[0] & {
   showModal(options: { content: string; showCancel: boolean; success?: (result: { confirm: boolean }) => void;
     complete?: () => void }): void;
@@ -90,6 +94,10 @@ export class BattleView extends Component {
   private inventoryOpen = false;
   private inventoryItem?: string;
   private inventoryPet?: string;
+  private inventoryChoosingPet = false;
+  private bagFrames = new Map<string, SpriteFrame>();
+  private bagArtLoading = false;
+  private bagArtFailed = false;
   private bookRandom = Math.random;
   private bookMessage = '';
   private bookConfirmation?: { transaction: ReturnType<SessionProgress['prepareSkillBook']>
@@ -1544,15 +1552,45 @@ export class BattleView extends Component {
 
   private openInventory(): void {
     if (this.playing || this.confirmingTarget || this.summonOpen || this.detailsOpen || this.progressReadFailed) return;
+    if (this.onMap && (this.mapBlocked || this.town?.loading)) return;
     this.stopTown();
     this.stopPotentialRepeat();
     this.choosingTarget = null;
     this.spellOpen = false;
     this.inventoryOpen = this.rosterOpen = true;
-    this.inventoryPet = this.progress.selectedPetId;
+    this.inventoryItem = this.inventoryPet = undefined;
+    this.inventoryChoosingPet = false;
     this.bookConfirmation = undefined;
     this.bookMessage = '';
+    this.loadBagArt();
     this.render();
+  }
+
+  private loadBagArt(): void {
+    if (this.bagArtLoading || this.bagFrames.size) return;
+    this.bagArtLoading = true;
+    this.bagArtFailed = false;
+    const load = (name: string, folder: string, icons: Record<string, string>) =>
+      new Promise<[string, SpriteFrame][]>((resolve, reject) => {
+        assetManager.loadBundle(name, (error, bundle) => {
+          if (error || !bundle) { reject(error ?? new Error(name)); return; }
+          resolve(Promise.all(Object.entries(icons).map(([key, file]) =>
+            new Promise<[string, SpriteFrame]>((ready, failed) => {
+              bundle.load(`textures/${folder}/${file}/spriteFrame`, SpriteFrame, (err, frame) => {
+                if (err || !frame) failed(err ?? new Error(file));
+                else ready([key, frame]);
+              });
+            }))));
+        });
+      });
+    const skills = Object.fromEntries(Object.keys(PET_SKILLS).map(id => [id, `skill_${id}`]));
+    Promise.all([load('inventory', 'items', BAG_ART), load('battle', 'ui/skills', skills)])
+      .then(frames => { this.bagFrames = new Map(frames.flat()); })
+      .catch(error => { this.bagArtFailed = true; console.warn('背包图标加载失败', error); })
+      .finally(() => {
+        this.bagArtLoading = false;
+        if (this.isValid && this.inventoryOpen) this.render();
+      });
   }
 
   private beginSkillBook(): void {
@@ -1596,35 +1634,92 @@ export class BattleView extends Component {
       try {
         const result = pending.transaction.execute(!this.onMap || !this.inventoryOpen, (pet, inventory) =>
           progressIO.write(progressStorage(), progressSnapshot(this.progress, undefined, pet, undefined, inventory)), this.bookRandom);
-        if (result) this.bookMessage = result.message;
+        if (result) {
+          this.bookMessage = result.message;
+          if (this.inventoryItem && !this.progress.inventory[this.inventoryItem]) this.inventoryItem = undefined;
+        }
       } catch (error) { this.bookMessage = `${pending.action ?? '打书'}失败：${error instanceof Error ? error.message : String(error)}`; }
       this.render();
     });
   }
 
   private renderInventory(): void {
-    const close = () => { this.bookConfirmation = undefined; this.inventoryOpen = this.rosterOpen = false; this.render(); };
+    const close = () => {
+      this.bookConfirmation = undefined;
+      this.inventoryChoosingPet = this.inventoryOpen = this.rosterOpen = false;
+      this.render();
+    };
     this.rect(0, 0, CONFIG.width, CONFIG.height, '#000000', '', 0, close, 150).addComponent(BlockInputEvents);
-    this.rect(140, 95, 1054, 560, '#1E3835', '#E5CB8D', 12).addComponent(BlockInputEvents);
-    this.text(this.onMap ? '背包 · 道具' : '背包 · 战斗中只读', 175, 112, 28, '#F3DFAD', 650);
-    this.button('关闭', 1030, 110, 135, 48, true, close);
-    const owned = Object.entries(this.progress.inventory).filter(([, count]) => count > 0);
-    if (!owned.length) this.text('背包空空，战斗胜利有机会获得材料。', 180, 200, 22, '#C6DBC6', 610);
-    owned.forEach(([id, count], i) => this.button(`${ITEMS[id].name} ×${count}`,
-      175 + i % 2 * 290, 175 + Math.floor(i / 2) * 52, 280, 46, true, () => {
-        this.inventoryItem = id; this.render();
-      }));
-    this.text(this.inventoryItem ? ITEMS[this.inventoryItem].description : '点道具查看说明。',
-      175, 555, 20, '#F4DC9C', 600);
-    this.text(this.onMap ? '携带宠预览（不改变出战）' : '战斗中只读', 790, 175, 20, '#F3DFAD', 390);
-    this.progress.roster.entries.forEach((pet, i) => this.button(
-      `${this.inventoryPet === pet.id ? '✓ ' : ''}${pet.name}`, 790 + i % 2 * 190,
-      215 + Math.floor(i / 2) * 52, 180, 46, this.onMap, () => { this.inventoryPet = pet.id; this.render(); }));
-    if (this.inventoryItem?.startsWith('book:')) this.button('打书', 840, 500, 260, 52, this.onMap, () => this.beginSkillBook());
-    if (this.inventoryItem === 'rejuvenation' || this.inventoryItem === 'mutation-rejuvenation')
-      this.button('还童', 840, 500, 260, 52, this.onMap, () => this.beginRejuvenation());
-    this.text(this.bookMessage, 175, 603, 20, '#F4DC9C', 960);
+    this.rect(140, 62, 1054, 626, '#1E3835', '#E5CB8D', 16).addComponent(BlockInputEvents);
+    this.rect(157, 74, 1020, 59, '#29483F', '#92784B', 10);
+    this.text('背包', 184, 83, 31, '#F3DFAD', 190);
+    this.rect(279, 105, 725, 2, '#B2945E');
+    [287, 651, 995].forEach(x => this.text('◆', x - 10, 96, 12, '#E5CB8D', 20, 1));
+    this.button('关闭', 1028, 79, 132, 48, true, close);
+    this.rect(165, 149, 262, 512, '#DCCBA6', '#E5CB8D', 12);
+    this.rect(176, 160, 240, 490, '#EFDFC0', '#9C8156', 9);
+    this.text(BATTLE_RULES.hero.name, 184, 183, 24, '#4A2C1D', 224, 1);
+    if (this.heroArt) this.image(171, 251, 250, 250, this.heroArt);
+    this.rect(189, 566, 214, 54, '#29483F', '#9C8156', 10);
+    this.text('金币  0', 190, 576, 22, '#F3DFAD', 212, 1);
+    this.rect(445, 149, 724, 344, '#172E2A', '#92784B', 12);
+    const inventory = this.progress.inventory;
+    for (let i = 0; i < Math.ceil(BAG_ITEMS.length / 5) * 5; i++) {
+      const id = BAG_ITEMS[i], count = inventory[id] ?? 0;
+      const x = 463 + i % 5 * 139, y = 166 + Math.floor(i / 5) * 106;
+      const selected = count > 0 && id === this.inventoryItem;
+      const slot = this.rect(x, y, 132, 98, selected ? '#527561' : '#29463D',
+        selected ? '#FFD889' : '#776A4C', 8, () => {
+          this.inventoryItem = count > 0 ? id : undefined;
+          this.bookMessage = '';
+          this.render();
+        });
+      slot.name = `bag-slot-${i}`;
+      if (!count) continue;
+      const skill = id.startsWith('book:') ? id.slice(5) : undefined;
+      const art = this.bagFrames.get(skill ? 'book' : id);
+      const emblem = skill ? this.bagFrames.get(skill) : undefined;
+      if (art) this.image(x + 32, y + 4, 68, 68, art);
+      else this.text(ITEMS[id].name, x + 3, y + 32, 14, '#F3DFAD', 126, 1);
+      if (emblem) this.image(x + 53, y + 24, 26, 26, emblem);
+      this.text(String(count), x + 5, y + 73, count > 999999999 ? 12 : 16, '#FFF2C5', 119, 2);
+    }
+    this.rect(445, 507, 724, 154, '#263F37', '#92784B', 12);
+    const id = this.inventoryItem;
+    if (id && inventory[id] > 0) {
+      this.text(`${ITEMS[id].name}   数量 ${inventory[id]}`, 465, 518, 22, '#F3DFAD', 665);
+      this.text(ITEMS[id].description, 465, 552, 18, '#E5DBBC', 687);
+      this.button('使用', 1009, 600, 140, 46, this.onMap, () => {
+        this.bookMessage = '';
+        this.inventoryChoosingPet = true;
+        this.render();
+      });
+    } else this.text('点击道具查看', 465, 535, 22, '#D3C7A5', 540);
+    if (!this.onMap) this.text('战斗中只读', 465, 613, 19, '#F4DC9C', 510);
+    else this.text(this.bookMessage || (this.bagArtFailed ? '图标暂不可用，可按名称查看道具。' : ''),
+      465, 611, 19, '#F4DC9C', 525);
+    if (this.inventoryChoosingPet && id) this.renderInventoryPets(id);
     this.renderBookConfirmation();
+  }
+
+  private renderInventoryPets(item: string): void {
+    const cancel = () => { this.inventoryChoosingPet = false; this.render(); };
+    this.rect(0, 0, CONFIG.width, CONFIG.height, '#000000', '', 0, cancel, 180).addComponent(BlockInputEvents);
+    this.rect(331, 197, 672, 356, '#1E3835', '#E5CB8D', 14).addComponent(BlockInputEvents);
+    this.text('选择使用道具的灵兽', 363, 221, 28, '#F3DFAD', 600);
+    this.text(ITEMS[item].name, 363, 259, 20, '#D3C7A5', 600);
+    this.progress.roster.entries.forEach((pet, i) => {
+      const x = 364 + i % 2 * 306, y = 295 + Math.floor(i / 2) * 58;
+      this.drawPetPortrait(pet, x + 26, y + 24, 46);
+      this.button(`${i + 1}. ${pet.name}`, x + 53, y, 205, 46, true, () => {
+        if (!this.onMap || !this.inventoryOpen || !this.inventoryChoosingPet || this.inventoryItem !== item) return;
+        this.inventoryChoosingPet = false;
+        this.inventoryPet = pet.id;
+        if (item.startsWith('book:')) this.beginSkillBook();
+        else this.beginRejuvenation();
+      });
+    });
+    this.button('返回', 589, 484, 156, 46, true, cancel);
   }
 
   private renderDropMode(): void {
@@ -1945,6 +2040,7 @@ export class BattleView extends Component {
     town.draw(this.heroArt, () => this.mapBlocked,
       place => {
         if (place.id === 'pet') openPets();
+        else if (place.id === 'bag') this.openInventory();
         else if (place.id === 'exit') travel();
         else if (place.id === 'fuse') this.openFusion();
         else {

@@ -542,6 +542,9 @@ test('outskirts loading is atomic, ignores stale callbacks, and round trips with
     if (place.id === 'fuse') {
       assert.equal(v.fusionOpen, true); assert.equal(view.movement.target, undefined);
       v.fusionOpen = v.rosterOpen = false;
+    } else if (place.id === 'bag') {
+      assert.equal(v.inventoryOpen, true); assert.equal(view.movement.target, undefined);
+      v.inventoryOpen = v.rosterOpen = false;
     } else assert.equal(view.message, `${place.name}·未开放`);
   }
   view.load('outskirts');
@@ -1032,41 +1035,44 @@ test('skill book view confirms on maps, cancels without work and guards stale ca
     return { addComponent() {} };
   };
   const draw = () => { labels.length = 0; actions.clear(); v.renderInventory(); };
+  const choose = () => { draw(); actions.get('使用')(); draw(); actions.get('1. 汀蛙')(); draw(); };
   let rolls = 0; v.bookRandom = () => { rolls++; return 0; };
   saveProgress(townDisk, session);
   const before = townDisk.raw, writes = townDisk.writes;
-  v.openInventory(); v.inventoryItem = 'book:thunder'; draw();
-  actions.get('打书')(); draw();
+  v.openInventory(); draw();
+  assert.ok(labels.includes('点击道具查看')); assert.equal(actions.has('使用'), false);
+  v.inventoryItem = 'book:thunder'; choose();
   assert.ok(labels.some(s => s.includes('新增 100%') && s.includes('顶替 0%')));
   assert.ok(labels.includes('雷击术技能书 → 汀蛙'));
   assert.ok(labels.includes('新增技能放入首个空格。'));
   const cancelledCallback = actions.get('确认打书');
   actions.get('取消')(); cancelledCallback();
   assert.equal(townDisk.raw, before); assert.equal(townDisk.writes, writes); assert.equal(rolls, 0);
-  draw(); actions.get('打书')(); draw();
+  choose();
   townDisk.fail = true; actions.get('确认打书')();
   assert.match(v.bookMessage, /write failed/); assert.equal(v.bookConfirmation, undefined);
   assert.equal(townDisk.raw, before); assert.deepEqual(pet.skillIds, ['crit']);
   assert.equal(session.inventory['book:thunder'], 3);
-  townDisk.fail = false; draw(); actions.get('打书')(); draw();
+  townDisk.fail = false; choose();
   const confirm = actions.get('确认打书'); confirm(); confirm(); cancelledCallback();
   assert.equal(townDisk.writes, writes + 1); assert.equal(session.inventory['book:thunder'], 2);
   assert.deepEqual(pet.skillIds, ['crit', 'thunder']); assert.match(v.bookMessage, /新增雷击术/);
-  draw(); actions.get('打书')(); assert.match(v.bookMessage, /已学/);
+  choose(); assert.match(v.bookMessage, /已学/);
   assert.equal(rolls, 0); assert.equal(townDisk.writes, writes + 1);
   for (const region of ['town', 'outskirts']) {
     v.town.load(region); complete();
-    pet.skillIds = ['crit', 'armor']; draw(); actions.get('打书')(); draw();
+    if (!v.inventoryOpen) { v.openInventory(); v.inventoryItem = 'book:thunder'; }
+    pet.skillIds = ['crit', 'armor']; choose();
     assert.ok(labels.some(s => s.includes('新增 60%') && s.includes('顶替 40%')));
     assert.ok(labels.includes('顶替时所有现有技能等概率参与，包括天生技能。'));
     const stale = actions.get('确认打书'); actions.get('取消')(); stale();
-    pet.skillIds.push('power'); draw(); actions.get('打书')(); draw();
+    pet.skillIds.push('power'); choose();
     assert.ok(labels.some(s => s.includes('新增 30%') && s.includes('顶替 70%')));
     actions.get('关闭')(); assert.equal(v.bookConfirmation, undefined);
   }
-  v.openInventory(); draw(); actions.get('打书')(); draw();
+  v.openInventory(); v.inventoryItem = 'book:thunder'; choose();
   const changed = actions.get('确认打书'); v.mapBattle = true; changed();
-  assert.match(v.bookMessage, /战斗/); draw(); assert.equal(actions.has('打书'), false);
+  assert.match(v.bookMessage, /战斗/); draw(); assert.equal(actions.has('使用'), false);
   assert.equal(townDisk.writes, writes + 1); assert.equal(rolls, 0);
 });
 
@@ -1117,23 +1123,26 @@ test('rejuvenation UI covers maps, cancellation, failure, stale confirmation, se
   v.text = text => labels.push(text); v.rect = () => ({ addComponent() {} });
   v.button = (text, _x, _y, _w, _h, enabled, click) => { if (enabled) actions.set(text, click); return { addComponent() {} }; };
   const draw = () => { labels.length = 0; actions.clear(); v.renderInventory(); };
+  const choose = (index = 1) => {
+    draw(); actions.get('使用')(); draw(); actions.get(`${index + 1}. ${session.roster.entries[index].name}`)(); draw();
+  };
   let rolls = 0; v.bookRandom = () => { rolls++; return 0; };
   saveProgress(townDisk, session);
   const before = townDisk.raw, writes = townDisk.writes;
-  v.openInventory(); v.inventoryItem = 'rejuvenation'; draw(); actions.get('还童')();
+  v.openInventory(); v.inventoryItem = 'rejuvenation'; choose(0);
   assert.match(v.bookMessage, /出战/);
-  v.inventoryPet = pet.id; v.inventoryItem = 'mutation-rejuvenation'; draw(); actions.get('还童')();
+  v.inventoryItem = 'mutation-rejuvenation'; choose();
   assert.match(v.bookMessage, /身份不匹配/);
-  v.inventoryItem = 'rejuvenation'; draw(); actions.get('还童')(); draw();
+  v.inventoryItem = 'rejuvenation'; choose();
   for (const field of ['还童露', '消耗 1 个', '等级', '经验', '潜能', '五项', '资质', '成长', '技能']) assert.ok(labels.some(t => t.includes(field)));
   const cancelled = actions.get('确认还童'); actions.get('取消')(); cancelled();
   assert.equal(townDisk.raw, before); assert.equal(townDisk.writes, writes); assert.equal(rolls, 0);
-  draw(); actions.get('还童')(); draw(); townDisk.fail = true; actions.get('确认还童')();
+  choose(); townDisk.fail = true; actions.get('确认还童')();
   assert.match(v.bookMessage, /还童失败.*write failed/); assert.equal(townDisk.raw, before);
   assert.equal(session.inventory.rejuvenation, 5); assert.equal(pet.isBaby, false);
   townDisk.fail = false;
   for (const region of ['town', 'outskirts']) {
-    v.town.load(region); complete(); draw(); actions.get('还童')(); draw();
+    v.town.load(region); complete(); choose();
     const confirm = actions.get('确认还童'), count = session.inventory.rejuvenation;
     confirm(); const usedRolls = rolls; confirm(); cancelled();
     assert.equal(rolls, usedRolls); assert.equal(session.inventory.rejuvenation, count - 1);
@@ -1141,18 +1150,23 @@ test('rejuvenation UI covers maps, cancellation, failure, stale confirmation, se
     assert.equal(loadSessionProgress(townDisk).roster.entries[1].level, 0);
   }
   const saved = townDisk.raw, savedWrites = townDisk.writes;
-  draw(); actions.get('还童')(); draw(); const switched = actions.get('确认还童');
+  choose(); const switched = actions.get('确认还童');
   session.selectedPetId = pet.id; const usedRolls = rolls; switched();
   assert.match(v.bookMessage, /出战/); assert.equal(rolls, usedRolls); session.selectedPetId = 'pet';
-  draw(); actions.get('还童')(); draw(); const closed = actions.get('确认还童');
+  choose(); const closed = actions.get('确认还童');
   actions.get('关闭')(); closed(); assert.equal(townDisk.raw, saved);
-  v.openInventory(); v.inventoryPet = pet.id; draw(); actions.get('还童')(); draw();
+  v.openInventory(); v.inventoryItem = 'rejuvenation'; choose();
   const stale = actions.get('确认还童'); v.mapBattle = true; stale();
-  assert.match(v.bookMessage, /战斗/); draw(); assert.equal(actions.has('还童'), false);
+  assert.match(v.bookMessage, /战斗/); draw(); assert.equal(actions.has('使用'), false);
   v.battle.command('hero', 'capture', 'enemy-0'); v.battle.command('pet', 'defend');
   townDisk.fail = true; v.finishBattle(); draw();
-  assert.equal(actions.has('还童'), false); stale();
+  assert.equal(actions.has('使用'), false); stale();
   assert.equal(townDisk.raw, saved); assert.equal(townDisk.writes, savedWrites); assert.equal(rolls, usedRolls);
+  townDisk.fail = false; v.mapBattle = false; session.inventory = { rejuvenation: 1 };
+  v.openInventory(); v.inventoryItem = 'rejuvenation'; choose();
+  actions.get('确认还童')(); draw();
+  assert.equal(session.inventory.rejuvenation, 0);
+  assert.ok(labels.includes('点击道具查看')); assert.equal(actions.has('使用'), false);
 });
 
 
