@@ -1003,3 +1003,28 @@ X2（2026-11-16）：完整范围复估 310～370 行，超过本卡 300 行上�
 - ego-browser 新建本卡空间14，实际打开 http://127.0.0.1:18418/?scene=3ca2435e-bec8-4656-9bf9-63cfaadc18b7&devPreview=1&roundTripSample=single&p2Rejuvenation=1 ，返回 connect ECONNREFUSED 127.0.0.1:7469。此为失败入口，不能交作可用试玩地址；title.png与browser-02.mjs保留。未进入游戏，城野实点、刷新及负例实际试玩全部NOT_TESTED。确定性三宠与两种露水样本已经准备，fixture.mjs/json及proxy.cjs留在temp/p2-12，但不计作试玩证据。
 - 第二轮构建29828停在引擎插件初始化，尚无Finished或构建退出码；已停止本轮驱动47660及子进程，保留web-mobile-retry-process日志。微信构建尚未轮到执行。Web构建未完成、微信构建NOT_TESTED、包体NOT_TESTED。未将进程存活或启动成功当作构建成功。
 - 依据AGENTS同类辅助错误最多两轮，本次不进入第三轮环境重试。未改原工作区或其它预览实例；Creator只产生的engine.json换行差异经无内容diff核实后恢复。代码拟本地提交后做独立静态QA，不能代替仍待完成的浏览器、构建与Human最终试玩验收。本卡尚未完成交付。
+
+### P2-12 恢复后的实际验收与构建（2026-11-16）
+
+本节更新前文环境阻断状态。Human批准继续排查及重试。验收代码保持候选 c17455cc02640ebda532d68d98019787bd5dcd39，本次仅追加文档，不改产品或测试；累计262/370行。
+
+- 已读第二轮完整日志；P2-11可用预览同样有GPU缓存警告，不能将警告当根因。Windows事件2004在14:31:56和15:02:57明确诊断虚拟内存不足，后者同时产生Creator崩溃转储。原始事件、内存快照和详细排查报告保留在 temp/p2-12/recovery/。重试前可用虚拟内存约6.6GiB，单独预览与串行构建完成；未修改内存配置、安装或权限，也未关闭其它项目实例。
+- 临时detached工作树 C:/Users/hua/cocos/Project/qingqiu-linglu-p212-verify 来自上述候选。全部TypeScript与task48逐字节一致（source-verification.json）。Creator预览7468，经本地代理18418，ego-browser空间15实际鼠标操作。
+- 样本仅在 devPreview=1&p2Rejuvenation=1 显式启用，空origin首次预置v5、两只普通初始汀蛙和一只变异捕获磐龟、两种露水各8。磐龟保留模板名字“汀蛙”，实际species=pangui、id=caught-1、origin=captured、sourceEnemyId=enemy-0。随机序列及故障仅在该样本下显式注入；正式试玩入口不启用样本钩子。
+
+| 实际操作 | 核对结果与证据（temp/p2-12/recovery/） |
+| --- | --- |
+| 城里选出战宠、给普通后备宠选错露水 | 分别提示出战、身份不匹配；取消前后0随机0写入、完整主档不变。deployed-rejected.png、browser-07.mjs |
+| 普通初始后备宠先取消再确认 | 确认框完整显示材料、消耗及全部重置项；全0抽59次，普通露8→7，一次写入，同ID pet-2、initial、普通0级宝宝、五项50点、完整资质下限。ordinary-confirm.png、ordinary-success.json |
+| 刷新后查看初始宝宝属性与技能页 | 完整主档字节一致，0级宝宝及新面板可见。initial-baby-panel.png、initial-baby-skills.png、browser-08.mjs |
+| 野外变异宠同序列连续还童两次 | 每次60次抽样，变异露8→7→6，两次完整宠物对象一致，攻击资质963=round(816×1.18)，成长0.882，ID、身份和来源保持。mutation-1.json、mutation-2.json |
+| 注入保存失败，再解除并重新确认 | 提示P2-12 sample write failed，内存宠物、库存和主档完全不变；新一轮成功后变异露6→5，全1序列生成新属性及技能。save-failed.png、save-retry-success.json |
+| 战斗中打开背包 | 明确只读，选宠与还童按钮禁用，主档不变。battle-readonly.png/.json |
+| 再刷新查看变异宝宝 | 完整主档字节一致；资质1133/1133/4248/1416/1558/991，成长0.918，硬甲/巨力/回血/还击可见。mutation-refreshed-panel.png、mutation-refreshed-skills.png |
+
+- 同候选此前定向39项、全量201项成功、限定严格tsc退出0，本轮无代码测试修改，沿用这些结果。重复确认、确认后切换出战和待保存阻断由定向集成测试覆盖，不冒充本轮鼠标实点。
+- 浏览器实测后只停止本轮预览以释放资源，在同一临时工作树串行构建Web mobile和微信。两端退出码均36、日志均Finished，记录recovery/web-mobile-build.log、wechat-build.log、对应process日志及.exit文件。构建后恢复预览。
+- 实测字节：Web mobile总包8474540；微信总包6557893、主包919168、battle3062849、town1923710、outskirts594500、inventory57666。记录package-bytes.json，产物位于临时工作树build/。
+- Human试玩入口：http://127.0.0.1:18418/?scene=3ca2435e-bec8-4656-9bf9-63cfaadc18b7 。同origin保留结果和剩余普通露7、变异露5；开始游戏→背包→露水→非出战宠→还童。第二只为普通宝宝，第三只紫色磐龟为变异宝宝；正式入口按自然随机，不注入固定序列或故障。
+- 微信模拟器、微信真机、手机浏览器实机和发布产物额外UI实点仍NOT_TESTED；本轮实点使用Creator开发预览。Human最终试玩待确认，不自动推送、合并或发布。文档提交后独立静态QA重新绑定最终SHA。
+- 辅助留痕：Python默认GBK读取中文JSON失败，改为明确UTF-8后统计成功；组合请求被自动策略拒绝后拆成独立文件准备和启动调用，未改权限或产品断言；恢复入口确认旧空间14不存在后创建15，此后始终复用15。
