@@ -1106,3 +1106,21 @@ X2（2026-11-16）：完整范围复估494～598行，估算上界超过Human批
 - 微信单独启动28960，停在打包脚本/构建polyfills的子进程阶段；同时新检查进程出现Stack overflow和Could not load ICU data，退出-1073740791。为结束本轮资源压力，仅终止微信构建28960及其子树，未终止历史任务或其它项目实例。微信构建未完成，不能把人工终止退出码当构建成功。
 - Web构建FAIL，微信构建INCOMPLETE；两端可交付包体均NOT_TESTED。本卡浏览器两次超时、双端构建出现进程资源故障后不继续第三轮同类环境重试，等待Human处理/授权环境恢复。准备样本已调整为合法5宠（原出战+两普通宝宝+两变异宝宝），未实测，不算验收。
 - 本地候选业务测试456/600行，原卡与文档保留完整历史记录。仅本地提交候选，独立静态QA绑定提交后完整SHA，报告存temp/p2-13/qa-final.md；静态结论不替代浏览器、构建及Human最终试玩。暂不交付不可用18419入口。
+
+### P2-13 环境恢复、补验收与Human最终确认（2026-11-16）
+
+- Human多次明确解除环境重试暂停后，在代码候选 `deffef01ca9617a7515d108d228c7b0d4e04716a` 上补验收。该SHA全量node:test 208/208、限定严格tsc退出0、独立静态QA PASS，分别记录于 `temp/p2-13/full-final.log`、`tsc.log`、`qa-final.md`。后续只有文档补登，产品与测试保持该候选。
+- ego-browser实际完成城镇普通双亲合宠、野外同种变异双亲合宠、停步与双栏、出战宠拒绝、取消零生成零写入、保存失败保留原档与父宠、重试复用同一子宠与ID，成功后两旧换一新。刷新后变异磐龟设为出战并实际进入下一场，立绘、技能及派生属性正确。证据在 `temp/p2-13/recovery/` 的JSON、截图与browser脚本，报告为 `recovery/report.md`。
+- 补测9级非出战磐龟与10级同身份后备宠，9级宠可选中查看，合宠按钮禁用并提示“合宠需要双方至少10级”。实点后无确认、无随机调用、无写入，主档字符串完全不变。证据 `temp/p2-13/supplement/nine-rejected.json` 和PNG。
+- 补测普通汀蛙与普通磐龟合成普通汀蛙，刷新核对原档，从宠物面板设为出战后出城进入下一场。实际单位fused-1、tingwa、普通宝宝10级，技能combo/waterarrow/counter，HP311、MP44、攻击29、防御24、速度8，立绘正确。证据 `supplement/ordinary-success.json`、`ordinary-battle.json` 和PNG。画面上10级文字换行，本轮未调整显示。
+- 辅助纠正留痕：首轮9级固定夹具漏重算基础战斗缓存，被读档校验拒绝。用原petCombat重算并经readProgress验证后重新注入，正式代码及测试断言未修改。恢复预览时Creator端口从7469变为7456，首次正常入口返回ECONNREFUSED；正常关闭本卡旧代理并更新目标后，实际进入正常入口城镇，固定样本钩子关闭。辅助现场及原主档备份保留在 `supplement/`。
+- 释放本卡Creator预览后串行构建Web Mobile、微信。构建副本31个TS及全部190个受跟踪assets文件与候选逐文件哈希一致，见 `supplement/source-hashes.json` 与 `asset-verification.json`。沿用release配置、debug=false、Boot入口。
+
+| 目标 | 构建结果 | 实际产物 | 文件数 | 未压缩字节 |
+| --- | --- | --- | ---: | ---: |
+| Web Mobile | 19:40:18完成，12秒，退出36，无构建错误 | index.html、application.js、assets/battle/index.js，含合宠/v6逻辑 | 167 | 8,483,737 |
+| 微信 | 19:40:47完成，14秒，退出36，无构建错误 | game.js、game.json、project.config.json、subpackages/battle/game.js，含合宠/v6逻辑 | 171 | 6,567,090 |
+
+- 微信主包919,168、battle 3,072,046、inventory 57,666、outskirts 594,500、town 1,923,710字节。统计为磁盘未压缩目录，含工具生成文件。逐文件长度与SHA256在 `supplement/web-mobile-manifest.json`、`wechatgame-manifest.json`；两端完整日志为 `supplement/web-mobile-build.log`、`wechat-build.log`，另有process.log/.err及.exit。此前失败日志保留，以上成功构建替代此前未完成状态。
+- 产物位于 `temp/p2-13/build-source/build/web-mobile` 和 `wechatgame`。正常入口恢复为 `http://127.0.0.1:18419/?scene=3ca2435e-bec8-4656-9bf9-63cfaadc18b7`，Human已最终试玩并回复“可以了 合拼推送”。本次授权据此补登STATUS、合入main并推送。
+- 微信模拟器、真机和手机浏览器实机仍为NOT_TESTED。微信真机步骤为：Human扫码登录微信开发者工具，导入上述wechatgame目录，沿用AppID及Cocos 3.8.8插件配置，编译后点预览，用拥有项目权限的微信扫码。发布包禁用开发固定样本，合宠需已有合法10级后备宠；记录权限或插件原始错误供Human处理。
