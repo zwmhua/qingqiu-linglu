@@ -1274,6 +1274,7 @@ export class BattleView extends Component {
       this.text(identity.replaceAll(' ', ''), tagX, 116, 15, '#F7E8C1', 76, 1);
       this.drawPetPortrait(pet, 373, 337, 244);
       this.renderReleaseButton(pet);
+      this.renderDeployButton(pet);
       this.renderPetSlots(pet.id);
       this.text('属性', 606, 101, 25, ink, 182, 1, () => open('basic'));
       this.text('资质技能', 793, 101, 25, ink, 195, 1, () => open('aptitude'));
@@ -1294,6 +1295,18 @@ export class BattleView extends Component {
     });
     this.renderPetPointsPreview(preview, hp, mana);
     this.renderAllocation(petProgress(pet), () => open(this.petReturnPage), draft => this.confirmPetPoints(pet.id, draft), 'pet');
+  }
+
+  private renderDeployButton(pet: CarriedPet): void {
+    const blocked = () => !this.onMap || this.progressReadFailed || !this.usesTestProgress;
+    const deployed = this.progress.selectedPetId === pet.id;
+    this.button(deployed ? '已出战' : '设为出战', 240, 455, 180, 36, !blocked() && !deployed, () => {
+      try {
+        this.progress.selectPet(blocked(), pet.id, selectedPetId =>
+          saveProgress(progressStorage(), { ...this.progress, selectedPetId }));
+      } catch (error) { showNotice(`切换出战保存失败：${error instanceof Error ? error.message : String(error)}`); }
+      this.render();
+    });
   }
 
   private renderReleaseButton(pet: CarriedPet): void {
@@ -1470,7 +1483,7 @@ export class BattleView extends Component {
       this.bookMessage = '';
       this.bookConfirmation = { transaction, caption: `${ITEMS[item].name} → ${pet.name}\n`
         + `当前 ${pet.skillIds!.length} 技能 · 消耗 1 本\n新增 ${Math.round(transaction.rate * 100)}% · 顶替 ${Math.round((1 - transaction.rate) * 100)}%\n`
-        + (transaction.rate < 1 ? '顶替时随机替换一个非必带技能。' : '新增技能放入首个空格。') };
+        + (transaction.rate < 1 ? '顶替时所有现有技能等概率参与，包括天生技能。' : '新增技能放入首个空格。') };
     } catch (error) { this.bookMessage = error instanceof Error ? error.message : String(error); }
     this.render();
   }

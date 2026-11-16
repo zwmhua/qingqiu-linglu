@@ -43,10 +43,10 @@ export const SKILL_POOLS: Record<WildSpecies, { innate: string[]; random: string
   pangui: { innate: ['armor'], random: ['reflect', 'counter', 'regen', 'power'] },
   maomaochong: { innate: [], random: ['crit', 'combo', 'lifesteal', 'swift', 'power'] },
 };
-export function validSkills(species: WildSpecies, ids: unknown): ids is string[] {
+export function validSkills(species: WildSpecies, ids: unknown, requireInnate = true): ids is string[] {
   return Array.isArray(ids) && ids.length <= 8 && new Set(ids).size === ids.length
     && ids.every(id => typeof id === 'string' && Object.hasOwn(PET_SKILLS, id))
-    && SKILL_POOLS[species].innate.every(id => ids.includes(id));
+    && (!requireInnate || SKILL_POOLS[species].innate.every(id => ids.includes(id)));
 }
 export function generateSkills(species: WildSpecies, mutated: boolean, random = Math.random): string[] {
   const pick = (count: number) => {
@@ -64,5 +64,5 @@ export function generateSkills(species: WildSpecies, mutated: boolean, random = 
 }
 export function skillDescription(id: string, species: WildSpecies): string {
   const skill = PET_SKILLS[id];
-  return skill.description(skill.params) + (SKILL_POOLS[species].innate.includes(id) ? '\n天生技能，无法被顶替' : '');
+  return skill.description(skill.params) + (SKILL_POOLS[species].innate.includes(id) ? '\n天生技能，打书时同样可能被顶替' : '');
 }

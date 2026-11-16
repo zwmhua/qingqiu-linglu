@@ -13,6 +13,24 @@ const { SessionProgress } = await import('../assets/battle/logic/session-progres
 const { petProgress } = await import('../assets/battle/logic/roster.ts');
 const { loadSessionProgress, saveProgress } = await import('../assets/battle/logic/local-progress.ts');
 
+test('a turtle can lose innate armor, reload v5 unchanged and learn another book; v4 stays strict', async () => {
+  const { progressSnapshot } = await import('../assets/battle/logic/local-progress.ts');
+  const entries = new SessionProgress(initialHero()).roster.entries, disk = storage(), pet = entries[1];
+  Object.assign(pet, { id: 'caught-1', origin: 'captured', species: 'pangui', skillIds: ['armor', 'crit', 'power', 'regen'] });
+  const session = new SessionProgress(initialHero(), { entries, nextCapturedId: 2 });
+  session.inventory = { 'book:thunder': 1, 'book:fireball': 1 };
+  const persist = (next, inventory) => disk.setItem('', progressSnapshot(session, undefined, next, undefined, inventory));
+  assert.equal(session.prepareSkillBook(false, pet.id, 'book:thunder').execute(false, persist, () => 0).replaced, 'armor');
+  const raw = disk.raw, restored = loadSessionProgress(disk);
+  assert.equal(progressSnapshot(restored), raw);
+  assert.deepEqual(restored.roster.entries[1].skillIds, ['thunder', 'crit', 'power', 'regen']);
+  assert.equal(restored.inventory['book:thunder'], 0);
+  assert.equal(restored.prepareSkillBook(false, pet.id, 'book:fireball').rate, 0);
+  const old = JSON.parse(raw); old.version = 4; delete old.inventory; delete old.lastSettledId;
+  disk.raw = JSON.stringify(old);
+  assert.throws(() => loadSessionProgress(disk), /技能不兼容/);
+});
+
 function storage() {
   return { raw: null, fail: false, getItem() { return this.raw; }, setItem(_key, value) {
     if (this.fail) throw new Error('写入失败');

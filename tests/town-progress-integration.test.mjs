@@ -1027,6 +1027,7 @@ test('skill book view confirms on maps, cancels without work and guards stale ca
     v.town.load(region); complete();
     pet.skillIds = ['crit', 'armor']; draw(); actions.get('打书')(); draw();
     assert.ok(labels.some(s => s.includes('新增 60%') && s.includes('顶替 40%')));
+    assert.ok(labels.includes('顶替时所有现有技能等概率参与，包括天生技能。'));
     const stale = actions.get('确认打书'); actions.get('取消')(); stale();
     pet.skillIds.push('power'); draw(); actions.get('打书')(); draw();
     assert.ok(labels.some(s => s.includes('新增 30%') && s.includes('顶替 70%')));
@@ -1036,4 +1037,43 @@ test('skill book view confirms on maps, cancels without work and guards stale ca
   const changed = actions.get('确认打书'); v.mapBattle = true; changed();
   assert.match(v.bookMessage, /战斗/); draw(); assert.equal(actions.has('打书'), false);
   assert.equal(townDisk.writes, writes + 1); assert.equal(rolls, 0);
+});
+
+test('map deployment saves before changing selection; battle and pending settlement forbid switching', async () => {
+  const { v, session, complete } = await roundTripView(), target = session.roster.entries[1];
+  const buttons = new Map(), notices = [], portraits = [], clicks = [];
+  window.alert = text => notices.push(text);
+  v.button = (text, _x, _y, _w, _h, enabled, click) => { buttons.set(text, { enabled, click }); return { addComponent() {} }; };
+  v.text = () => {}; v.rect = (_x, _y, _w, _h, _c, _b, _r, click) => { if (click) clicks.push(click); return { addComponent() {} }; };
+  v.drawPetPortrait = () => {};
+  const draw = () => { buttons.clear(); v.renderDeployButton(target); return buttons.get(session.selectedPetId === target.id ? '已出战' : '设为出战'); };
+  assert.equal(draw().enabled, false);
+  const battleCallback = draw().click, beforeBattle = townDisk.raw;
+  battleCallback(); assert.equal(townDisk.raw, beforeBattle);
+  v.battle.command('hero', 'capture', 'enemy-0'); v.battle.command('pet', 'defend');
+  townDisk.fail = true; v.finishBattle();
+  assert.equal(draw().enabled, false); battleCallback(); assert.equal(session.selectedPetId, 'pet');
+  townDisk.fail = false; v.finishBattle();
+  assert.equal(v.onMap, true);
+  for (const region of ['town', 'outskirts']) {
+    v.town.load(region); complete();
+    v.renderPetSlots('pet'); clicks.at(-2)();
+    assert.equal(v.selectedPetId, target.id); assert.equal(session.selectedPetId, 'pet');
+    assert.equal(draw().enabled, true);
+  }
+  const before = townDisk.raw, writes = townDisk.writes, callback = draw().click;
+  townDisk.fail = true; callback();
+  assert.match(notices.at(-1), /保存失败/);
+  assert.equal(townDisk.raw, before); assert.equal(session.selectedPetId, 'pet');
+  townDisk.fail = false; callback(); callback();
+  assert.equal(session.selectedPetId, target.id); assert.equal(townDisk.writes, writes + 1);
+  assert.equal(buttons.has('已出战'), false); // Rendering is stubbed; explicitly redraw below.
+  draw(); assert.equal(buttons.get('已出战').enabled, false);
+  v.statusCard = (kind, _x, unit) => portraits.push([kind, unit.id]);
+  v.renderTown(); assert.ok(portraits.some(([kind, id]) => kind === 'pet' && id === target.id));
+  const restored = loadSessionProgress(townDisk);
+  assert.equal(restored.selectedPetId, target.id);
+  assert.deepEqual({ ...JSON.parse(townDisk.raw), selectedPetId: 'pet' }, JSON.parse(before));
+  v.startFixedBattle(); assert.equal(v.battle.pets.find(pet => pet.deployed).id, target.id);
+  assert.equal(draw().enabled, false);
 });

@@ -3,11 +3,10 @@ import { PET_SKILLS, SKILL_POOLS, validSkills } from './pet-skills';
 import type { CarriedPet } from './roster';
 
 export const BOOK_ADD_RATES = [1, 1, 0.6, 0.3, 0, 0, 0, 0, 0] as const;
-export function bookOptions(ids: readonly string[], innate: readonly string[]) {
+export function bookOptions(ids: readonly string[]) {
   const rate = BOOK_ADD_RATES[ids.length];
-  const candidates = ids.map((id, index) => innate.includes(id) ? -1 : index).filter(index => index >= 0);
+  const candidates = ids.map((_id, index) => index);
   if (rate === undefined) throw new Error('技能数量无效');
-  if (rate < 1 && !candidates.length) throw new Error('只有必带技能，无法顶替');
   return { rate, candidates };
 }
 export function bookPlan(pet: Pick<CarriedPet, 'species' | 'skillIds'> | undefined,
@@ -17,9 +16,9 @@ export function bookPlan(pet: Pick<CarriedPet, 'species' | 'skillIds'> | undefin
   if (!BOOK_IDS.includes(item)) throw new Error('请选择有效技能书');
   if (!Number.isSafeInteger(inventory[item]) || inventory[item] < 1) throw new Error('技能书数量不足');
   const ids = pet.skillIds, skillId = item.slice(5);
-  if (!Object.hasOwn(SKILL_POOLS, pet.species) || !validSkills(pet.species, ids)) throw new Error('当前技能无效');
+  if (!Object.hasOwn(SKILL_POOLS, pet.species) || !validSkills(pet.species, ids, false)) throw new Error('当前技能无效');
   if (ids.includes(skillId)) throw new Error('灵宠已学会该技能');
-  return { skillId, ...bookOptions(ids, SKILL_POOLS[pet.species].innate) };
+  return { skillId, ...bookOptions(ids) };
 }
 export function applyBook(ids: readonly string[], plan: ReturnType<typeof bookPlan>, random = Math.random) {
   const roll = () => {

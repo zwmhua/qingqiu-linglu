@@ -88,6 +88,13 @@ export class SessionProgress {
     } };
   }
 
+  selectPet(blocked: boolean, id: string, persist: (id: string) => void): boolean {
+    if (blocked || id === this.selectedPetId || !this.roster.entries.some(pet => pet.id === id)) return false;
+    persist(id);
+    this.selectedPetId = id;
+    return true;
+  }
+
   releasePet(inBattle: boolean, id: string, persist: (pets: CarriedPet[]) => void): boolean {
     return this.roster.release(id, this.selectedPetId, inBattle, persist);
   }

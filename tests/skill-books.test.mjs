@@ -21,7 +21,7 @@ test('book bands, exact thresholds, deterministic branches and every replacement
   }
   for (const species of ['tingwa', 'pangui']) {
     const ids = all.slice(0, 4), p = plan(ids, species);
-    const indexes = species === 'pangui' ? [1, 2, 3] : [0, 1, 2, 3];
+    const indexes = [0, 1, 2, 3];
     indexes.forEach((index, i) => {
       const result = applyBook(ids, p, () => (i + .5) / indexes.length);
       const expected = [...ids]; expected[index] = 'thunder';
@@ -30,7 +30,7 @@ test('book bands, exact thresholds, deterministic branches and every replacement
     });
   }
 });
-test('invalid eligibility and artificial empty replacement pool reject before drawing', () => {
+test('invalid eligibility rejects before drawing', () => {
   for (const [p, item, inv, battle, message] of [
     [pet(['thunder']), 'book:thunder', { 'book:thunder': 1 }, false, /已学/],
     [pet([]), 'book:thunder', {}, false, /不足/],
@@ -39,6 +39,6 @@ test('invalid eligibility and artificial empty replacement pool reject before dr
     [pet([]), 'book:thunder', { 'book:thunder': 1 }, true, /战斗/],
     [undefined, 'book:thunder', { 'book:thunder': 1 }, false, /携带/],
   ]) assert.throws(() => bookPlan(p, item, inv, battle), message);
-  assert.throws(() => bookOptions(['armor', 'crit'], ['armor', 'crit']), /只有必带技能/);
+  assert.deepEqual(bookOptions(['armor', 'crit']).candidates, [0, 1]);
   for (const value of [-1, NaN, 1.1]) assert.throws(() => applyBook(all, plan(all), () => value), /随机/);
 });

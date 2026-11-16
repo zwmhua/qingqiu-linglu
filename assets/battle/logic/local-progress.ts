@@ -78,7 +78,7 @@ function validateSnapshot(saved: Snapshot, capacity: number = BATTLE_RULES.maxCa
       ...(saved.version >= 4 ? ['skillIds'] : [])]);
     onlyKeys(pet.aptitudes, [...APTITUDE_KEYS]);
     onlyKeys(pet.baseStats, [...BASE_STAT_KEYS]);
-    if (saved.version >= 4 ? pet.skill !== undefined || !validSkills(pet.species, pet.skillIds)
+    if (saved.version >= 4 ? pet.skill !== undefined || !validSkills(pet.species, pet.skillIds, saved.version === 4)
       : pet.skill !== undefined && pet.skill !== '露珠弹') throw new Error('存档技能不兼容，原档已保留');
   }
   if (!pets.every(pet => validPet(pet, legacy))) throw new Error('召唤兽进度损坏');

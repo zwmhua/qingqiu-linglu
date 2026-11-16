@@ -63,7 +63,7 @@ test('all twelve descriptions use live config and innate status follows the spec
     PET_SKILLS.waterarrow.params.mana = 7;
     assert.match(skillDescription('waterarrow', 'tingwa'), /消耗7点法力/);
   } finally { PET_SKILLS.waterarrow.params.mana = previous; }
-  assert.match(skillDescription('armor', 'pangui'), /天生技能，无法被顶替/);
+  assert.match(skillDescription('armor', 'pangui'), /天生技能，打书时同样可能被顶替/);
   assert.doesNotMatch(skillDescription('armor', 'tingwa'), /天生技能/);
   assert.match(skillDescription('counter', 'pangui'), /反应伤害不会再次触发物理被动技能/);
 });
