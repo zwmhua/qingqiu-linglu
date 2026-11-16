@@ -71,9 +71,10 @@ registerHooks({
   load(url, c, next) {
     if (url.startsWith('mock:')) return { format: 'module', shortCircuit: true,
       source: url === 'mock:cc' ? cc : 'export const PREVIEW = true, WECHAT = false;' };
-    if (/\/(BattleView|TownView)\.ts$/.test(url)) return { format: 'module', shortCircuit: true,
+    if (/\/(BattleView|TownView|pet-fusion)\.ts$/.test(url)) return { format: 'module', shortCircuit: true,
       source: ts.transpileModule(readFileSync(new URL(url), 'utf8'), { compilerOptions: {
-        target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, experimentalDecorators: true,
+        target: url.endsWith('/pet-fusion.ts') ? ts.ScriptTarget.ES5 : ts.ScriptTarget.ES2022,
+        downlevelIteration: false, module: ts.ModuleKind.ESNext, experimentalDecorators: true,
       } }).outputText };
     return next(url, c);
   },
@@ -85,6 +86,32 @@ const { initialHero, awardExperience, adjustPotential } = await import('../asset
 const { petProgress } = await import('../assets/battle/logic/roster.ts');
 const { loadSessionProgress, saveProgress } = await import('../assets/battle/logic/local-progress.ts');
 const { OUTSKIRTS, TOWN, TOWN_PLACES } = await import('../assets/battle/logic/exploration.ts');
+
+test('release downlevel fusion preserves species, skill order and random consumption', async () => {
+  const low = await import('../assets/battle/logic/pet-fusion.ts');
+  const native = await import('../assets/battle/logic/pet-fusion.ts?native');
+  const [first, second] = new SessionProgress(initialHero()).roster.entries;
+  const a = { ...first, level: 10, isBaby: true, species: 'tingwa', skillIds: ['thunder', 'combo'] };
+  const pool = ['tingwa', 'pangui', 'maomaochong', 'pangui', 'maomaochong'];
+  for (const species of ['tingwa', 'pangui']) {
+    const b = { ...second, level: 10, isBaby: true, species, skillIds: ['armor', 'combo', 'waterarrow', 'thunder'] };
+    assert.deepEqual(low.fusionPlan([a, b], [a.id, b.id], '', false, pool).other,
+      species === 'tingwa' ? ['pangui', 'maomaochong'] : ['maomaochong']);
+    for (const edge of [0, 0.45, 0.9, 1]) {
+      const calls = [0, 0];
+      const run = (module, index) => module.fusePets(a, b, 'fused-1', () => calls[index]++ === 0 ? edge : 0, pool);
+      const child = run(low, 0), expected = run(native, 1);
+      assert.deepEqual(child, expected);
+      assert.equal(calls[0], calls[1]);
+      assert.equal(child.species, edge >= 0.9 ? (species === 'tingwa' ? 'pangui' : 'maomaochong')
+        : edge < 0.45 ? 'tingwa' : species);
+      assert.deepEqual(child.skillIds, child.species === 'pangui' ? ['armor', 'thunder', 'combo', 'waterarrow']
+        : species === 'pangui' ? ['thunder', 'combo', 'waterarrow'] : ['thunder', 'combo', 'armor', 'waterarrow']);
+      assert.equal(calls[0], 53 + (edge >= 0.9 ? 1 : 0) +
+        (species === 'tingwa' && child.species !== 'pangui' ? 4 : 3));
+    }
+  }
+});
 
 test('passive attributes render consistently and playback reveals healing before the next commands', async () => {
   const { Battle } = await import('../assets/battle/scripts/Battle.ts');

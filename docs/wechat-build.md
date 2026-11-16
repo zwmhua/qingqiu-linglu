@@ -1124,3 +1124,64 @@ X2（2026-11-16）：完整范围复估494～598行，估算上界超过Human批
 - 微信主包919,168、battle 3,072,046、inventory 57,666、outskirts 594,500、town 1,923,710字节。统计为磁盘未压缩目录，含工具生成文件。逐文件长度与SHA256在 `supplement/web-mobile-manifest.json`、`wechatgame-manifest.json`；两端完整日志为 `supplement/web-mobile-build.log`、`wechat-build.log`，另有process.log/.err及.exit。此前失败日志保留，以上成功构建替代此前未完成状态。
 - 产物位于 `temp/p2-13/build-source/build/web-mobile` 和 `wechatgame`。正常入口恢复为 `http://127.0.0.1:18419/?scene=3ca2435e-bec8-4656-9bf9-63cfaadc18b7`，Human已最终试玩并回复“可以了 合拼推送”。本次授权据此补登STATUS、合入main并推送。
 - 微信模拟器、真机和手机浏览器实机仍为NOT_TESTED。微信真机步骤为：Human扫码登录微信开发者工具，导入上述wechatgame目录，沿用AppID及Cocos 3.8.8插件配置，编译后点预览，用拥有项目权限的微信扫码。发布包禁用开发固定样本，合宠需已有合法10级后备宠；记录权限或插件原始错误供Human处理。
+
+## P2-15 发布合宠修复与当前交付证据（2026-11-16）
+
+本节是本卡当前实测状态，**不是第二阶段全部收口声明**。修复及双端合宠已验证；后文列明的战斗画面/开发预览/真机项目仍待补验。STATUS.md 未修改，不推送、不合并、不发布。
+
+### 起点、修改及本地检查
+
+- Human 已授权保留原工作区所有修改及美术。fetch 后从 `58a4a01926c25b144e6b8d9920f2318e6c7c697e` 建 `C:/Users/hua/cocos/Project/qingqiu-linglu-task51`，分支 `task/51-p2-15-release-closeout`；基线含 P2-14 的 `b667c6d95fe47af9be9ee7396a672931a06f096d`。原工作区 `assets/battle/logic.meta` 及未跟踪美术不动。
+- 附件原样存为 `docs/cards/card-P2-15.md`。业务只改 pet-fusion.ts 两处 Set 展开，使用保持首次出现次序的数组过滤；物种概率、必带排除、继承概率、技能上限、随机调用顺序和 v6 事务接线不改。业务与测试实际增删40行，未新增依赖。
+- 复用 town-progress-integration 的 Creator 3.8.8 TypeScript 加载器，仅 pet-fusion 模块以 ES5、downlevelIteration=false 转译。新增同/异种、重复物种池、重叠技能、父方必带排除、边界随机及完整结果/调用数对照。其余模块维持原目标，原断言保留。
+- `temp/p2-15/red.log`：改产品前新增兼容测试实际1失败，报原配置错误。修复后 `targeted.log` 44项成功、0失败；`full.log` 全量 `node --test tests/*.test.mjs` 212项成功、0失败。包含迁移、v6读写、取消/无资格、写失败保父宠、同候选重试、成功一次保存、倍速回放与掉率用例。这些是本机结果，未运行 Actions。
+- 限定严格 tsc 覆盖全部 battle/logic、Battle.ts、walkable-path.ts、platform.ts 及传递依赖，退出0；`tsc.log` 为空。产品与测试在这些检查后未再修改。
+- 最终提交后独立 QA 仅阅读同 SHA diff 和相关代码，不跑测试。回执存 `temp/p2-15/qa-final.md`，提交与产物绑定存 `delivery-binding.json`；本节不预先声明 QA 结论。
+
+### 发布包实际操作
+
+证据均在当前工作树 `temp/p2-15/`。ego-browser 使用本卡独立空间19、隔离端口18426；微信使用本卡新导入的 qingqiu-linglu 项目。样本由 P2-14 强档整理、重算战斗缓存并经 readProgress 校验，只供隔离验收。
+
+两个样本均为 v6，留 `caught-3` 变异磐龟出战；普通10级双亲 `caught-1` 汀蛙技能 thunder/combo，`caught-2` 异种档为磐龟、同种档为汀蛙，技能 armor/combo/waterarrow/thunder。各宠内部无重复技能，双亲之间重叠 combo/thunder。技能书 fireball 3、普通露3、变异露2。
+
+| 平台与操作 | 实际结果 | 证据 |
+| --- | --- | --- |
+| P2-13旧 Web 包，正常标题读样本，打开合宠选双亲 | 提示「合宠物种或必带技能配置错误」，未进入确认；操作前后主档相同 | old-reproduced.json/.png、ego-01～04 |
+| 新 Web 城里异种，先取消再确认；仅隔离页面的 BattleView.fusionRandom 固定返回0 | 取消0次随机/0次写入；确认56次随机、1次主档写入。fused-1 汀蛙，thunder/combo/waterarrow各一份；携带3→2，nextFusedId=2，原出战caught-3保持 | different-fixed.json/.png、ego-20 |
+| 新 Web 异种结果刷新，从标题读档 | 完整主档字节相同 | different-fixed-refresh.json、ego-20 |
+| 新 Web 野外同种，同样固定fusionRandom=0 | 57次随机；fused-1 汀蛙，thunder/combo/armor/waterarrow各一份。刷新完整主档相同；资料设出战后出城自然遇敌，实际友方单位fused-1/tingwa | same-fixed.json/.png、same-refreshed-deployed.json/.png、ego-21 |
+| 新 Web 自然随机结果的城野养成 | 真实自然遇敌、结算回野外；背包给合成宠打火球术书，书3→2；给后备变异磐龟还童，变异露2→1、等级归0。回城刷新完整主档相同，人物经验10及宠物/材料结果保留 | field-after-battle.json、book-success.json、growth-return-refresh.json、ego-11～19 |
+| 新 Web 普通入口与带开发参数的发布入口 | 都从标题进城，formal模式，未开放固定开战/测试重置/测试掉率；查询参数不改变库存或主档 | release-gates.json/.png、ego-10及正常入口各次实点 |
+| 微信模拟器异种，自然随机、真实点击双亲及二次确认 | fused-1汀蛙，技能combo/waterarrow各一份，v6/nextFusedId=2/selected=caught-3；双亲替换为1只结果。编译重载→标题→进城后，主档与备份键p215-evidence:different完整字符串比较true | 本轮Windows工具截图；wechat-observations.json人工转录 |
+| 微信模拟器同种，自然随机、真实点击确认 | fused-1汀蛙，thunder/combo/armor各一份，原出战caught-3保持；重新编译→标题→进城后，与p215-evidence:same原始字符串比较true | wechat-same-refresh.png、wechat-observations.json |
+| 微信刷新后新宠设出战并出城行走 | 实际宠物资料切换为合成汀蛙，设出战后地图头像改变；自然遇敌，友方合成汀蛙实际出场 | wechat-refreshed-deployed.png |
+
+微信结果为自然随机，不称为固定随机验收。Web固定样本的随机控制直接设置视图已保存的fusionRandom；最初两轮仅改Math.random未控制实际随机源，所得自然结果不计固定样本。Human批准修正仓外脚本后才得到上述56/57次记录。微信控制台不暴露cc/System，两次探测均ReferenceError，已停止此类探测；不修改微信包或安全设置以绕过。
+
+### 构建、包体及可试玩入口
+
+- 从当前候选复制 assets/settings/package.json/tsconfig.json 到忽略路径 `temp/p2-15/build-source`。全部受跟踪 assets 与构建副本逐文件一致。沿用 Creator3.8.8 的现有两端配置、debug=false、Boot入口、AppID和引擎插件；Web、微信串行构建。
+- Web 22:08:03 完成、微信22:08:38完成；两端退出36且有完整产物，并分别在浏览器/模拟器运行。原始 `web-mobile-build.log`、`wechat-build.log` 和对应 process.log/.err、.exit 均保留。
+- **日志限定**：两端日志在打包脚本完成后均有 debug 级 `Error: Exit process with code:null, signal:SIGTERM in task build-script`，后续引擎/资源打包及最终构建完成；process.err有GPU缓存访问诊断。因此不声称卡面「日志无错误」已满足，保留原文供复核，不通过删除日志取得全绿。微信运行另有 `[Spine] Invalid timeline type for a slot: rgba` 警告，未阻止上述实点，未调整美术或引擎。
+
+| 未压缩口径 | P2-13字节 | P2-15字节 | 差值 |
+| --- | ---: | ---: | ---: |
+| Web总包 | 8,483,737 | 8,483,799 | +62 |
+| 微信总包 | 6,567,090 | 6,567,152 | +62 |
+| 微信主包 | 919,168 | 919,168 | 0 |
+| battle | 3,072,046 | 3,072,108 | +62 |
+| town | 1,923,710 | 1,923,710 | 0 |
+| outskirts | 594,500 | 594,500 | 0 |
+| inventory | 57,666 | 57,666 | 0 |
+
+上述为导入微信工具前的构建产物清单口径，详见 web-mobile-manifest.json、wechatgame-manifest.json、sizes.json；主包低于3.5MB停止线。工具导入后扩充project.config.json并新增project.private.config.json，运行代码逐文件哈希仍一致。交付ZIP按原清单取文件；唯一改写的project.config.json使用P2-13同SHA256的原文件恢复到独立打包副本，逐文件重新比对原清单，不改正在运行的微信目录或配置。
+
+- 当前本机试玩：`http://127.0.0.1:18426/`，游戏正常入口。产物目录为 `temp/p2-15/build-source/build/web-mobile` 与 `wechatgame`；同一origin保留本轮隔离测试存档。样本原件为same.json/different.json，不能当成玩家正式存档覆盖到其他origin。
+- 微信扫码：在已登录的微信开发者工具中导入上述 **wechatgame** 目录，沿用项目AppID、小游戏类型及Cocos3.8.8插件；如出现信任/权限提示，由Human处理（本轮Human已点击信任并运行）。点编译，确认标题→开始游戏→城镇，再点顶部「预览」，用有该项目权限的微信扫码。真机点验横屏触摸、进出城、两只合格后备宠的二次确认、重启后结果和下场出战；记录权限/插件原始错误。扫码及真机本次 NOT_TESTED，未上传提审或发布。
+
+### 未完成项与留痕
+
+- **NOT_TESTED：新 Web 同一固定战斗×1/×2的完整画面对照、手动灵术与抓宠组合、开发预览正式/测试切档后的库存和本场概率锁定实点、手机浏览器/微信真机。** 现有自动化回放/掉率测试成功不替代这些实际操作。一次战斗已在辅助脚本继续前自动结束，随后点「抓取」实际落到地图，不能计为抓宠证据。
+- 2026-11-16，倍速样本两轮行走脚本未触发目标；只读检查表明地图前台可用、输入到达画布但角色不移动。按AGENTS两轮门禁暂停。Human明确批准仅纠正仓外脚本后，检查事件与重新载入，补做两轮仍无移动目标，按已有证据停止，不再进入第三轮。不擅改地图/引擎/输入或降低断言；待Human决定继续环境排查或另卡处理。此前Web与本轮微信均有真实自然遇敌证据，两者不混用成倍速证据。
+- X1：原工作区脏改由本卡Human明确授权保留，独立工作树完成；X2：没有产品范围扩张、依赖或行数超限；辅助重试暂停及解除如上。无产品回修轮次。夹具初次readProgress调用签名纠正仅涉及仓外脚本；微信CLI服务端口未开放，改走已有工具UI导入，未开启权限；安全信任交由Human手动。
+- 本机交付只保留当前试玩所需入口及本卡微信项目，旧包复现服务结束后关闭；无关工程和无法确认用途的进程保留。最终SHA、独立静态QA和产物哈希在同卡外部回执中绑定；本卡仍待上述缺项及Human最终试玩，不能据此宣布第二阶段关闭。

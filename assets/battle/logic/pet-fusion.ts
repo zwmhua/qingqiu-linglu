@@ -18,7 +18,8 @@ export function fusionPlan(entries: readonly CarriedPet[], ids: readonly string[
   if (ids.includes(selected)) throw new Error('出战宠不能合宠');
   if ([a, b].some(pet => pet.level < FUSION.minLevel)) throw new Error(`合宠需要双方至少${FUSION.minLevel}级`);
   if (a.isMutated !== b.isMutated) throw new Error('普通与变异身份必须相同');
-  const other = [...new Set(pool)].filter(species => species !== a.species && species !== b.species);
+  const other = pool.filter((species, index) => pool.indexOf(species) === index)
+    .filter(species => species !== a.species && species !== b.species);
   if (!other.length || [...other, a.species, b.species].some(species => !WILD_SPECIES[species]
     || !validSkills(species, SKILL_POOLS[species]?.innate))) throw new Error('合宠物种或必带技能配置错误');
   return { parents: [a, b] as const, other };
@@ -45,8 +46,10 @@ export function fusePets(a: CarriedPet, b: CarriedPet, id: string, random = Math
   const baseStats = generateBaseStats(isBaby ? 0 : level, roll);
   if (isBaby) for (const key of BASE_STAT_KEYS) baseStats[key] += level;
   const skillIds = [...SKILL_POOLS[species].innate];
-  const available = [...new Set([a, b].flatMap(pet => (pet.skillIds ?? [])
-    .filter(skill => !SKILL_POOLS[pet.species].innate.includes(skill))))].filter(skill => !skillIds.includes(skill));
+  const candidates = [a, b].flatMap(pet => (pet.skillIds ?? [])
+    .filter(skill => !SKILL_POOLS[pet.species].innate.includes(skill)));
+  const available = candidates.filter((skill, index) => candidates.indexOf(skill) === index)
+    .filter(skill => !skillIds.includes(skill));
   const inherited = available.filter(() => roll() < FUSION.inheritance);
   const room = FUSION.maxSkills - skillIds.length;
   if (inherited.length <= room) skillIds.push(...inherited);
