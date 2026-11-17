@@ -1080,6 +1080,14 @@ test('pet and fusion slots show owned skill art and layer the innate and advance
     assert.deepEqual(icons[1], skillSlot?.bounds);
     assert.ok(!labels.includes('硬甲'));
     skillSlot.click();
+    assert.equal(v.fusionPicker?.side, 0);
+    assert.equal(v.skillOpen, undefined);
+    v.fusionPicker.id = pet.id;
+    v.renderFusion();
+    const pickerIcon = icons.at(-1);
+    const pickerSkill = slots.find(({ bounds: [x, y] }) => x === pickerIcon[0] && y === pickerIcon[1]);
+    assert.deepEqual(pickerIcon, pickerSkill?.bounds);
+    pickerSkill.click();
     v.renderFusion();
     assert.ok(labels.includes('硬甲'));
     assert.deepEqual(slots.at(-1).bounds, [0, 0, 1334, 750]);
@@ -1291,7 +1299,7 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
   a.skillIds = skills.slice(0, 8);
   b.skillIds = skills.slice(4);
   session.roster.entries.push(b); saveProgress(townDisk, session);
-  const labels = [], actions = new Map(), preview = [], picks = [], drawnSkills = [], tabs = [];
+  const labels = [], actions = new Map(), preview = [], picks = [], drawnSkills = [], tabs = [], panels = [];
   let tiles = 0, closeButtons = 0;
   v.skillFrames = new Map(skills.map(id => [id, id]));
   v.image = (_x, _y, _w, _h, frame) => drawnSkills.push(frame);
@@ -1301,6 +1309,7 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
   v.text = text => labels.push(text);
   v.rect = (x, _y, width, height, color, _border, _radius, click) => {
     if (x >= 1150 && x + width <= 1242 && height === 96) tabs.push({ color, click });
+    if (width >= 380 && height >= 550 && height < 650 && click) panels.push(click);
     if (width === 88 && height === 88) {
       tiles++;
       if (click) picks.push(click);
@@ -1313,7 +1322,7 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     return { addComponent() {} };
   };
   const draw = () => {
-    labels.length = preview.length = picks.length = drawnSkills.length = tiles = closeButtons = tabs.length = 0;
+    labels.length = preview.length = picks.length = drawnSkills.length = tiles = closeButtons = tabs.length = panels.length = 0;
     actions.clear(); v.renderFusion();
   };
   let rolls = 0; v.fusionRandom = () => { rolls++; return 0; };
@@ -1324,6 +1333,7 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     assert.ok(v.town.movement.target); v.openFusion(); assert.equal(v.mapBlocked, true);
     assert.equal(v.town.movement.target, undefined);
     draw(); assert.ok(actions.has('请选择左侧父宠') && !actions.has('选择左侧父宠'));
+    assert.equal(panels.length, 2);
     assert.ok(!actions.has('预览') && !actions.has('合成'));
     assert.equal(tabs.length, 3);
     const tabLetters = '洗宝宝打书合宠'.split('');
@@ -1349,16 +1359,26 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     const stalePick = picks[1];
     actions.get('关闭')(); stalePick(); draw();
     assert.deepEqual(v.fusionIds, ['', '']);
-    actions.get('请选择左侧父宠')(); draw(); picks[1](); draw();
+    panels[0](); draw(); picks[1](); draw();
+    assert.deepEqual(v.fusionIds, ['', '']);
+    assert.equal(v.fusionPicker.id, a.id);
+    const staleSelect = actions.get('选择');
+    picks[1](); staleSelect(); draw();
+    assert.equal(v.fusionPicker.id, '');
+    assert.ok(!actions.has('选择') && labels.includes('请选择一只灵宠'));
+    assert.deepEqual(v.fusionIds, ['', '']);
+    picks[1](); draw(); actions.get('选择')(); draw();
     assert.deepEqual(v.fusionIds, [a.id, '']);
     assert.equal(v.fusionPicker, undefined);
     assert.ok(labels.includes('成长') && labels.includes(a.growth.toFixed(3)));
     assert.deepEqual(drawnSkills, a.skillIds);
     assert.ok(actions.has(a.name));
-    actions.get('请选择右侧父宠')(); draw(); picks[1](); draw();
+    panels[1](); draw(); picks[1](); draw();
     assert.deepEqual(v.fusionIds, [a.id, '']);
     assert.ok(v.fusionPicker && !actions.has('选择'));
     picks[2](); draw();
+    assert.deepEqual(v.fusionIds, [a.id, '']);
+    actions.get('选择')(); draw();
     assert.deepEqual(v.fusionIds, [a.id, b.id]);
     assert.equal(v.fusionPicker, undefined);
     assert.deepEqual(drawnSkills, [...a.skillIds, ...b.skillIds]);

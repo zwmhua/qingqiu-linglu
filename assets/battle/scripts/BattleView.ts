@@ -1555,13 +1555,16 @@ export class BattleView extends Component {
       this.text('已放入变异宠物', preview ? 517 : 471, 96, 18, '#755821', 300, 1);
     if (!preview) parents.forEach((pet, side) => {
       const x = side ? 774 : 126, sideName = side ? '右' : '左';
-      this.button(pet?.name ?? `请选择${sideName}侧父宠`, x, 617, 340, 38,
-        this.onMap && !this.fusionConfirmation, () => {
-          this.fusionTabNotice = false;
-          this.fusionPicker = { side, id: pet?.id ?? '' };
-          this.render();
-        }, true);
-      this.renderFusionSkills(pet, pet?.skillIds ?? [], x + 20, 287, 81, 58, side);
+      const enabled = this.onMap && !this.fusionConfirmation;
+      const openPicker = () => {
+        if (!enabled || this.fusionPicker) return;
+        this.fusionTabNotice = false;
+        this.fusionPicker = { side, id: '' };
+        this.render();
+      };
+      this.rect(x - 24, 105, 390, 572, '#000000', '', 0, enabled ? openPicker : undefined, 0);
+      this.button(pet?.name ?? `请选择${sideName}侧父宠`, x, 617, 340, 38, enabled, openPicker, true);
+      this.renderFusionSkills(pet, pet?.skillIds ?? [], x + 20, 287, 81, 58, side, openPicker);
       if (!pet) return;
       this.rect(x - 3, 129, 347, 134, '#FAEBD1', '', 6);
       for (const y of [162, 194, 226]) this.rect(x + 4, y, 331, 1, '#DAB98C');
@@ -1664,21 +1667,12 @@ export class BattleView extends Component {
     };
     const pick = (id: string) => {
       if (this.fusionPicker !== picker) return;
-      const pet = this.progress.roster.entries.find(entry => entry.id === id);
-      if (!pet) return;
-      if (this.fusionPickError(pet, picker.side)) {
-        picker.id = pet.id;
-        this.render();
-        return;
-      }
-      this.fusionIds[picker.side] = pet.id;
-      this.fusionSkillRows[picker.side] = 0;
-      this.fusionMessage = '';
-      close();
+      picker.id = picker.id === id ? '' : id;
+      this.render();
     };
     const selected = entries.find(pet => pet.id === picker.id);
     this.rect(0, 0, CONFIG.width, CONFIG.height, '#152723', '', 0, undefined, 150).addComponent(BlockInputEvents);
-    this.rect(407, 99, 520, 503, '#FAEED5', '#93734D', 14).addComponent(BlockInputEvents);
+    this.rect(407, 99, 520, 556, '#FAEED5', '#93734D', 14).addComponent(BlockInputEvents);
     this.text(`选择${picker.side ? '右' : '左'}侧父宠`, 425, 109, 23, ink, 391);
     this.button('关闭', 836, 108, 73, 35, true, close);
     this.rect(422, 150, 490, 278, '#F4E4C7', '#C6A971', 9);
@@ -1720,6 +1714,15 @@ export class BattleView extends Component {
     }
     const error = selected ? this.fusionPickError(selected, picker.side) : '';
     if (error) this.text(error, 425, 562, 17, '#873E28', 484, 1);
+    this.button('选择', 591, 603, 152, 39, !!selected && !error, () => {
+      if (this.fusionPicker !== picker || picker.id !== selected?.id) return;
+      const pet = this.progress.roster.entries.find(entry => entry.id === picker.id);
+      if (!pet || this.fusionPickError(pet, picker.side)) return;
+      this.fusionIds[picker.side] = pet.id;
+      this.fusionSkillRows[picker.side] = 0;
+      this.fusionMessage = '';
+      close();
+    });
   }
 
   private renderFusionPreview(outcomes: ReturnType<typeof buildFusionPreview>,
@@ -1761,7 +1764,7 @@ export class BattleView extends Component {
   }
 
   private renderFusionSkills(pet: Pick<CarriedPet, 'species'> | undefined, ids: readonly string[],
-    x: number, y: number, step: number, size: number, grid: number): void {
+    x: number, y: number, step: number, size: number, grid: number, onTap?: () => void): void {
     const maxRow = Math.max(0, Math.ceil(ids.length / 4) - 3);
     const row = Math.min(this.fusionSkillRows[grid], maxRow), pitch = size + 6;
     const scroll = (dir: number) => {
@@ -1783,10 +1786,10 @@ export class BattleView extends Component {
       node.on(Node.EventType.TOUCH_END, (event: EventTouch) => { if (!swipe(event)) open?.(); });
     };
     const width = step * 3 + size;
-    bindScroll(this.rect(x - 24, y - 6, width + 48, pitch * 3 + 6, '#F4E4C7', '#C6A971', 8));
+    bindScroll(this.rect(x - 24, y - 6, width + 48, pitch * 3 + 6, '#F4E4C7', '#C6A971', 8), onTap);
     for (let i = 0; i < 12; i++) {
       const id = ids[row * 4 + i], sx = x + (i % 4) * step, sy = y + Math.floor(i / 4) * pitch;
-      const open = id && pet ? () => { this.skillOpen = { pet, id, x: sx, y: sy }; this.render(); } : undefined;
+      const open = onTap ?? (id && pet ? () => { this.skillOpen = { pet, id, x: sx, y: sy }; this.render(); } : undefined);
       const cell = this.rect(sx, sy, size, size, '#E6D2AA', '#C6A971', 7, maxRow ? undefined : open);
       if (id && pet) this.drawSkillIcon(pet, id, sx, sy, size);
       else this.text('空', sx, sy + (size - 24) / 2, 15, '#634E38', size, 1);
