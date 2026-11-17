@@ -92,6 +92,8 @@ export class BattleView extends Component {
   private fusionRandom = Math.random;
   private fusionMessage = '';
   private fusionConfirmation?: ReturnType<SessionProgress['prepareFusion']>;
+  private fusionSkill?: { pet: CarriedPet; id: string };
+  private fusionResult = false;
   private inventoryOpen = false;
   private inventoryItem?: string;
   private inventoryPet?: string;
@@ -1245,10 +1247,11 @@ export class BattleView extends Component {
     this.button('返回', 568, 631, 192, 58, true, () => { this.summonOpen = false; this.render(); });
   }
 
-  private openPetPanel(id: string): void {
+  private openPetPanel(id: string, fusionResult = false): void {
     this.skillOpen = undefined;
     this.selectedPetId = id;
-    this.petPanelPage = 'basic';
+    this.fusionResult = fusionResult;
+    this.petPanelPage = fusionResult ? 'aptitude' : 'basic';
     this.render();
   }
 
@@ -1266,6 +1269,7 @@ export class BattleView extends Component {
     };
     const close = () => {
       this.skillOpen = undefined;
+      this.fusionResult = false;
       this.stopPotentialRepeat();
       this.rosterOpen = false;
       this.selectedPetId = null;
@@ -1274,7 +1278,7 @@ export class BattleView extends Component {
     };
     this.rect(0, 0, CONFIG.width, CONFIG.height, '#101E1C', '', 0, undefined, 200).addComponent(BlockInputEvents);
     this.image(167, 0, 1000, 750, points ? this.petPointsArt : aptitude ? this.petAptitudeArt : this.petBasicArt);
-    this.text('召唤兽属性', 502, 13, 34, '#F7E8C1', 330, 1);
+    this.text(this.fusionResult ? '合宠结果' : '召唤兽属性', 502, 13, 34, '#F7E8C1', 330, 1);
     this.rect(1070, 28, 56, 54, '#000000', '', 0, close, 0);
     this.text(pet.name, 331, points ? 109 : 113, points ? 26 : 23, ink, 154);
     this.text(`${pet.level}级`, 333, 152, 20, ink, 82, 1);
@@ -1296,9 +1300,11 @@ export class BattleView extends Component {
       this.rect(tagX, 116, 76, 26, '#4A7764', '', 10);
       this.text(identity.replaceAll(' ', ''), tagX, 116, 15, '#F7E8C1', 76, 1);
       this.drawPetPortrait(pet, 373, 337, 244);
-      this.renderReleaseButton(pet);
-      this.renderDeployButton(pet);
-      this.renderPetSlots(pet.id);
+      if (!this.fusionResult) {
+        this.renderReleaseButton(pet);
+        this.renderDeployButton(pet);
+        this.renderPetSlots(pet.id);
+      }
       this.text('属性', 606, 101, 25, ink, 182, 1, () => open('basic'));
       this.text('资质技能', 793, 101, 25, ink, 195, 1, () => open('aptitude'));
       if (aptitude) this.renderPetAptitudes(pet);
@@ -1363,7 +1369,7 @@ export class BattleView extends Component {
     });
   }
 
-  private drawPetPortrait(pet: CarriedPet, x: number, y: number, size: number): void {
+  private drawPetPortrait(pet: Pick<CarriedPet, 'species' | 'isMutated'>, x: number, y: number, size: number): void {
     const frame = this.petArt(pet);
     if (!frame) {
       this.text(size < 100 ? '?' : '暂无立绘', x - size / 2, y - 18, 22, '#4A2C1D', size, 1);
@@ -1439,13 +1445,17 @@ export class BattleView extends Component {
         this.skillOpen = id;
         this.render();
       } : undefined, i < 8 ? 0 : 74).addComponent(BlockInputEvents);
-      if (id) {
-        this.drawSkillIcon(pet, id, x + 18, y + 4, 42);
-        this.text(PET_SKILLS[id].name, x, y + 46, 14, '#4A2C1D', 78, 1);
-      } else this.text(i < 8 ? '空' : '锁定', x, y + 20, 20, '#4A2C1D', 78, 1);
+      if (id) this.drawSkillIcon(pet, id, x, y, 78, 67);
+      else this.text(i < 8 ? '空' : '锁定', x, y + 20, 20, '#4A2C1D', 78, 1);
     }
     if (!this.skillOpen || !pet.skillIds?.includes(this.skillOpen)) return;
-    const id = this.skillOpen;
+    this.renderSkillDetail(pet, this.skillOpen, () => {
+      this.skillOpen = undefined;
+      this.render();
+    });
+  }
+
+  private renderSkillDetail(pet: CarriedPet, id: string, close: () => void): void {
     this.rect(0, 0, 1334, 750, '#101E1C', '', 0, undefined, 150).addComponent(BlockInputEvents);
     this.rect(370, 205, 594, 310, '#F9EFD9', '#93734D', 12).addComponent(BlockInputEvents);
     this.rect(394, 231, 82, 65, '#E9D9B7', '#93734D', 6);
@@ -1453,24 +1463,21 @@ export class BattleView extends Component {
     this.text(PET_SKILLS[id].name, 496, 236, 28, '#4A2C1D', 360);
     const lines = skillDescription(id, pet.species).split('\n').flatMap(line => line.match(/.{1,23}/gu) ?? []);
     lines.forEach((line, i) => this.text(line, 394, 312 + i * 28, 21, '#4A2C1D', 548));
-    this.rect(889, 219, 60, 52, '#E9D9B7', '#93734D', 6, () => {
-      this.skillOpen = undefined;
-      this.render();
-    });
+    this.rect(889, 219, 60, 52, '#E9D9B7', '#93734D', 6, close);
     this.text('关闭', 889, 231, 20, '#4A2C1D', 60, 1);
   }
 
-  private drawSkillIcon(pet: CarriedPet, id: string, x: number, y: number, size: number): void {
+  private drawSkillIcon(pet: CarriedPet, id: string, x: number, y: number, width: number, height = width): void {
     const icon = this.skillFrames.get(id);
     if (!icon) return;
-    this.image(x, y, size, size, icon);
+    this.image(x, y, width, height, icon);
     const advanced = PET_SKILLS[id].tier > 1;
     const frame = this.skillFrames.get('frame_advanced');
     const innate = this.skillFrames.get('badge_innate'), badge = this.skillFrames.get('badge_advanced');
-    const markSize = size * 0.54;
-    if (advanced && frame) this.image(x, y, size, size, frame);
-    if (innate && SKILL_POOLS[pet.species].innate.includes(id)) this.image(x - 1, y - 1, markSize, markSize, innate);
-    if (advanced && badge) this.image(x + size - markSize, y - 1, markSize, markSize, badge);
+    const markSize = Math.min(width, height) * 0.54;
+    if (advanced && frame) this.image(x, y, width, height, frame);
+    if (innate && SKILL_POOLS[pet.species].innate.includes(id)) this.image(x, y, markSize, markSize, innate);
+    if (advanced && badge) this.image(x + width - markSize, y, markSize, markSize, badge);
   }
 
   private renderPetPointsPreview({ panel, delta }: ReturnType<typeof petPanelPreview>, hp: string, mana: string): void {
@@ -1509,6 +1516,7 @@ export class BattleView extends Component {
     this.fusionIds = ['', ''];
     this.fusionMessage = '';
     this.fusionConfirmation = undefined;
+    this.fusionSkill = undefined;
     this.loadSkillArt();
     this.render();
   }
@@ -1541,8 +1549,13 @@ export class BattleView extends Component {
         x + 10 + i % 2 * 186, 132 + Math.floor(i / 2) * 45, 19, ink, 164, 1));
       for (let i = 0; i < 8; i++) {
         const skill = pet.skillIds?.[i], sx = x + i % 4 * 95, sy = 286 + Math.floor(i / 4) * 98;
-        if (skill) this.drawSkillIcon(pet, skill, sx + 15, sy + 4, 56);
-        this.text(skill ? PET_SKILLS[skill].name : '空', sx, sy + (skill ? 62 : 29), 14, ink, 86, 1);
+        if (skill) {
+          this.drawSkillIcon(pet, skill, sx, sy, 86);
+          this.rect(sx, sy, 86, 86, '#000000', '', 0, () => {
+            this.fusionSkill = { pet, id: skill };
+            this.render();
+          }, 0);
+        } else this.text('空', sx, sy + 29, 14, ink, 86, 1);
       }
     });
     const [a, b] = this.fusionIds.map(id => this.progress.roster.entries.find(p => p.id === id));
@@ -1550,16 +1563,31 @@ export class BattleView extends Component {
     this.text(probability, 533, 109, 17, ink, 268, 1);
     this.text(`非必带遗传${FUSION.inheritance * 100}%`, 533, 140, 17, ink, 268, 1);
     this.text('结果可能变弱', 533, 171, 17, '#873E28', 268, 1);
-    let reason = '';
-    try { fusionPlan(this.progress.roster.entries, this.fusionIds, this.progress.selectedPetId, !this.onMap); }
+    let reason = '', plan: ReturnType<typeof fusionPlan> | undefined;
+    try { plan = fusionPlan(this.progress.roster.entries, this.fusionIds, this.progress.selectedPetId, !this.onMap); }
     catch (error) { reason = error instanceof Error ? error.message : String(error); }
+    if (plan) {
+      const [left, right] = plan.parents, isMutated = left.isMutated;
+      const species = left.species === right.species ? [left.species, ...plan.other] : [left.species, right.species, ...plan.other];
+      this.text('可能结果', 617, 384, 15, ink, 100, 1);
+      species.forEach((id, i) => {
+        const x = 667 + (i - (species.length - 1) / 2) * 39;
+        this.drawPetPortrait({ species: id, isMutated }, x, 423, 35);
+        this.text(WILD_SPECIES[id].name, x - 21, 441, 12, ink, 42, 1);
+      });
+      this.text(isMutated ? '变异' : '普通', 617, 463, 15, ink, 100, 1);
+    }
     this.button('合宠', 630, 574, 74, 74, !reason && !this.fusionConfirmation, () => {
       try { this.fusionConfirmation = this.progress.prepareFusion(!this.onMap || !this.fusionOpen, this.fusionIds); }
       catch (error) { this.fusionMessage = String(error); }
       this.render();
     }, true);
-    this.text(this.fusionMessage || reason || '确认后才生成；不消耗道具。', 142, 675, 20,
-      reason || this.fusionMessage ? '#873E28' : ink, 1050, 1);
+    const message = this.fusionMessage || reason;
+    if (message) this.text(message, 142, 675, 20, '#873E28', 1050, 1);
+    if (this.fusionSkill) this.renderSkillDetail(this.fusionSkill.pet, this.fusionSkill.id, () => {
+      this.fusionSkill = undefined;
+      this.render();
+    });
     const pending = this.fusionConfirmation;
     if (!pending) return;
     const cancel = () => { this.fusionConfirmation = undefined; this.render(); };
@@ -1574,7 +1602,7 @@ export class BattleView extends Component {
       try {
         const child = pending.execute(!this.onMap || !this.fusionOpen, (pets, nextId) =>
           progressIO.write(progressStorage(), progressSnapshot(this.progress, undefined, undefined, pets, undefined, undefined, nextId)), this.fusionRandom);
-        if (child) { this.fusionOpen = false; this.openPetPanel(child.id); }
+        if (child) { this.fusionOpen = false; this.openPetPanel(child.id, true); }
       } catch (error) { this.fusionMessage = `合宠失败：${error instanceof Error ? error.message : String(error)}`; }
       this.render();
     });

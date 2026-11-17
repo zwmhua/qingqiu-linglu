@@ -1019,9 +1019,11 @@ test('skill slots open only owned skills and close on switching pets', () => {
   assert.equal(actions.length, 1);
   assert.equal(labels.filter(s => s === '空').length, 7);
   assert.equal(labels.filter(s => s === '锁定').length, 4);
+  assert.ok(!labels.includes('硬甲'));
   actions[0]();
   assert.equal(v.skillOpen, 'armor');
   v.renderPetSkills(pet);
+  assert.ok(labels.includes('硬甲'));
   assert.ok(labels.some(s => s.includes('天生技能')));
   actions.at(-1)();
   assert.equal(v.skillOpen, undefined);
@@ -1039,12 +1041,19 @@ test('skill slots open only owned skills and close on switching pets', () => {
 });
 
 test('pet and fusion slots show owned skill art and layer the innate and advanced marks', () => {
-  const v = new BattleView(), drawn = [], labels = [];
+  const v = new BattleView(), drawn = [], labels = [], icons = [], slots = [];
   v.text = value => labels.push(value);
-  v.rect = () => ({ addComponent() {} });
+  v.rect = (x, y, w, h, _fill, _border, _radius, click) => {
+    if (click) slots.push({ bounds: [x, y, w, h], click });
+    return { addComponent() {} };
+  };
+  v.render = () => {};
   v.button = () => {};
   v.drawPetPortrait = () => {};
-  v.image = (_x, _y, _w, _h, frame) => drawn.push(frame);
+  v.image = (x, y, w, h, frame) => {
+    drawn.push(frame);
+    if (frame === 'armor') icons.push([x, y, w, h]);
+  };
   v.skillFrames = new Map(['armor', 'badge_innate', 'badge_advanced', 'frame_advanced'].map(id => [id, id]));
   const session = v.townSession = new SessionProgress(initialHero());
   const pet = { ...session.roster.entries[1], species: 'pangui', skillIds: ['armor'] };
@@ -1053,7 +1062,8 @@ test('pet and fusion slots show owned skill art and layer the innate and advance
   assert.deepEqual(drawn, ['armor', 'badge_innate']);
   assert.equal(labels.filter(label => label === '空').length, 7);
   assert.equal(labels.filter(label => label === '锁定').length, 4);
-  assert.ok(labels.includes('硬甲'));
+  assert.deepEqual(icons[0], slots[0].bounds);
+  assert.ok(!labels.includes('硬甲'));
 
   drawn.length = 0;
   v.fusionIds = [pet.id, ''];
@@ -1063,6 +1073,12 @@ test('pet and fusion slots show owned skill art and layer the innate and advance
     PET_SKILLS.armor.tier = 2;
     v.renderFusion();
     assert.deepEqual(drawn, ['fuse-panel', 'armor', 'frame_advanced', 'badge_innate', 'badge_advanced']);
+    const skillSlot = slots.find(({ bounds: [x, y] }) => x === icons[1][0] && y === icons[1][1]);
+    assert.deepEqual(icons[1], skillSlot?.bounds);
+    assert.ok(!labels.includes('硬甲'));
+    skillSlot.click();
+    v.renderFusion();
+    assert.ok(labels.includes('硬甲'));
   } finally {
     PET_SKILLS.armor.tier = originalTier;
   }
@@ -1247,10 +1263,13 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     Object.assign(pet, petCombat(pet));
   }
   session.roster.entries.push(b); saveProgress(townDisk, session);
-  const labels = [], actions = new Map(); v.drawPetPortrait = () => {};
+  const labels = [], actions = new Map(), preview = [];
+  v.drawPetPortrait = (pet, x) => {
+    if (x > 590 && x < 745) preview.push([pet.species, pet.isMutated]);
+  };
   v.text = text => labels.push(text); v.rect = () => ({ addComponent() {} });
   v.button = (text, _x, _y, _w, _h, enabled, click) => { if (enabled) actions.set(text, click); return { addComponent() {} }; };
-  const draw = () => { labels.length = 0; actions.clear(); v.renderFusion(); };
+  const draw = () => { labels.length = preview.length = 0; actions.clear(); v.renderFusion(); };
   let rolls = 0; v.fusionRandom = () => { rolls++; return 0; };
   for (const region of ['town', 'outskirts']) {
     v.town.load(region); complete();
@@ -1259,6 +1278,18 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     assert.ok(v.town.movement.target); v.openFusion(); assert.equal(v.mapBlocked, true);
     assert.equal(v.town.movement.target, undefined); v.fusionIds = [a.id, b.id]; draw();
     assert.ok(labels.some(t => t.includes('90%'))); assert.ok(labels.some(t => t.includes('40%')));
+    assert.deepEqual(preview, [['tingwa', false], ['pangui', false], ['maomaochong', false]]);
+    assert.ok(labels.includes('普通'));
+    assert.ok(!labels.includes('确认后才生成；不消耗道具。'));
+    a.isMutated = b.isMutated = true; draw();
+    assert.ok(labels.includes('变异'));
+    assert.equal(preview.length, 3);
+    assert.ok(preview.every(([, mutated]) => mutated));
+    a.isMutated = b.isMutated = false;
+    v.fusionIds = [session.selectedPetId, b.id]; draw();
+    assert.deepEqual(preview, []);
+    assert.ok(labels.includes('出战宠不能合宠'));
+    v.fusionIds = [a.id, b.id]; draw();
     const before = townDisk.raw, writes = townDisk.writes;
     actions.get('合宠')(); draw(); assert.ok(labels.some(t => t.includes('两只原宠将消失')));
     const cancelled = actions.get('确认合宠'); actions.get('取消')(); cancelled();
@@ -1272,6 +1303,8 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
   draw(); actions.get('合宠')(); draw(); const confirm = actions.get('确认合宠'); confirm(); confirm();
   assert.equal(rolls, used); assert.equal(session.roster.entries.length, 2); assert.equal(v.selectedPetId, 'fused-1');
   assert.equal(v.fusionOpen, false); assert.equal(v.rosterOpen, true); assert.equal(v.isPet({ id: 'fused-1' }), true);
+  assert.equal(v.petPanelPage, 'aptitude');
+  assert.equal(v.fusionResult, true);
   assert.equal(loadSessionProgress(townDisk).roster.nextFusedId, 2);
   v.rosterOpen = false; v.mapBattle = true; v.openFusion(); assert.equal(v.fusionOpen, false);
   v.battle.phase = 'ended'; v.resultSaved = false; v.openFusion(); assert.equal(v.fusionOpen, false);
