@@ -86,6 +86,7 @@ const { initialHero, awardExperience, adjustPotential } = await import('../asset
 const { petProgress } = await import('../assets/battle/logic/roster.ts');
 const { loadSessionProgress, saveProgress } = await import('../assets/battle/logic/local-progress.ts');
 const { OUTSKIRTS, TOWN, TOWN_PLACES } = await import('../assets/battle/logic/exploration.ts');
+const { PET_SKILLS } = await import('../assets/battle/logic/pet-skills.ts');
 
 test('release downlevel fusion preserves species, skill order and random consumption', async () => {
   const low = await import('../assets/battle/logic/pet-fusion.ts');
@@ -1035,6 +1036,57 @@ test('skill slots open only owned skills and close on switching pets', () => {
   actions[1]();
   assert.equal(v.selectedPetId, 'pet-2');
   assert.equal(v.skillOpen, undefined);
+});
+
+test('pet and fusion slots show owned skill art and layer the innate and advanced marks', () => {
+  const v = new BattleView(), drawn = [], labels = [];
+  v.text = value => labels.push(value);
+  v.rect = () => ({ addComponent() {} });
+  v.button = () => {};
+  v.drawPetPortrait = () => {};
+  v.image = (_x, _y, _w, _h, frame) => drawn.push(frame);
+  v.skillFrames = new Map(['armor', 'badge_innate', 'badge_advanced', 'frame_advanced'].map(id => [id, id]));
+  const session = v.townSession = new SessionProgress(initialHero());
+  const pet = { ...session.roster.entries[1], species: 'pangui', skillIds: ['armor'] };
+  session.roster.entries[1] = pet;
+  v.renderPetSkills(pet);
+  assert.deepEqual(drawn, ['armor', 'badge_innate']);
+  assert.equal(labels.filter(label => label === '空').length, 7);
+  assert.equal(labels.filter(label => label === '锁定').length, 4);
+  assert.ok(labels.includes('硬甲'));
+
+  drawn.length = 0;
+  v.fusionIds = [pet.id, ''];
+  v.fusionArt = 'fuse-panel';
+  const originalTier = PET_SKILLS.armor.tier;
+  try {
+    PET_SKILLS.armor.tier = 2;
+    v.renderFusion();
+    assert.deepEqual(drawn, ['fuse-panel', 'armor', 'frame_advanced', 'badge_innate', 'badge_advanced']);
+  } finally {
+    PET_SKILLS.armor.tier = originalTier;
+  }
+});
+
+test('all books layer their own emblem on the cover and both bottles use one image', () => {
+  const v = new BattleView(), drawn = [];
+  v.text = () => {};
+  v.rect = () => ({ addComponent() {} });
+  v.button = () => {};
+  v.image = (x, y, w, h, frame) => drawn.push({ x, y, w, h, frame });
+  v.townSession = new SessionProgress(initialHero());
+  const ids = Object.keys(PET_SKILLS), bottles = ['rejuvenation', 'mutation-rejuvenation'];
+  v.townSession.inventory = Object.fromEntries([...ids.map(id => `book:${id}`), ...bottles].map(id => [id, 1]));
+  v.bagFrames = new Map(['book', ...bottles].map(id => [id, id]));
+  v.skillFrames = new Map(ids.map(id => [id, id]));
+  v.renderInventory();
+  assert.deepEqual(drawn.map(art => art.frame), [...ids.flatMap(id => ['book', id]), ...bottles]);
+  for (let i = 0; i < ids.length; i++) {
+    const [cover, emblem] = drawn.slice(i * 2, i * 2 + 2);
+    assert.ok(emblem.w <= 26 && emblem.h <= 26);
+    assert.ok(Math.abs(emblem.x + emblem.w / 2 - (cover.x + cover.w * 0.55)) < 1);
+    assert.ok(Math.abs(emblem.y + emblem.h / 2 - (cover.y + cover.h * 0.44)) < 1);
+  }
 });
 
 test('skill book view confirms on maps, cancels without work and guards stale callbacks and changed context', async () => {
