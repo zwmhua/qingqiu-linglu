@@ -1,5 +1,5 @@
 import { FUSION, fusionPlan } from '../logic/pet-fusion';
-import { assetManager, game, Game, _decorator, BlockInputEvents, Color, Component, EventTouch, Graphics, Label, Mask, Node, ResolutionPolicy, RichText, Sprite, SpriteFrame, sys, tween, Tween, UIOpacity, UITransform, Vec3, view } from 'cc';
+import { assetManager, game, Game, _decorator, BlockInputEvents, Color, Component, EventTouch, Graphics, Label, Mask, Node, ResolutionPolicy, RichText, ScrollView, Sprite, SpriteFrame, sys, tween, Tween, UIOpacity, UITransform, Vec2, Vec3, view } from 'cc';
 import { TownView } from './TownView';
 import { AttackEvent, Battle, BattleEvent, SpellEvent, Unit } from './Battle';
 import { COMMAND_ICON_SIZE, COMMAND_LAYOUT, CONFIG, SPELL_TINTS } from './config';
@@ -35,7 +35,6 @@ const { ccclass, property } = _decorator;
 const POTENTIAL_RELEASE_EVENTS = ['pointerup', 'pointercancel', 'pointerout', 'mouseup', 'touchend', 'touchcancel', 'blur'] as const;
 const C = (hex: string) => new Color(hex);
 const COMMAND_NAMES = ['攻击', '防御', '保护', '召唤', '抓取', '道具', '逃跑', '灵术', '撤退'] as const;
-const BAG_ITEMS = Object.keys(ITEMS);
 const BAG_ART = {
   book: 'item_skillbook', rejuvenation: 'item_rebirth_dew', 'mutation-rejuvenation': 'item_rebirth_dew_mutant',
 } as const;
@@ -95,6 +94,7 @@ export class BattleView extends Component {
   private inventoryItem?: string;
   private inventoryPet?: string;
   private inventoryChoosingPet = false;
+  private inventoryScrollY = 0;
   private bagFrames = new Map<string, SpriteFrame>();
   private bagArtLoading = false;
   private bagArtFailed = false;
@@ -1560,6 +1560,7 @@ export class BattleView extends Component {
     this.inventoryOpen = this.rosterOpen = true;
     this.inventoryItem = this.inventoryPet = undefined;
     this.inventoryChoosingPet = false;
+    this.inventoryScrollY = 0;
     this.bookConfirmation = undefined;
     this.bookMessage = '';
     this.loadBagArt();
@@ -1656,19 +1657,82 @@ export class BattleView extends Component {
     this.rect(279, 105, 725, 2, '#B2945E');
     [287, 651, 995].forEach(x => this.text('◆', x - 10, 96, 12, '#E5CB8D', 20, 1));
     this.button('关闭', 1028, 79, 132, 48, true, close);
-    this.rect(165, 149, 262, 512, '#DCCBA6', '#E5CB8D', 12);
-    this.rect(176, 160, 240, 490, '#EFDFC0', '#9C8156', 9);
-    this.text(BATTLE_RULES.hero.name, 184, 183, 24, '#4A2C1D', 224, 1);
-    if (this.heroArt) this.image(171, 251, 250, 250, this.heroArt);
-    this.rect(189, 566, 214, 54, '#29483F', '#9C8156', 10);
-    this.text('金币  0', 190, 576, 22, '#F3DFAD', 212, 1);
-    this.rect(445, 149, 724, 344, '#172E2A', '#92784B', 12);
+    this.rect(165, 143, 411, 472, '#DCCBA6', '#E5CB8D', 12);
+    this.rect(176, 154, 389, 450, '#EFDFC0', '#9C8156', 9);
+    this.text(BATTLE_RULES.hero.name, 176, 175, 24, '#4A2C1D', 389, 1);
+    if (this.heroArt) this.image(218, 245, 305, 305, this.heroArt);
+    this.text('金币  0', 176, 643, 22, '#F3DFAD', 180);
+
+    const unavailable = (label: string) => () => {
+      this.bookMessage = `${label}·未开放`;
+      this.render();
+    };
+    const tab = (label: string, x: number, y: number, w: number, h: number, current: boolean) => {
+      this.rect(x, y, w, h, current ? '#527561' : '#29463D',
+        current ? '#FFD889' : '#92784B', 8, current ? undefined : unavailable(label));
+      this.text(label, x, y + h / 2 - 16, 20, '#F3DFAD', w, 1);
+    };
+    tab('物品', 608, 143, 256, 36, true);
+    tab('任务', 871, 143, 256, 36, false);
+    this.rect(608, 183, 519, 418, '#172E2A', '#92784B', 12);
+    tab('背包', 1126, 193, 68, 88, true);
+    tab('仓库', 1126, 289, 68, 88, false);
+
     const inventory = this.progress.inventory;
-    for (let i = 0; i < Math.ceil(BAG_ITEMS.length / 5) * 5; i++) {
-      const id = BAG_ITEMS[i], count = inventory[id] ?? 0;
-      const x = 463 + i % 5 * 139, y = 166 + Math.floor(i / 5) * 106;
+    this.renderInventoryGrid(inventory);
+    const id = this.inventoryItem;
+    const hasSelection = !!id && inventory[id] > 0;
+    if (hasSelection) this.text(`${ITEMS[id].name}  ·  ${ITEMS[id].description}`, 608, 603, 14, '#F3DFAD', 519);
+    const notice = !this.onMap ? '战斗中只读'
+      : this.bookMessage || (this.bagArtFailed ? '图标暂不可用，可按名称查看道具。' : '');
+    if (notice) this.text(notice, 608, 623, 14, '#F4DC9C', 519);
+    this.button('使用', 608, 644, 256, 37, hasSelection && this.onMap, () => {
+      if (!this.onMap || !this.inventoryOpen || !id || id !== this.inventoryItem || !this.progress.inventory[id]) return;
+      this.bookMessage = '';
+      this.inventoryChoosingPet = true;
+      this.render();
+    });
+    this.button('整理', 871, 644, 256, 37, true, unavailable('整理'));
+    if (this.inventoryChoosingPet && id) this.renderInventoryPets(id);
+    this.renderBookConfirmation();
+  }
+
+  private renderInventoryGrid(inventory: Inventory): void {
+    const ids = Object.keys(ITEMS).filter(id => inventory[id] > 0);
+    const columns = 5, visibleRows = 5, slotSize = 74, gap = 8, pitch = slotSize + gap;
+    const rows = Math.max(visibleRows, Math.ceil(ids.length / columns));
+    const width = columns * pitch + gap, height = visibleRows * pitch + gap;
+    const contentHeight = rows * pitch + gap;
+    const panel = this.layer;
+    const grid = new Node('bag-grid');
+    panel.addChild(grid);
+    this.pos(grid, 868, 183 + height / 2);
+    grid.addComponent(UITransform).setContentSize(width, height);
+    const content = new Node('bag-items');
+    grid.addChild(content);
+    const transform = content.addComponent(UITransform);
+    transform.setContentSize(width, contentHeight);
+    transform.setAnchorPoint(0.5, 1);
+    content.setPosition(0, height / 2);
+    if (rows > visibleRows) {
+      grid.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
+      const scroll = grid.addComponent(ScrollView);
+      scroll.horizontal = false;
+      scroll.vertical = true;
+      scroll.elastic = false;
+      scroll.content = content;
+      scroll.scrollToOffset(new Vec2(0, Math.min(this.inventoryScrollY, contentHeight - height)));
+      grid.on(ScrollView.EventType.SCROLLING, () => { this.inventoryScrollY = scroll.getScrollOffset().y; });
+    } else this.inventoryScrollY = 0;
+
+    this.layer = content;
+    // Drawing helpers subtract the screen center. In this layer the origin is the grid's top center.
+    const left = CONFIG.width / 2 - width / 2 + gap, top = CONFIG.height / 2 + gap;
+    for (let i = 0; i < rows * columns; i++) {
+      const id = ids[i], count = inventory[id] ?? 0;
+      const x = left + i % columns * pitch, y = top + Math.floor(i / columns) * pitch;
       const selected = count > 0 && id === this.inventoryItem;
-      const slot = this.rect(x, y, 132, 98, selected ? '#527561' : '#29463D',
+      const slot = this.rect(x, y, slotSize, slotSize, selected ? '#527561' : '#29463D',
         selected ? '#FFD889' : '#776A4C', 8, () => {
           this.inventoryItem = count > 0 ? id : undefined;
           this.bookMessage = '';
@@ -1679,27 +1743,13 @@ export class BattleView extends Component {
       const skill = id.startsWith('book:') ? id.slice(5) : undefined;
       const art = this.bagFrames.get(skill ? 'book' : id);
       const emblem = skill ? this.bagFrames.get(skill) : undefined;
-      if (art) this.image(x + 32, y + 4, 68, 68, art);
-      else this.text(ITEMS[id].name, x + 3, y + 32, 14, '#F3DFAD', 126, 1);
-      if (emblem) this.image(x + 53, y + 24, 26, 26, emblem);
-      this.text(String(count), x + 5, y + 73, count > 999999999 ? 12 : 16, '#FFF2C5', 119, 2);
+      if (art) this.image(x + 11, y + 6, 52, 52, art);
+      else this.text(ITEMS[id].name, x + 2, y + 28, 11, '#F3DFAD', 70, 1);
+      if (emblem) this.image(x + 27, y + 21, 20, 20, emblem);
+      const large = count > 999999999;
+      this.text(String(count), x + 2, y + (large ? 60 : 53), large ? 8 : 15, '#FFF2C5', 68, 2);
     }
-    this.rect(445, 507, 724, 154, '#263F37', '#92784B', 12);
-    const id = this.inventoryItem;
-    if (id && inventory[id] > 0) {
-      this.text(`${ITEMS[id].name}   数量 ${inventory[id]}`, 465, 518, 22, '#F3DFAD', 665);
-      this.text(ITEMS[id].description, 465, 552, 18, '#E5DBBC', 687);
-      this.button('使用', 1009, 600, 140, 46, this.onMap, () => {
-        this.bookMessage = '';
-        this.inventoryChoosingPet = true;
-        this.render();
-      });
-    } else this.text('点击道具查看', 465, 535, 22, '#D3C7A5', 540);
-    if (!this.onMap) this.text('战斗中只读', 465, 613, 19, '#F4DC9C', 510);
-    else this.text(this.bookMessage || (this.bagArtFailed ? '图标暂不可用，可按名称查看道具。' : ''),
-      465, 611, 19, '#F4DC9C', 525);
-    if (this.inventoryChoosingPet && id) this.renderInventoryPets(id);
-    this.renderBookConfirmation();
+    this.layer = panel;
   }
 
   private renderInventoryPets(item: string): void {

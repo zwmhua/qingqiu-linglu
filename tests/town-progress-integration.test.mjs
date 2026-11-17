@@ -21,7 +21,7 @@ export class Node {
   active = true;
   handlers = {};
   addChild(node) { this.children.push(node); node.parent = this; }
-  addComponent() { return this; }
+  addComponent(type) { return type === ScrollView ? (this.scroll = new ScrollView()) : this; }
   getComponent() { return this; }
   setContentSize(width, height) { this.size = [width, height]; }
   setAnchorPoint() {}
@@ -48,6 +48,13 @@ export const assetManager = { loadBundle(name, cb) {
   (globalThis.bundleLoads ??= {})[name] = cb;
 } };
 export class Vec3 { static ZERO = { x: 0, y: 0 }; constructor(x, y) { this.x = x; this.y = y; } }
+export class Vec2 { constructor(x, y) { this.x = x; this.y = y; } }
+export class ScrollView {
+  static EventType = { SCROLLING: 'scrolling' };
+  offset = new Vec2(0, 0);
+  getScrollOffset() { return this.offset; }
+  scrollToOffset(offset) { this.offset = offset; }
+}
 export class Rect { constructor(x, y, width, height) { Object.assign(this, { x, y, width, height }); } }
 export class Size {}
 export class Color {}
@@ -80,7 +87,8 @@ registerHooks({
   },
 });
 const { BattleView } = await import('../assets/battle/scripts/BattleView.ts');
-const { Texture2D } = await import('cc');
+const { Node, Texture2D } = await import('cc');
+const { ITEMS, INVENTORY_CONFIG } = await import('../assets/battle/logic/inventory.ts');
 const { SessionProgress } = await import('../assets/battle/logic/session-progress.ts');
 const { initialHero, awardExperience, adjustPotential } = await import('../assets/battle/logic/hero-progress.ts');
 const { petProgress } = await import('../assets/battle/logic/roster.ts');
@@ -1037,6 +1045,75 @@ test('skill slots open only owned skills and close on switching pets', () => {
   assert.equal(v.skillOpen, undefined);
 });
 
+test('bag lays out 25 slots, stacks by ID, and only enters pet selection through Use', async () => {
+  const { v, session } = await roundTripView(), slots = [], labels = new Map(), actions = new Map();
+  v.mapBattle = false;
+  const stock = { rejuvenation: 105, 'mutation-rejuvenation': 1 };
+  session.inventory = { ...stock };
+  v.rect = (x, y, w, h, _fill, _border, _radius, click) => {
+    const rect = { x, y, w, h, click, addComponent() {} };
+    slots.push(rect);
+    return rect;
+  };
+  v.text = (value, x, y, _size, _color, _width, _align, click) => labels.set(value, { x, y, click });
+  v.button = (value, x, y, _w, _h, enabled, click) => {
+    if (enabled) actions.set(value, click);
+    labels.set(value, { x, y });
+  };
+  const draw = () => {
+    slots.length = 0; labels.clear(); actions.clear();
+    v.layer = new Node('bag'); v.renderInventory();
+    return slots.filter(node => node.name?.startsWith('bag-slot-'));
+  };
+  v.openInventory();
+  const grid = draw();
+  assert.equal(grid.length, 25);
+  assert.equal(new Set(grid.map(slot => slot.x)).size, 5);
+  assert.equal(new Set(grid.map(slot => slot.y)).size, 5);
+  assert.ok(grid[0].x < grid[1].x && grid[0].y === grid[4].y && grid[0].y < grid[5].y);
+  assert.deepEqual([...labels.keys()].filter(label => /^\d+$/.test(label)), ['105', '1']);
+  assert.deepEqual(INVENTORY_CONFIG, { pageSize: 20, stackLimit: 99 });
+  assert.ok(labels.get('金币  0').x < labels.get('物品').x);
+  assert.equal(labels.get('金币  0').click, undefined);
+  assert.equal(actions.has('使用'), false);
+  assert.equal(labels.has('点击道具查看'), false);
+  grid[0].click(); draw();
+  assert.equal(v.inventoryItem, 'rejuvenation');
+  assert.equal(v.inventoryChoosingPet, false);
+  assert.ok([...labels.keys()].some(label => label.includes(ITEMS.rejuvenation.description) && label.startsWith('还童露')));
+  assert.ok(labels.get('使用').x < labels.get('整理').x);
+  for (const tab of ['任务', '仓库', '整理']) {
+    (actions.get(tab) ?? slots.find(slot => slot.click && slot.x === labels.get(tab).x)?.click)();
+    draw();
+    assert.ok(labels.has(`${tab}·未开放`));
+    assert.equal(v.inventoryItem, 'rejuvenation');
+  }
+  assert.deepEqual(session.inventory, stock);
+  assert.equal(v.inventoryChoosingPet, false);
+  actions.get('使用')(); draw();
+  assert.ok(labels.has('选择使用道具的灵兽'));
+  actions.get('返回')(); draw();
+  actions.get('关闭')();
+
+  const extras = Array.from({ length: 24 }, (_, i) => `test-bag-item-${i}`);
+  try {
+    for (const id of extras) { ITEMS[id] = { name: id, description: id }; session.inventory[id] = 1; }
+    v.openInventory();
+    const overflow = draw();
+    const viewport = v.layer.children.find(node => node.name === 'bag-grid');
+    assert.equal(overflow.length, 30);
+    assert.ok(viewport.scroll.vertical && !viewport.scroll.horizontal);
+    assert.ok(viewport.scroll.content.size[1] > viewport.size[1]);
+    viewport.scroll.scrollToOffset({ x: 0, y: 60 });
+    viewport.handlers.scrolling();
+    overflow[25].click(); draw();
+    assert.equal(v.inventoryItem, extras.at(-1));
+    assert.equal(v.layer.children.find(node => node.name === 'bag-grid').scroll.getScrollOffset().y, 60);
+  } finally {
+    for (const id of extras) { delete ITEMS[id]; delete session.inventory[id]; }
+  }
+});
+
 test('skill book view confirms on maps, cancels without work and guards stale callbacks and changed context', async () => {
   const { v, session, complete } = await roundTripView();
   v.mapBattle = false;
@@ -1049,13 +1126,13 @@ test('skill book view confirms on maps, cancels without work and guards stale ca
     if (enabled) actions.set(text, callback);
     return { addComponent() {} };
   };
-  const draw = () => { labels.length = 0; actions.clear(); v.renderInventory(); };
+  const draw = () => { labels.length = 0; actions.clear(); v.layer = new Node('bag'); v.renderInventory(); };
   const choose = () => { draw(); actions.get('使用')(); draw(); actions.get('1. 汀蛙')(); draw(); };
   let rolls = 0; v.bookRandom = () => { rolls++; return 0; };
   saveProgress(townDisk, session);
   const before = townDisk.raw, writes = townDisk.writes;
   v.openInventory(); draw();
-  assert.ok(labels.includes('点击道具查看')); assert.equal(actions.has('使用'), false);
+  assert.ok(!labels.includes('点击道具查看')); assert.equal(actions.has('使用'), false);
   v.inventoryItem = 'book:thunder'; choose();
   assert.ok(labels.some(s => s.includes('新增 100%') && s.includes('顶替 0%')));
   assert.ok(labels.includes('雷击术技能书 → 汀蛙'));
@@ -1137,7 +1214,7 @@ test('rejuvenation UI covers maps, cancellation, failure, stale confirmation, se
   const labels = [], actions = new Map();
   v.text = text => labels.push(text); v.rect = () => ({ addComponent() {} });
   v.button = (text, _x, _y, _w, _h, enabled, click) => { if (enabled) actions.set(text, click); return { addComponent() {} }; };
-  const draw = () => { labels.length = 0; actions.clear(); v.renderInventory(); };
+  const draw = () => { labels.length = 0; actions.clear(); v.layer = new Node('bag'); v.renderInventory(); };
   const choose = (index = 1) => {
     draw(); actions.get('使用')(); draw(); actions.get(`${index + 1}. ${session.roster.entries[index].name}`)(); draw();
   };
@@ -1181,7 +1258,7 @@ test('rejuvenation UI covers maps, cancellation, failure, stale confirmation, se
   v.openInventory(); v.inventoryItem = 'rejuvenation'; choose();
   actions.get('确认还童')(); draw();
   assert.equal(session.inventory.rejuvenation, 0);
-  assert.ok(labels.includes('点击道具查看')); assert.equal(actions.has('使用'), false);
+  assert.ok(!labels.includes('点击道具查看')); assert.equal(actions.has('使用'), false);
 });
 
 
