@@ -92,7 +92,6 @@ export class BattleView extends Component {
   private fusionRandom = Math.random;
   private fusionMessage = '';
   private fusionConfirmation?: ReturnType<SessionProgress['prepareFusion']>;
-  private fusionSkill?: { pet: CarriedPet; id: string };
   private fusionResult = false;
   private inventoryOpen = false;
   private inventoryItem?: string;
@@ -138,7 +137,7 @@ export class BattleView extends Component {
   private progressError = '';
   private progressReadFailed = false;
   private readonly progressLoader = new ProgressLoader();
-  private skillOpen?: string;
+  private skillOpen?: { pet: CarriedPet; id: string; x: number; y: number };
   private layoutTest = this.devPreview && queryParams().get('layout') === '10v10';
   private choosingTarget: TargetMode | null = null;
   private spellOpen = false;
@@ -1442,29 +1441,29 @@ export class BattleView extends Component {
       const id = i < 8 ? pet.skillIds?.[i] : undefined;
       const x = 621 + i % 4 * 99, y = 453 + Math.floor(i / 4) * 74;
       this.rect(x, y, 78, 67, '#7E735E', '', 10, id ? () => {
-        this.skillOpen = id;
+        this.skillOpen = { pet, id, x, y };
         this.render();
       } : undefined, i < 8 ? 0 : 74).addComponent(BlockInputEvents);
       if (id) this.drawSkillIcon(pet, id, x, y, 78, 67);
       else this.text(i < 8 ? '空' : '锁定', x, y + 20, 20, '#4A2C1D', 78, 1);
     }
-    if (!this.skillOpen || !pet.skillIds?.includes(this.skillOpen)) return;
-    this.renderSkillDetail(pet, this.skillOpen, () => {
-      this.skillOpen = undefined;
-      this.render();
-    });
+    if (this.skillOpen?.pet === pet && pet.skillIds?.includes(this.skillOpen.id)) this.renderSkillDetail();
   }
 
-  private renderSkillDetail(pet: CarriedPet, id: string, close: () => void): void {
-    this.rect(0, 0, 1334, 750, '#101E1C', '', 0, undefined, 150).addComponent(BlockInputEvents);
-    this.rect(370, 205, 594, 310, '#F9EFD9', '#93734D', 12).addComponent(BlockInputEvents);
-    this.rect(394, 231, 82, 65, '#E9D9B7', '#93734D', 6);
-    this.drawSkillIcon(pet, id, 409, 237, 53);
-    this.text(PET_SKILLS[id].name, 496, 236, 28, '#4A2C1D', 360);
+  private renderSkillDetail(): void {
+    if (!this.skillOpen) return;
+    const { pet, id, x: slotX, y: slotY } = this.skillOpen;
     const lines = skillDescription(id, pet.species).split('\n').flatMap(line => line.match(/.{1,23}/gu) ?? []);
-    lines.forEach((line, i) => this.text(line, 394, 312 + i * 28, 21, '#4A2C1D', 548));
-    this.rect(889, 219, 60, 52, '#E9D9B7', '#93734D', 6, close);
-    this.text('关闭', 889, 231, 20, '#4A2C1D', 60, 1);
+    const width = 350, height = 55 + lines.length * 20;
+    const x = Math.min(slotX, CONFIG.width - width - 12), y = slotY - height - 8;
+    this.rect(0, 0, CONFIG.width, CONFIG.height, '#000000', '', 0, () => {
+      this.skillOpen = undefined;
+      this.render();
+    }, 0).addComponent(BlockInputEvents);
+    this.rect(x, y, width, height, '#F9EFD9', '#93734D', 10).addComponent(BlockInputEvents);
+    this.drawSkillIcon(pet, id, x + 12, y + 9, 34);
+    this.text(PET_SKILLS[id].name, x + 54, y + 11, 19, '#4A2C1D', 282);
+    lines.forEach((line, i) => this.text(line, x + 12, y + 44 + i * 20, 14, '#4A2C1D', 326));
   }
 
   private drawSkillIcon(pet: CarriedPet, id: string, x: number, y: number, width: number, height = width): void {
@@ -1516,7 +1515,7 @@ export class BattleView extends Component {
     this.fusionIds = ['', ''];
     this.fusionMessage = '';
     this.fusionConfirmation = undefined;
-    this.fusionSkill = undefined;
+    this.skillOpen = undefined;
     this.loadSkillArt();
     this.render();
   }
@@ -1552,7 +1551,7 @@ export class BattleView extends Component {
         if (skill) {
           this.drawSkillIcon(pet, skill, sx, sy, 86);
           this.rect(sx, sy, 86, 86, '#000000', '', 0, () => {
-            this.fusionSkill = { pet, id: skill };
+            this.skillOpen = { pet, id: skill, x: sx, y: sy };
             this.render();
           }, 0);
         } else this.text('空', sx, sy + 29, 14, ink, 86, 1);
@@ -1584,10 +1583,7 @@ export class BattleView extends Component {
     }, true);
     const message = this.fusionMessage || reason;
     if (message) this.text(message, 142, 675, 20, '#873E28', 1050, 1);
-    if (this.fusionSkill) this.renderSkillDetail(this.fusionSkill.pet, this.fusionSkill.id, () => {
-      this.fusionSkill = undefined;
-      this.render();
-    });
+    this.renderSkillDetail();
     const pending = this.fusionConfirmation;
     if (!pending) return;
     const cancel = () => { this.fusionConfirmation = undefined; this.render(); };

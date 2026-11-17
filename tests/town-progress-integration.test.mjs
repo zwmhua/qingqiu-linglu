@@ -1008,10 +1008,11 @@ test('nonterminal capture carries inventory in its save; replayed settled IDs ne
 
 test('skill slots open only owned skills and close on switching pets', () => {
   const v = new BattleView(), labels = [], actions = [];
+  let lastHit;
   v.render = () => {};
   v.text = value => labels.push(value);
-  v.rect = (_x, _y, _w, _h, _fill, _border, _radius, click) => {
-    if (click) actions.push(click);
+  v.rect = (x, y, w, h, _fill, _border, _radius, click) => {
+    if (click) { actions.push(click); lastHit = [x, y, w, h]; }
     return { addComponent() {} };
   };
   const pet = { species: 'pangui', skillIds: ['armor'] };
@@ -1021,10 +1022,12 @@ test('skill slots open only owned skills and close on switching pets', () => {
   assert.equal(labels.filter(s => s === '锁定').length, 4);
   assert.ok(!labels.includes('硬甲'));
   actions[0]();
-  assert.equal(v.skillOpen, 'armor');
+  assert.equal(v.skillOpen?.id, 'armor');
+  const openedSkill = v.skillOpen;
   v.renderPetSkills(pet);
-  assert.ok(labels.includes('硬甲'));
+  assert.ok(labels.includes('硬甲') && !labels.includes('关闭'));
   assert.ok(labels.some(s => s.includes('天生技能')));
+  assert.deepEqual(lastHit, [0, 0, 1334, 750]);
   actions.at(-1)();
   assert.equal(v.skillOpen, undefined);
   actions[0]();
@@ -1033,7 +1036,7 @@ test('skill slots open only owned skills and close on switching pets', () => {
   v.townSession = new SessionProgress(initialHero());
   v.drawPetPortrait = () => {};
   actions.length = 0;
-  v.skillOpen = 'armor';
+  v.skillOpen = openedSkill;
   v.renderPetSlots('pet');
   actions[1]();
   assert.equal(v.selectedPetId, 'pet-2');
@@ -1079,6 +1082,9 @@ test('pet and fusion slots show owned skill art and layer the innate and advance
     skillSlot.click();
     v.renderFusion();
     assert.ok(labels.includes('硬甲'));
+    assert.deepEqual(slots.at(-1).bounds, [0, 0, 1334, 750]);
+    slots.at(-1).click();
+    assert.equal(v.skillOpen, undefined);
   } finally {
     PET_SKILLS.armor.tier = originalTier;
   }
