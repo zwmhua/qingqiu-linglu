@@ -97,6 +97,7 @@ export class BattleView extends Component {
   private inventoryItem?: string;
   private inventoryPet?: string;
   private inventoryChoosingPet = false;
+  private inventoryTipOpen = false;
   private inventoryScrollY = 0;
   private bagFrames = new Map<string, SpriteFrame>();
   private bagRowFrame?: SpriteFrame;
@@ -1567,6 +1568,7 @@ export class BattleView extends Component {
     this.inventoryOpen = this.rosterOpen = true;
     this.inventoryItem = this.inventoryPet = undefined;
     this.inventoryChoosingPet = false;
+    this.inventoryTipOpen = false;
     this.inventoryScrollY = 0;
     this.bookConfirmation = undefined;
     this.bookMessage = '';
@@ -1656,12 +1658,19 @@ export class BattleView extends Component {
   }
 
   private renderInventory(): void {
+    const dismissTip = () => {
+      if (!this.inventoryTipOpen) return;
+      this.inventoryTipOpen = false;
+      this.render();
+    };
     const close = () => {
       this.bookConfirmation = undefined;
+      this.inventoryTipOpen = false;
       this.inventoryChoosingPet = this.inventoryOpen = this.rosterOpen = false;
       this.render();
     };
-    this.rect(0, 0, CONFIG.width, CONFIG.height, '#000000', '', 0, close, 150).addComponent(BlockInputEvents);
+    this.rect(0, 0, CONFIG.width, CONFIG.height, '#000000', '', 0,
+      () => this.inventoryTipOpen ? dismissTip() : close(), 150).addComponent(BlockInputEvents);
     const panel = this.bagFrames.get('panel');
     if (!panel) {
       this.text(this.bagArtFailed ? '背包界面加载失败' : '加载中…', 467, 346, 25, '#F3DFAD', 400, 1);
@@ -1672,8 +1681,10 @@ export class BattleView extends Component {
     const background = this.image(x, y, width, height, panel).node;
     background.name = 'bag-panel';
     background.addComponent(BlockInputEvents);
+    background.on(Node.EventType.TOUCH_END, dismissTip);
     if (this.heroArt) this.image(198, 205, 335, 335, this.heroArt);
     const unavailable = (label: string) => () => {
+      this.inventoryTipOpen = false;
       this.bookMessage = `${label}·未开放`;
       this.render();
     };
@@ -1685,13 +1696,13 @@ export class BattleView extends Component {
     this.renderInventoryGrid(inventory, panel);
     const id = this.inventoryItem;
     const hasSelection = !!id && inventory[id] > 0;
-    if (hasSelection) this.text(`${ITEMS[id].name}  ·  ${ITEMS[id].description}`, 698, 590, 15, '#4A2C1D', 494);
     const notice = this.bookMessage || (!this.onMap ? '战斗中只读'
       : this.bagArtFailed ? '图标暂不可用，可按名称查看道具。' : '');
-    if (notice) this.text(notice, 698, 615, 15, '#513B25', 494);
+    if (notice) this.text(notice, 85, 623, 15, '#513B25', 550, 1);
     this.bagControl('使用', 705, 652, 225, 51, hasSelection && this.onMap, () => {
       if (!this.onMap || !this.inventoryOpen || !id || id !== this.inventoryItem || !this.progress.inventory[id]) return;
       this.bookMessage = '';
+      this.inventoryTipOpen = false;
       this.inventoryChoosingPet = true;
       this.render();
     });
@@ -1721,6 +1732,7 @@ export class BattleView extends Component {
     transform.setContentSize(width, contentHeight);
     transform.setAnchorPoint(0.5, 1);
     content.setPosition(0, height / 2);
+    let tip: Node | undefined;
     if (rows > visibleRows) {
       grid.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
       const scroll = grid.addComponent(ScrollView);
@@ -1729,7 +1741,11 @@ export class BattleView extends Component {
       scroll.elastic = false;
       scroll.content = content;
       scroll.scrollToOffset(new Vec2(0, Math.min(this.inventoryScrollY, contentHeight - height)));
-      grid.on(ScrollView.EventType.SCROLLING, () => { this.inventoryScrollY = scroll.getScrollOffset().y; });
+      grid.on(ScrollView.EventType.SCROLLING, () => {
+        this.inventoryScrollY = scroll.getScrollOffset().y;
+        this.inventoryTipOpen = false;
+        if (tip) tip.active = false;
+      });
     } else this.inventoryScrollY = 0;
 
     this.layer = content;
@@ -1751,6 +1767,7 @@ export class BattleView extends Component {
       const selected = count > 0 && id === this.inventoryItem;
       const slot = this.rect(x, y, 94, 79, '#F9D783', selected ? '#FFF1B3' : '', 9, () => {
           this.inventoryItem = count > 0 ? id : undefined;
+          this.inventoryTipOpen = count > 0;
           this.bookMessage = '';
           this.render();
         }, selected ? 55 : 0);
@@ -1766,6 +1783,37 @@ export class BattleView extends Component {
       this.text(String(count), x + 4, y + (large ? 61 : 56), large ? 9 : 16, '#FFF2C5', 85, 2);
     }
     this.layer = panel;
+    const id = this.inventoryItem;
+    const index = id ? ids.indexOf(id) : -1;
+    if (this.inventoryTipOpen && id && index >= 0) {
+      const x = gridX + index % columns * colStep;
+      const y = gridY + Math.floor(index / columns) * rowStep - this.inventoryScrollY;
+      tip = this.renderInventoryTip(id, x, y);
+    }
+  }
+
+  private renderInventoryTip(id: string, slotX: number, slotY: number): Node {
+    const { name, description } = ITEMS[id];
+    const lines = description.match(/.{1,15}/gu) ?? [];
+    const width = 320, height = Math.max(70, 45 + lines.length * 21);
+    const x = Math.min(slotX, BAG_GRID.x + BAG_GRID.width - width);
+    const below = slotY + BAG_GRID.rowStep + 4;
+    const bottom = BAG_GRID.y + BAG_GRID.visibleRows * BAG_GRID.rowStep;
+    const y = below + height <= bottom ? below : Math.max(BAG_GRID.y, slotY - height - 4);
+    const panel = this.layer;
+    const tip = new Node('bag-tip');
+    panel.addChild(tip);
+    this.layer = tip;
+    this.rect(x, y, width, height, '#F9EFD9', '#93734D', 12).addComponent(BlockInputEvents);
+    const skill = id.startsWith('book:') ? id.slice(5) : undefined;
+    const art = this.bagFrames.get(skill ? 'book' : id);
+    const emblem = skill ? this.bagFrames.get(skill) : undefined;
+    if (art) this.image(x + 10, y + 12, 48, 48, art);
+    if (emblem) this.image(x + 24, y + 26, 20, 20, emblem);
+    this.text(name, x + 69, y + 8, 20, '#4A2C1D', 240);
+    lines.forEach((line, i) => this.text(line, x + 69, y + 37 + i * 21, 15, '#4A2C1D', 240));
+    this.layer = panel;
+    return tip;
   }
 
   private renderInventoryPets(item: string): void {

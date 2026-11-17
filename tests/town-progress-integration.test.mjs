@@ -1050,7 +1050,9 @@ function mockBagArt(v) {
   v.bagFrames.set('panel', panel);
   v.image = (x, y, width, height, frame) => {
     images.push({ x, y, width, height, frame });
-    return { node: { addComponent() {} } };
+    const node = new Node('bag-art');
+    v.layer.addChild(node);
+    return { node };
   };
   v.bagControl = (...args) => v.button(...args);
   return { panel, images };
@@ -1066,12 +1068,15 @@ test('bag lays out 25 slots on its art, stacks by ID, and only enters pet select
     slots.push(rect);
     return rect;
   };
-  v.text = (value, x, y, _size, _color, _width, _align, click) => labels.set(value, { x, y, click });
+  v.text = (value, x, y) => labels.set(value, { x, y, parent: v.layer });
   v.button = (value, x, y, _w, _h, enabled, click) => {
     if (enabled) actions.set(value, click);
     labels.set(value, { x, y });
   };
   const { panel, images } = mockBagArt(v);
+  const dewIcon = new SpriteFrame();
+  v.bagFrames.set('rejuvenation', dewIcon);
+  const tip = () => v.layer.children.find(node => node.name === 'bag-tip');
   const draw = () => {
     slots.length = 0; images.length = 0; labels.clear(); actions.clear();
     v.layer = new Node('bag'); v.renderInventory();
@@ -1092,10 +1097,20 @@ test('bag lays out 25 slots on its art, stacks by ID, and only enters pet select
   assert.equal(slots.some(slot => slot.click && slot.x > 0 && slot.x < 650 && !slot.name?.startsWith('bag-slot-')), false);
   assert.equal(actions.has('使用'), false);
   assert.equal(labels.has('点击道具查看'), false);
+  assert.equal(tip(), undefined);
   grid[0].click(); draw();
   assert.equal(v.inventoryItem, 'rejuvenation');
   assert.equal(v.inventoryChoosingPet, false);
-  assert.ok([...labels.keys()].some(label => label.includes(ITEMS.rejuvenation.description) && label.startsWith('还童露')));
+  assert.ok(tip());
+  const tipLabels = [...labels.keys()].filter(label => labels.get(label).parent === tip());
+  assert.equal(tipLabels[0], ITEMS.rejuvenation.name);
+  assert.equal(tipLabels.slice(1).join(''), ITEMS.rejuvenation.description);
+  assert.equal(images.filter(image => image.frame === dewIcon).length, 2);
+  assert.equal([...labels.values()].some(({ x, y }) => x >= 680 && y >= 580 && y < 644), false);
+  v.layer.children.find(node => node.name === 'bag-panel').handlers.end(); draw();
+  assert.equal(tip(), undefined);
+  assert.equal(v.inventoryItem, 'rejuvenation');
+  assert.equal(actions.has('使用'), true);
   assert.ok(labels.get('使用').x < labels.get('整理').x);
   for (const tab of ['任务', '仓库', '整理']) {
     actions.get(tab)();
