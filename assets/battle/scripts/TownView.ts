@@ -1,4 +1,5 @@
 import { assetManager, Color, EventTouch, Graphics, Label, Mask, Node, Rect, Size, sp, Sprite, SpriteFrame, sys, Texture2D, UIOpacity, UITransform, Vec3 } from 'cc';
+import { WECHAT } from 'cc/env';
 import { browserParams } from '../../logic/platform';
 import { cameraOrigin, EncounterDistance, MAPS, Region, TOWN, TOWN_PLACES, TownPlace, worldPoint } from '../logic/exploration';
 import { runFacing, type RunFacing } from './run-facing';
@@ -174,7 +175,7 @@ export class TownView {
     this.updateHeroArt(0);
   }
   private loadSpineData(): void {
-    if (this.loadingSpine || this.spineData) return;
+    if (WECHAT || this.loadingSpine || this.spineData) return;
     this.loadingSpine = true;
     const complete = (error: Error | null, data?: sp.SkeletonData) => {
       this.loadingSpine = false;

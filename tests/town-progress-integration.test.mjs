@@ -70,7 +70,7 @@ registerHooks({
   },
   load(url, c, next) {
     if (url.startsWith('mock:')) return { format: 'module', shortCircuit: true,
-      source: url === 'mock:cc' ? cc : 'export const PREVIEW = true, WECHAT = false;' };
+      source: url === 'mock:cc' ? cc : 'export const PREVIEW = true; export let WECHAT = false; export const enableWechat = () => { WECHAT = true; return () => { WECHAT = false; }; };' };
     if (/\/(BattleView|TownView|pet-fusion)\.ts$/.test(url)) return { format: 'module', shortCircuit: true,
       source: ts.transpileModule(readFileSync(new URL(url), 'utf8'), { compilerOptions: {
         target: url.endsWith('/pet-fusion.ts') ? ts.ScriptTarget.ES5 : ts.ScriptTarget.ES2022,
@@ -266,6 +266,21 @@ test('real spell playback keeps mana and HP separate until cast and impact, then
   assert.deepEqual([b.pets[0].level, b.pets[0].mana], [2, b.pets[0].maxMana]);
 });
 
+test('WeChat map keeps the hero visible after battle, while moving and when stopped', async t => {
+  const { enableWechat } = await import('cc/env');
+  const { TownView } = await import('../assets/battle/scripts/TownView.ts');
+  t.after(enableWechat());
+  const town = new TownView(new BattleView().node, () => {}), idle = { rect: { width: 153, height: 241 } };
+  town.load('outskirts'); townLoad(null, { load: (_path, _type, ready) => ready(null, {}) });
+  town.draw(idle, () => false, () => {});
+  bundleLoads.battle(null, { load: (_path, _type, ready) => ready(null, new Texture2D()) });
+  town.root.active = false; town.root.active = true; town.update(0);
+  assert.deepEqual([town.actor.active, town.actor.spriteFrame, town.loadingSpine], [true, idle, false]);
+  const { x, y } = town.movement.position;
+  assert.ok(town.movement.select({ x: x + 40, y: y + 15 })); town.update(0.01);
+  assert.equal(town.actor.active, true); assert.notEqual(town.actor.spriteFrame, idle);
+  town.update(1); assert.equal(town.actor.active, true); assert.equal(town.actor.spriteFrame, idle);
+});
 test('town and outskirts use Spine run downhill, frame run uphill and keep one foot baseline', () => {
   const v = new BattleView();
   v.render = () => {};
