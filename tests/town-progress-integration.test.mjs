@@ -1291,7 +1291,7 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
   a.skillIds = skills.slice(0, 8);
   b.skillIds = skills.slice(4);
   session.roster.entries.push(b); saveProgress(townDisk, session);
-  const labels = [], actions = new Map(), preview = [], picks = [], drawnSkills = [];
+  const labels = [], actions = new Map(), preview = [], picks = [], drawnSkills = [], tabs = [];
   let tiles = 0, closeButtons = 0;
   v.skillFrames = new Map(skills.map(id => [id, id]));
   v.image = (_x, _y, _w, _h, frame) => drawnSkills.push(frame);
@@ -1299,7 +1299,8 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     if ('probability' in pet) preview.push([pet.species, pet.isMutated, x, y]);
   };
   v.text = text => labels.push(text);
-  v.rect = (_x, _y, width, height, _color, _border, _radius, click) => {
+  v.rect = (x, _y, width, height, color, _border, _radius, click) => {
+    if (x >= 1150 && x + width <= 1242 && height === 96) tabs.push({ color, click });
     if (width === 88 && height === 88) {
       tiles++;
       if (click) picks.push(click);
@@ -1312,7 +1313,7 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     return { addComponent() {} };
   };
   const draw = () => {
-    labels.length = preview.length = picks.length = drawnSkills.length = tiles = closeButtons = 0;
+    labels.length = preview.length = picks.length = drawnSkills.length = tiles = closeButtons = tabs.length = 0;
     actions.clear(); v.renderFusion();
   };
   let rolls = 0; v.fusionRandom = () => { rolls++; return 0; };
@@ -1324,8 +1325,14 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     assert.equal(v.town.movement.target, undefined);
     draw(); assert.ok(actions.has('请选择左侧父宠') && !actions.has('选择左侧父宠'));
     assert.ok(!actions.has('预览') && !actions.has('合宠'));
-    for (const tab of ['洗宝宝', '打书']) {
-      actions.get(tab)(); draw();
+    assert.equal(tabs.length, 3);
+    const tabLetters = '洗宝宝打书合宠'.split('');
+    assert.deepEqual(labels.filter(label => tabLetters.includes(label)), tabLetters);
+    assert.equal(tabs[0].color, tabs[1].color);
+    assert.notEqual(tabs[2].color, tabs[0].color);
+    assert.equal(tabs[2].click, undefined);
+    for (const i of [0, 1]) {
+      tabs[i].click(); draw();
       assert.ok(labels.includes('尚未开放') && v.fusionOpen);
     }
     actions.get('请选择左侧父宠')(); draw();
@@ -1354,6 +1361,13 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     assert.deepEqual(v.fusionIds, [a.id, '']);
     actions.get('选择')(); draw();
     assert.deepEqual(v.fusionIds, [a.id, b.id]);
+    const fields = ['体资质', '攻资质', '防资质', '法资质', '速度资质', '成长'];
+    assert.deepEqual(labels.filter(label => fields.includes(label)), [...fields, ...fields]);
+    assert.equal(labels.filter(label => label === '宝宝').length, 2);
+    assert.ok(!labels.includes('普通宝宝') && !labels.includes('普通'));
+    b.isBaby = false; draw();
+    assert.ok(labels.includes('野生'));
+    b.isBaby = true; draw();
     assert.ok(!labels.includes('资质范围') && actions.has('合宠'));
     assert.equal(preview.length, 0);
     assert.ok(labels.some(t => t.includes('40%')));
@@ -1379,7 +1393,9 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     v.fusionIds = [a.id, b.id]; draw();
     assert.ok(labels.includes('已放入变异宠物') && labels.includes('普通与变异身份必须相同'));
     assert.ok(!labels.includes('资质范围') && !actions.has('合宠') && !actions.has('预览'));
-    b.isMutated = true; draw(); actions.get('预览')(); draw();
+    b.isMutated = true; draw();
+    assert.equal(labels.filter(label => label === '变异宝宝').length, 2);
+    actions.get('预览')(); draw();
     assert.ok(labels.includes('已放入变异宠物') && labels.includes('资质范围'));
     assert.equal(preview.length, 2);
     assert.ok(preview.every(([, mutated]) => mutated));

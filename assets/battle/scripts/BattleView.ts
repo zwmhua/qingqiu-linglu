@@ -1563,11 +1563,17 @@ export class BattleView extends Component {
         }, true);
       this.renderFusionSkills(pet, pet?.skillIds ?? [], x + 20, 287, 81, 58, side);
       if (!pet) return;
-      APTITUDE_KEYS.forEach((key, i) => this.text(`${['攻击', '防御', '体力', '法力', '躲避', '速度'][i]}资质 ${pet.aptitudes[key]}`,
-        x + 4 + i % 2 * 176, 132 + Math.floor(i / 2) * 44, 19, ink, 156, 1));
-      this.text(`成长 ${pet.growth.toFixed(3)}`, x + 4, 244, 16, ink, 333, 1);
+      const { stamina, attack, defense, mana, speed } = pet.aptitudes;
+      const fields = [['体资质', stamina], ['攻资质', attack], ['防资质', defense],
+        ['法资质', mana], ['速度资质', speed], ['成长', pet.growth.toFixed(3)]];
+      fields.forEach(([label, value], i) => {
+        const left = x + 13 + Math.floor(i / 3) * 169, y = 137 + i % 3 * 44;
+        this.text(String(label), left, y, 19, ink, 83);
+        this.text(String(value), left + 83, y, 19, ink, 62, 2);
+      });
       this.drawPetPortrait(pet, x + 172, 536, 116);
-      this.text(`${pet.isMutated ? '变异' : '普通'}${pet.isBaby ? '宝宝' : '野生'}`, x + 245, 538, 16, ink, 86, 1);
+      const identity = pet.isBaby ? (pet.isMutated ? '变异宝宝' : '宝宝') : '野生';
+      this.text(identity, x + 245, 538, 16, ink, 86, 1);
     });
     this.text(`非必带遗传${FUSION.inheritance * 100}%`, preview ? 368 : 487, preview ? 660 : 140, 17, ink, 268, 1);
     this.text('结果可能变弱', preview ? 645 : 487, preview ? 660 : 171, 17, '#873E28', 268, 1);
@@ -1578,12 +1584,17 @@ export class BattleView extends Component {
       this.renderFusionPreview(cards, selected);
       this.button('重新选宠', 174, 642, 182, 54, !this.fusionConfirmation, close);
     } else {
-      for (const [i, tab] of ['洗宝宝', '打书', '合宠'].entries()) {
-        const y = 155 + i * 58, active = i === 2;
-        this.rect(1242, y, 88, 49, active ? '#DFE9D6' : '#FAEED5', active ? '#527561' : '#B99A63', 8);
-        if (active) this.text(tab, 1242, y + 10, 20, ink, 88, 1);
-        else this.button(tab, 1242, y, 88, 49, true, () => { this.fusionTabNotice = true; this.render(); }, true);
-      }
+      this.rect(1201, 84, 6, 352, '#AB7945', '', 3);
+      ['洗宝宝', '打书', '合宠'].forEach((tab, i) => {
+        const y = 111 + i * 110, active = i === 2;
+        this.rect(1178, y, 52, 96, active ? '#D9E8CF' : '#EFDBB5', active ? '#527561' : '#AB7945', 18,
+          active ? undefined : () => { this.fusionTabNotice = true; this.render(); });
+        this.rect(1200, y + 5, 8, 8, '#F9EFD9', '#AB7945', 4);
+        this.rect(1200, y + 83, 8, 8, '#F9EFD9', '#AB7945', 4);
+        for (let j = 0; j < tab.length; j++) {
+          this.text(tab[j], 1178, y + (96 - tab.length * 21) / 2 + j * 21, 18, ink, 52, 1);
+        }
+      });
       if (this.fusionTabNotice) this.text('尚未开放', 487, 203, 18, '#873E28', 268, 1);
       this.button('预览', 586, 574, 71, 74, !!plan && !this.fusionConfirmation, () => {
         this.fusionTabNotice = false;
