@@ -1287,6 +1287,11 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     assert.deepEqual(preview, [['tingwa', false], ['pangui', false], ['maomaochong', false]]);
     assert.ok(labels.includes('普通'));
     assert.ok(!labels.includes('确认后才生成；不消耗道具。'));
+    assert.ok(actions.has('预览详情'));
+    actions.get('预览详情')(); draw();
+    assert.ok(labels.includes('资质范围') && labels.some(t => t.includes('最多') && t.includes('格')));
+    actions.get('返回')(); draw();
+    assert.ok(!labels.includes('资质范围'));
     a.isMutated = b.isMutated = true; draw();
     assert.ok(labels.includes('变异'));
     assert.equal(preview.length, 3);
@@ -1295,6 +1300,7 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     v.fusionIds = [session.selectedPetId, b.id]; draw();
     assert.deepEqual(preview, []);
     assert.ok(labels.includes('出战宠不能合宠'));
+    assert.equal(actions.has('预览详情'), false);
     v.fusionIds = [a.id, b.id]; draw();
     const before = townDisk.raw, writes = townDisk.writes;
     actions.get('合宠')(); draw(); assert.ok(labels.some(t => t.includes('两只原宠将消失')));

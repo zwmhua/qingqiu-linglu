@@ -1,4 +1,5 @@
 import { FUSION, fusionPlan } from '../logic/pet-fusion';
+import { buildFusionPreview } from './fusion-preview';
 import { assetManager, game, Game, _decorator, BlockInputEvents, Color, Component, EventTouch, Graphics, Label, Mask, Node, ResolutionPolicy, RichText, Sprite, SpriteFrame, sys, tween, Tween, UIOpacity, UITransform, Vec3, view } from 'cc';
 import { TownView } from './TownView';
 import { AttackEvent, Battle, BattleEvent, SpellEvent, Unit } from './Battle';
@@ -8,7 +9,7 @@ import { targetCommand, toggleTarget } from '../logic/targeting';
 import { AutoCommands } from '../logic/auto';
 import { PREVIEW, WECHAT } from 'cc/env';
 import { APTITUDE_KEYS, aptitudeBarRatio } from '../logic/aptitude';
-import { WILD_SPECIES } from '../logic/wild-encounter';
+import { WILD_SPECIES, type WildSpecies } from '../logic/wild-encounter';
 import { BASE_STAT_KEYS } from '../logic/base-stats';
 import { petTint } from '../logic/pet-visual';
 import type { CarriedPet } from '../logic/roster';
@@ -93,6 +94,7 @@ export class BattleView extends Component {
   private fusionMessage = '';
   private fusionConfirmation?: ReturnType<SessionProgress['prepareFusion']>;
   private fusionResult = false;
+  private fusionPreviewSpecies?: WildSpecies;
   private inventoryOpen = false;
   private inventoryItem?: string;
   private inventoryPet?: string;
@@ -137,7 +139,7 @@ export class BattleView extends Component {
   private progressError = '';
   private progressReadFailed = false;
   private readonly progressLoader = new ProgressLoader();
-  private skillOpen?: { pet: CarriedPet; id: string; x: number; y: number };
+  private skillOpen?: { pet: Pick<CarriedPet, 'species'>; id: string; x: number; y: number };
   private layoutTest = this.devPreview && queryParams().get('layout') === '10v10';
   private choosingTarget: TargetMode | null = null;
   private spellOpen = false;
@@ -1466,7 +1468,7 @@ export class BattleView extends Component {
     lines.forEach((line, i) => this.text(line, x + 12, y + 44 + i * 20, 14, '#4A2C1D', 326));
   }
 
-  private drawSkillIcon(pet: CarriedPet, id: string, x: number, y: number, width: number, height = width): void {
+  private drawSkillIcon(pet: Pick<CarriedPet, 'species'>, id: string, x: number, y: number, width: number, height = width): void {
     const icon = this.skillFrames.get(id);
     if (!icon) return;
     this.image(x, y, width, height, icon);
@@ -1515,6 +1517,7 @@ export class BattleView extends Component {
     this.fusionIds = ['', ''];
     this.fusionMessage = '';
     this.fusionConfirmation = undefined;
+    this.fusionPreviewSpecies = undefined;
     this.skillOpen = undefined;
     this.loadSkillArt();
     this.render();
@@ -1557,24 +1560,32 @@ export class BattleView extends Component {
         } else this.text('空', sx, sy + 29, 14, ink, 86, 1);
       }
     });
-    const [a, b] = this.fusionIds.map(id => this.progress.roster.entries.find(p => p.id === id));
-    const probability = a && b && a.species === b.species ? '原物种90% · 其它10%' : '左45% · 右45% · 其它10%';
-    this.text(probability, 533, 109, 17, ink, 268, 1);
     this.text(`非必带遗传${FUSION.inheritance * 100}%`, 533, 140, 17, ink, 268, 1);
     this.text('结果可能变弱', 533, 171, 17, '#873E28', 268, 1);
     let reason = '', plan: ReturnType<typeof fusionPlan> | undefined;
     try { plan = fusionPlan(this.progress.roster.entries, this.fusionIds, this.progress.selectedPetId, !this.onMap); }
     catch (error) { reason = error instanceof Error ? error.message : String(error); }
-    if (plan) {
-      const [left, right] = plan.parents, isMutated = left.isMutated;
-      const species = left.species === right.species ? [left.species, ...plan.other] : [left.species, right.species, ...plan.other];
+    const outcomes = plan ? buildFusionPreview(plan) : [];
+    if (outcomes.length) {
+      const select = (species: WildSpecies) => {
+        this.fusionPreviewSpecies = species;
+        this.render();
+      };
+      this.button('预览详情', 592, 91, 150, 44, !this.fusionConfirmation, () => select(outcomes[0].species));
       this.text('可能结果', 617, 384, 15, ink, 100, 1);
-      species.forEach((id, i) => {
-        const x = 667 + (i - (species.length - 1) / 2) * 39;
-        this.drawPetPortrait({ species: id, isMutated }, x, 423, 35);
-        this.text(WILD_SPECIES[id].name, x - 21, 441, 12, ink, 42, 1);
+      outcomes.forEach((outcome, i) => {
+        const x = 667 + (i - (outcomes.length - 1) / 2) * 39;
+        this.drawPetPortrait(outcome, x, 416, 30);
+        this.text(WILD_SPECIES[outcome.species].name, x - 21, 433, 12, ink, 42, 1);
+        this.text(this.fusionPercent(outcome.probability), x - 21, 449, 11, ink, 42, 1);
       });
-      this.text(isMutated ? '变异' : '普通', 617, 463, 15, ink, 100, 1);
+      this.text(outcomes[0].isMutated ? '变异' : '普通', 617, 465, 15, ink, 100, 1);
+      const selected = outcomes.find(outcome => outcome.species === this.fusionPreviewSpecies);
+      if (selected) {
+        this.renderFusionPreview(outcomes, selected, select);
+        this.renderSkillDetail();
+        return;
+      }
     }
     this.button('合宠', 630, 574, 74, 74, !reason && !this.fusionConfirmation, () => {
       try { this.fusionConfirmation = this.progress.prepareFusion(!this.onMap || !this.fusionOpen, this.fusionIds); }
@@ -1602,6 +1613,55 @@ export class BattleView extends Component {
       } catch (error) { this.fusionMessage = `合宠失败：${error instanceof Error ? error.message : String(error)}`; }
       this.render();
     });
+  }
+
+  private fusionPercent(probability: number): string {
+    return `${Number((probability * 100).toFixed(2))}%`;
+  }
+
+  private renderFusionPreview(outcomes: ReturnType<typeof buildFusionPreview>,
+    selected: ReturnType<typeof buildFusionPreview>[number], select: (species: WildSpecies) => void): void {
+    const ink = '#4A2C1D';
+    const close = () => { this.fusionPreviewSpecies = undefined; this.render(); };
+    this.rect(0, 0, CONFIG.width, CONFIG.height, '#152723', '', 0, close, 125).addComponent(BlockInputEvents);
+    this.rect(167, 50, 1000, 650, '#F9EFD9', '#93734D', 14).addComponent(BlockInputEvents);
+    this.text(`合宠预览 · ${selected.isMutated ? '变异' : '普通'}`, 205, 67, 28, ink, 580);
+    this.button('返回', 1010, 67, 116, 42, true, close);
+    this.text('合宠造型概率', 205, 126, 22, ink, 400);
+    outcomes.forEach((outcome, i) => {
+      const x = 205 + i * 312, active = outcome === selected;
+      this.rect(x, 166, 296, 119, active ? '#DFE9D6' : '#F3E4C8', active ? '#527561' : '#C6A971', 10,
+        () => select(outcome.species));
+      this.drawPetPortrait(outcome, x + 55, 225, 80);
+      this.text(WILD_SPECIES[outcome.species].name, x + 105, 189, 23, ink, 171);
+      this.text(this.fusionPercent(outcome.probability), x + 105, 225, 24, '#356456', 171);
+    });
+
+    const names = ['攻击资质', '防御资质', '体力资质', '法力资质', '躲避资质', '速度资质', '成长'];
+    const ranges = [...selected.aptitudes, selected.growth.map(value => value.toFixed(3))];
+    this.text('资质范围', 205, 317, 23, ink, 376);
+    ranges.forEach((range, i) => {
+      const y = 357 + i * 42;
+      this.rect(205, y, 366, 36, i % 2 ? '#F4E8CE' : '#EEDDB9', '', 6);
+      this.text(names[i], 218, y + 2, 19, ink, 118);
+      this.text(range.join(' ～ '), 335, y + 2, 19, ink, 216, 2);
+    });
+
+    this.text('技能最多情况', 605, 317, 23, ink, 246);
+    this.text(`最多 ${selected.maxSkills} 格`, 899, 317, 23, '#356456', 224, 2);
+    this.text(`必带 ${selected.innate.length} · 遗传候选 ${selected.candidates.length}`, 605, 359, 18, ink, 522);
+    const skills = [...selected.innate, ...selected.candidates];
+    skills.forEach((id, i) => {
+      const x = 606 + (i % 6) * 84, y = 400 + Math.floor(i / 6) * 84;
+      this.drawSkillIcon(selected, id, x, y, 70);
+      this.rect(x, y, 70, 70, '#000000', '', 0, () => {
+        this.skillOpen = { pet: selected, id, x, y };
+        this.render();
+      }, 0);
+    });
+    if (!skills.length) this.text('无可带技能', 605, 416, 19, ink, 460);
+    if (skills.length > selected.maxSkills)
+      this.text('候选多于可用格数，不能同时出现。', 605, 575, 19, '#873E28', 518);
   }
 
   private openInventory(): void {

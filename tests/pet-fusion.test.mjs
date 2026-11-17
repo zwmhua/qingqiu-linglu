@@ -64,3 +64,40 @@ test('parent-specific innate exclusion, deduplication, 40 percent and unbiased t
     assert.deepEqual(child.skillIds, edge ? ids.slice(4).reverse() : ids.slice(0, 8));
   }
 });
+
+test('preview probabilities and species ranges match actual fusion at both endpoints', async () => {
+  const { buildFusionPreview } = await import('../assets/battle/scripts/fusion-preview.ts');
+  for (const same of [false, true]) for (const isMutated of [false, true]) {
+    const [a, b] = parents().map((pet, i) => ({
+      ...pet, isMutated, growth: i ? 1.04 : 0.97,
+      aptitudes: Object.fromEntries(Object.keys(pet.aptitudes).map((key, j) => [key, 370 + j * 240 + i * 9])),
+    }));
+    if (same) b.species = a.species;
+    const options = buildFusionPreview(fusionPlan([a, b], [a.id, b.id], '', false));
+    assert.deepEqual(options.map(o => Math.round(o.probability * 100)), same ? [90, 5, 5] : [45, 45, 10]);
+    for (const [i, outcome] of options.entries()) for (const edge of [0, 1]) {
+      const draws = same ? i ? [0.9, (i - 1) / 2] : [0] : i === 2 ? [0.9, 0] : [i * 0.45];
+      const child = fusePets(a, b, 'fused-1', sequence(...draws, ...Array(7).fill(edge)));
+      assert.equal(outcome.species, child.species);
+      assert.equal(outcome.isMutated, child.isMutated);
+      assert.deepEqual(outcome.aptitudes.map(range => range[edge]), Object.values(child.aptitudes));
+      assert.equal(outcome.growth[edge], child.growth);
+    }
+  }
+});
+
+test('preview preserves innate skills and lists deduplicated candidates even when they exceed the cap', async () => {
+  const { buildFusionPreview } = await import('../assets/battle/scripts/fusion-preview.ts');
+  const [a, b] = parents();
+  const ids = Object.keys(PET_SKILLS);
+  a.skillIds = ids.filter(id => id !== 'armor').slice(0, 8);
+  b.skillIds = ['armor', ...ids.slice(5).filter(id => id !== 'armor')];
+  const [frog, turtle] = buildFusionPreview(fusionPlan([a, b], [a.id, b.id], '', false));
+  assert.deepEqual(frog.innate, []);
+  assert.deepEqual(turtle.innate, ['armor']);
+  const eligible = ids.filter(id => id !== 'armor').sort();
+  assert.deepEqual([...frog.candidates].sort(), eligible);
+  assert.deepEqual([...turtle.candidates].sort(), eligible);
+  assert.equal(frog.maxSkills, FUSION.maxSkills);
+  assert.equal(turtle.maxSkills, FUSION.maxSkills);
+});
