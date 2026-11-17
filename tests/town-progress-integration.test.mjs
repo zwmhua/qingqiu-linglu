@@ -448,13 +448,19 @@ test('town and outskirts share fixed portraits and the original progress panel e
   v.town.draw = () => {};
   const blockers = [];
   v.rect = (x, y, w, h) => ({ addComponent() { blockers.push([x, y, w, h]); } });
-  v.button = () => ({ addComponent() {} });
+  const footer = [];
+  v.button = (label, _x, y) => {
+    if (y === 678) footer.push(label);
+    return { addComponent() {} };
+  };
   v.text = v.unitColor = v.petArt = () => {};
   for (const region of ['town', 'outskirts', 'town']) {
     v.town.region = region;
     v.rosterOpen = false;
     v.detailsOpen = null;
+    footer.length = 0;
     v.renderTown();
+    assert.deepEqual(footer, ['背包', region === 'town' ? '出城' : '回城']);
     const pet = v.layer.children.find(node => node.name === 'portrait-pet');
     const hero = v.layer.children.find(node => node.name === 'portrait-hero');
     assert.ok(pet && hero, `${region} must show both portraits`);
@@ -545,7 +551,7 @@ test('outskirts loading is atomic, ignores stale callbacks, and round trips with
   };
   v.statusCard = (kind, x, unit) => portraits.push([kind, x, unit.id]);
   v.renderTown();
-  assert.deepEqual(buttons, [['下场掉率：正式', true], ['人物', true], ['宠物', true], ['背包', true], ['合宠', true], ['出城', true]]);
+  assert.deepEqual(buttons, [['下场掉率：正式', true], ['背包', true], ['出城', true]]);
   assert.deepEqual(portraits, [['pet', 906, session.selectedPetId], ['hero', 1102, 'hero']]);
   assert.ok(view.movement.select({ x: 800, y: 500 }));
   let activate;
@@ -1300,21 +1306,25 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
   b.skillIds = skills.slice(4);
   session.roster.entries.push(b); saveProgress(townDisk, session);
   const labels = [], actions = new Map(), preview = [], picks = [], drawnSkills = [], tabs = [], panels = [];
-  let tiles = 0, closeButtons = 0;
+  let tiles = 0, closeButtons = 0, closePet;
   v.skillFrames = new Map(skills.map(id => [id, id]));
-  v.image = (_x, _y, _w, _h, frame) => drawnSkills.push(frame);
+  v.image = (_x, _y, _w, _h, frame) => {
+    drawnSkills.push(frame);
+    return { node: { setParent() {} } };
+  };
   v.drawPetPortrait = (pet, x, y) => {
     if ('probability' in pet) preview.push([pet.species, pet.isMutated, x, y]);
   };
   v.text = text => labels.push(text);
   v.rect = (x, _y, width, height, color, _border, _radius, click) => {
+    if (x === 1070 && width === 56) closePet = click;
     if (x >= 1150 && x + width <= 1242 && height === 96) tabs.push({ color, click });
     if (width >= 380 && height >= 550 && height < 650 && click) panels.push(click);
     if (width === 88 && height === 88) {
       tiles++;
       if (click) picks.push(click);
     }
-    return { addComponent() {} };
+    return { addComponent() { return {}; } };
   };
   v.button = (text, _x, _y, _w, _h, enabled, click) => {
     if (text === '关闭') closeButtons++;
@@ -1325,12 +1335,19 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     labels.length = preview.length = picks.length = drawnSkills.length = tiles = closeButtons = tabs.length = panels.length = 0;
     actions.clear(); v.renderFusion();
   };
+  const openFromPet = () => {
+    v.rosterOpen = true;
+    v.openPetPanel(a.id);
+    v.renderPetPanel(a);
+    assert.ok(actions.has('炼妖'));
+    actions.get('炼妖')();
+  };
   let rolls = 0; v.fusionRandom = () => { rolls++; return 0; };
   for (const region of ['town', 'outskirts']) {
     v.town.load(region); complete();
     const start = v.town.movement.position;
     assert.equal(v.town.movement.select({ x: start.x + 20, y: start.y }), true);
-    assert.ok(v.town.movement.target); v.openFusion(); assert.equal(v.mapBlocked, true);
+    assert.ok(v.town.movement.target); openFromPet(); assert.equal(v.mapBlocked, true);
     assert.equal(v.town.movement.target, undefined);
     draw(); assert.ok(actions.has('请选择左侧父宠') && !actions.has('选择左侧父宠'));
     assert.equal(panels.length, 2);
@@ -1443,8 +1460,12 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     actions.get('关闭')(); draw();
     assert.equal(v.fusionOpen, true); assert.ok(!labels.includes('资质范围'));
     actions.get('关闭')(); assert.equal(v.fusionOpen, false);
+    assert.equal(v.rosterOpen, true);
+    assert.equal(v.selectedPetId, a.id);
+    assert.equal(v.petPanelPage, 'basic');
+    closePet();
   }
-  v.openFusion(); v.fusionIds = [a.id, b.id]; draw(); actions.get('合成')(); draw();
+  openFromPet(); v.fusionIds = [a.id, b.id]; draw(); actions.get('合成')(); draw();
   townDisk.fail = true; const failed = actions.get('确认合宠'); failed(); const used = rolls;
   assert.match(v.fusionMessage, /write failed/); assert.equal(session.roster.entries.length, 3);
   failed(); assert.equal(rolls, used); townDisk.fail = false;
@@ -1462,6 +1483,12 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     const snapshot = { ...raw, pets: raw.pets.map(pet => pet.id === fused.id ? invalid : pet) };
     assert.throws(() => loadSessionProgress({ ...townDisk, raw: JSON.stringify(snapshot) }), /存档技能/);
   }
+  v.renderPetPanel(reloaded.entries.find(pet => pet.id === 'fused-1'));
+  closePet();
+  assert.equal(v.fusionResult, false);
+  assert.equal(v.rosterOpen, true);
+  assert.equal(v.selectedPetId, session.selectedPetId);
+  assert.equal(v.petPanelPage, 'basic');
   v.rosterOpen = false; v.mapBattle = true; v.openFusion(); assert.equal(v.fusionOpen, false);
   v.battle.phase = 'ended'; v.resultSaved = false; v.openFusion(); assert.equal(v.fusionOpen, false);
 });

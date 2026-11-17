@@ -23,10 +23,10 @@ Web Mobile 和微信小游戏的构建配置分别位于 `settings/web-mobile-bu
 
 ## 城野与养成界面
 
-- **城镇与野外**　`assets/battle/scripts/TownView.ts` 管理地图切换、镜头、人物移动及暗雷接线。城镇街图在 `assets/town/textures/`，野外贴图在 `assets/outskirts/textures/`。城野面板与战斗共享同一个会话进度。进入面板或战斗会中止地图移动，结算后返回地图，战败走回城路径。
+- **城镇与野外**　`assets/battle/scripts/TownView.ts` 管理地图切换、镜头、人物移动及暗雷接线。城镇街图在 `assets/town/textures/`，野外贴图在 `assets/outskirts/textures/`。底栏提供背包和出城／回城，人物与召唤兽面板可由状态栏头像打开。城野面板与战斗共享同一个会话进度。进入面板或战斗会中止地图移动，结算后返回地图，战败走回城路径。
 - **背包**　界面和道具使用确认在 `assets/battle/scripts/BattleView.ts`。`assets/battle/logic/inventory.ts` 负责道具定义、库存和掉落，`skill-books.ts` 与 `rejuvenation.ts` 分别负责打书和两种还童露。城野可使用道具，战斗背包只读。技能书共用 `assets/inventory/textures/items/item_skillbook.png`，封面叠加 battle Bundle 的对应技能图标。
 - **人物与召唤兽面板**　`BattleView.ts` 绘制人物属性、潜能加点、召唤兽属性、资质技能及出战操作。人物计算在 `assets/battle/logic/hero-progress.ts`，召唤兽计算在同目录的 `pet-panel.ts`、`base-stats.ts` 和 `pet-skills.ts`，携带名单在 `roster.ts`。技能格使用图标与角标，空位和锁定位有独立文字标记，点技能可查看说明气泡。
-- **合宠**　主界面、选宠弹窗、手动预览、确认及新宠结果在 `assets/battle/scripts/BattleView.ts`。左右父宠整栏都能打开选宠，点击同一格可选中或取消，选中合格宠物后点「选择」才放入。`assets/battle/scripts/fusion-preview.ts` 读取 `assets/battle/logic/pet-fusion.ts` 的规则，计算双亲造型概率、六项资质与成长区间及可能得到的技能。双亲同种时，并排的两张卡各显示该造型概率的一半。磐龟实际抽取率为 5%，预览只列双亲造型。主界面与预览的技能格为四列三行，超出可滚动。确认合成后才抽取并保存，保存成功后替换双亲并显示新宠结果。
+- **合宠**　从召唤兽属性页的「炼妖」进入，关闭后回到该属性页。主界面、选宠弹窗、手动预览、确认及新宠结果在 `assets/battle/scripts/BattleView.ts`。左右父宠整栏都能打开选宠，点击同一格可选中或取消，选中合格宠物后点「选择」才放入。`assets/battle/scripts/fusion-preview.ts` 读取 `assets/battle/logic/pet-fusion.ts` 的规则，计算双亲造型概率、六项资质与成长区间及可能得到的技能。双亲同种时，并排的两张卡各显示该造型概率的一半。磐龟实际抽取率为 5%，预览只列双亲造型。主界面与预览的技能格为四列三行，超出可滚动。确认合成后才抽取并保存，保存成功后替换双亲并显示新宠结果。
 
 ## 会话、结算与存档
 

@@ -94,6 +94,7 @@ export class BattleView extends Component {
   private fusionMessage = '';
   private fusionConfirmation?: ReturnType<SessionProgress['prepareFusion']>;
   private fusionResult = false;
+  private fusionReturnPetId?: string;
   private fusionPreviewSpecies?: WildSpecies;
   private fusionPreviewOpen = false;
   private fusionSkillRows = [0, 0, 0];
@@ -1273,13 +1274,15 @@ export class BattleView extends Component {
       this.render();
     };
     const close = () => {
+      const returnToPet = this.fusionResult && this.fusionReturnPetId !== undefined;
       this.skillOpen = undefined;
       this.fusionResult = false;
       this.stopPotentialRepeat();
       this.rosterOpen = false;
       this.selectedPetId = null;
       this.allocationPreview = undefined;
-      this.render();
+      if (returnToPet) this.returnFromFusion();
+      else this.render();
     };
     this.rect(0, 0, CONFIG.width, CONFIG.height, '#101E1C', '', 0, undefined, 200).addComponent(BlockInputEvents);
     this.image(167, 0, 1000, 750, points ? this.petPointsArt : aptitude ? this.petAptitudeArt : this.petBasicArt);
@@ -1306,8 +1309,11 @@ export class BattleView extends Component {
       this.text(identity.replaceAll(' ', ''), tagX, 116, 15, '#F7E8C1', 76, 1);
       this.drawPetPortrait(pet, 373, 337, 244);
       if (!this.fusionResult) {
+        const showFusion = this.onMap && !aptitude;
         this.renderReleaseButton(pet);
-        this.renderDeployButton(pet);
+        this.renderDeployButton(pet, showFusion ? 122 : 180);
+        if (showFusion)
+          this.button('炼妖', 368, 455, 70, 36, !this.mapUnavailable && !this.town?.loading, () => this.openFusion(pet.id));
         this.renderPetSlots(pet.id);
       }
       this.text('属性', 606, 101, 25, ink, 182, 1, () => open('basic'));
@@ -1331,10 +1337,10 @@ export class BattleView extends Component {
     this.renderAllocation(petProgress(pet), () => open(this.petReturnPage), draft => this.confirmPetPoints(pet.id, draft), 'pet');
   }
 
-  private renderDeployButton(pet: CarriedPet): void {
+  private renderDeployButton(pet: CarriedPet, width = 180): void {
     const blocked = () => !this.onMap || this.progressReadFailed || !this.usesTestProgress;
     const deployed = this.progress.selectedPetId === pet.id;
-    this.button(deployed ? '已出战' : '设为出战', 240, 455, 180, 36, !blocked() && !deployed, () => {
+    this.button(deployed ? '已出战' : '设为出战', 240, 455, width, 36, !blocked() && !deployed, () => {
       try {
         this.progress.selectPet(blocked(), pet.id, selectedPetId =>
           saveProgress(progressStorage(), { ...this.progress, selectedPetId }));
@@ -1514,10 +1520,12 @@ export class BattleView extends Component {
     if (selected) this.renderPetPanel(selected);
   }
 
-  private openFusion(): void {
-    if (!this.onMap || this.mapBlocked || this.town?.loading || this.playing) return;
+  private openFusion(petId?: string): void {
+    const fromPetPanel = petId !== undefined;
+    if (!this.onMap || this.mapUnavailable || this.town?.loading || this.playing
+      || this.rosterOpen !== fromPetPanel || this.fusionOpen || this.fusionResult || this.inventoryOpen || this.releasePrompt) return;
     this.stopTown();
-    this.inventoryOpen = false;
+    this.fusionReturnPetId = petId;
     this.fusionOpen = this.rosterOpen = true;
     this.fusionIds = ['', ''];
     this.fusionMessage = '';
@@ -1531,6 +1539,17 @@ export class BattleView extends Component {
     this.render();
   }
 
+  private returnFromFusion(): void {
+    const petId = this.fusionReturnPetId;
+    this.fusionReturnPetId = undefined;
+    this.fusionOpen = false;
+    this.rosterOpen = petId !== undefined;
+    if (petId !== undefined) {
+      const pet = this.progress.roster.entries.find(entry => entry.id === petId);
+      this.openPetPanel(pet?.id ?? this.progress.selectedPetId);
+    } else this.render();
+  }
+
   private renderFusion(): void {
     const ink = '#4A2C1D';
     let reason = '', plan: ReturnType<typeof fusionPlan> | undefined;
@@ -1542,8 +1561,8 @@ export class BattleView extends Component {
     const close = () => {
       this.fusionConfirmation = this.skillOpen = undefined;
       this.fusionPreviewOpen = false;
-      if (!preview) this.fusionOpen = this.rosterOpen = false;
-      this.render();
+      if (!preview) this.returnFromFusion();
+      else this.render();
     };
     this.rect(0, 0, CONFIG.width, CONFIG.height, '#000000', '', 0, close, 150).addComponent(BlockInputEvents);
     this.rect(54, 35, 1226, 680, '#000000', '', 0, undefined, 0).addComponent(BlockInputEvents);
@@ -2284,9 +2303,11 @@ export class BattleView extends Component {
     if (this.progressError) this.text(this.progressError, 36, 274, 16, '#F4DC9C', 345);
   }
 
-  private get mapBlocked(): boolean {
-    return !this.enabledInHierarchy || this.mapHidden || this.returningTown || !!this.detailsOpen || this.rosterOpen || this.progressReadFailed;
+  private get mapUnavailable(): boolean {
+    return !this.enabledInHierarchy || this.mapHidden || this.returningTown || !!this.detailsOpen || this.progressReadFailed;
   }
+
+  private get mapBlocked(): boolean { return this.mapUnavailable || this.rosterOpen; }
 
   private renderTown(): void {
     const town = this.town!;
@@ -2346,17 +2367,12 @@ export class BattleView extends Component {
     this.statusCard('pet', 906, pet && { ...pet, hp: pet.maxHp });
     this.statusCard('hero', 1102, { id: 'hero', name: BATTLE_RULES.hero.name, hp: maxHp, maxHp });
     this.renderDropMode();
-    const entries = ['人物', '宠物', '背包', '合宠', town.region === 'town' ? '出城' : '回城'];
-    entries.forEach((name, i) => {
-      const enabled = !town.loading;
-      this.button(name, 444 + i * 172, 678, 164, 56, enabled, () => {
+    const entries = [['背包', () => this.openInventory()], [town.region === 'town' ? '出城' : '回城', travel]] as const;
+    entries.forEach(([name, open], i) => {
+      this.button(name, 960 + i * 172, 678, 164, 56, !town.loading, () => {
         if (!this.enabledInHierarchy || town.loading) return;
         town.stop();
-        if (i === 0) this.openHeroPanel();
-        else if (i === 1) openPets();
-        else if (i === 2) this.openInventory();
-        else if (i === 3) this.openFusion();
-        else travel();
+        open();
       }).addComponent(BlockInputEvents);
     });
     if (this.rosterOpen) this.renderRosterList();
