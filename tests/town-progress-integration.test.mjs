@@ -15,7 +15,7 @@ export const view = { setDesignResolutionSize() {} };
 export const ResolutionPolicy = { SHOW_ALL: 1, FIXED_WIDTH: 2 };
 export class Component { node = { children: [], addChild() {} }; }
 export class Node {
-  static EventType = { TOUCH_START: 'start', TOUCH_END: 'end', TOUCH_CANCEL: 'cancel' };
+  static EventType = { TOUCH_START: 'start', TOUCH_END: 'end', TOUCH_CANCEL: 'cancel', MOUSE_WHEEL: 'wheel' };
   constructor(name) { this.name = name; }
   children = [];
   active = true;
@@ -1067,6 +1067,7 @@ test('pet and fusion slots show owned skill art and layer the innate and advance
   assert.ok(!labels.includes('硬甲'));
 
   drawn.length = 0;
+  labels.length = 0;
   v.fusionIds = [pet.id, ''];
   v.fusionArt = 'fuse-panel';
   const originalTier = PET_SKILLS.armor.tier;
@@ -1074,6 +1075,7 @@ test('pet and fusion slots show owned skill art and layer the innate and advance
     PET_SKILLS.armor.tier = 2;
     v.renderFusion();
     assert.deepEqual(drawn, ['fuse-panel', 'armor', 'frame_advanced', 'badge_innate', 'badge_advanced']);
+    assert.equal(labels.filter(label => label === '空').length, 23);
     const skillSlot = slots.find(({ bounds: [x, y] }) => x === icons[1][0] && y === icons[1][1]);
     assert.deepEqual(icons[1], skillSlot?.bounds);
     assert.ok(!labels.includes('硬甲'));
@@ -1086,6 +1088,25 @@ test('pet and fusion slots show owned skill art and layer the innate and advance
   } finally {
     PET_SKILLS.armor.tier = originalTier;
   }
+});
+
+test('fusion skill grid scrolls by rows without opening a description on swipe', () => {
+  const v = new BattleView(), icons = [], events = {};
+  const ids = [...Object.keys(PET_SKILLS), 'armor'];
+  const pet = { species: 'tingwa' };
+  v.drawSkillIcon = (_pet, id) => icons.push(id);
+  v.text = () => {};
+  v.rect = () => ({ on: (type, fn) => { events[type] = fn; } });
+  v.render = () => { icons.length = 0; v.renderFusionSkills(pet, ids, 100, 250, 80, 54, 0); };
+  v.render();
+  assert.deepEqual(icons, ids.slice(0, 12));
+  events.end({ getUILocation: () => ({ y: 120 }), getUIStartLocation: () => ({ y: 50 }) });
+  assert.deepEqual(icons, ids.slice(4));
+  assert.equal(v.skillOpen, undefined);
+  events.wheel({ getScrollY: () => 120 });
+  assert.deepEqual(icons, ids.slice(0, 12));
+  events.wheel({ getScrollY: () => -120 });
+  assert.deepEqual(icons, ids.slice(4));
 });
 
 test('all books layer their own emblem on the cover and both bottles use one image', () => {
@@ -1274,8 +1295,8 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
   let tiles = 0, closeButtons = 0;
   v.skillFrames = new Map(skills.map(id => [id, id]));
   v.image = (_x, _y, _w, _h, frame) => drawnSkills.push(frame);
-  v.drawPetPortrait = pet => {
-    if ('probability' in pet) preview.push([pet.species, pet.isMutated]);
+  v.drawPetPortrait = (pet, x, y) => {
+    if ('probability' in pet) preview.push([pet.species, pet.isMutated, x, y]);
   };
   v.text = text => labels.push(text);
   v.rect = (_x, _y, width, height, _color, _border, _radius, click) => {
@@ -1301,8 +1322,13 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     assert.equal(v.town.movement.select({ x: start.x + 20, y: start.y }), true);
     assert.ok(v.town.movement.target); v.openFusion(); assert.equal(v.mapBlocked, true);
     assert.equal(v.town.movement.target, undefined);
-    draw(); assert.ok(actions.has('选择左侧父宠'));
-    actions.get('选择左侧父宠')(); draw();
+    draw(); assert.ok(actions.has('请选择左侧父宠') && !actions.has('选择左侧父宠'));
+    assert.ok(!actions.has('预览') && !actions.has('合宠'));
+    for (const tab of ['洗宝宝', '打书']) {
+      actions.get(tab)(); draw();
+      assert.ok(labels.includes('尚未开放') && v.fusionOpen);
+    }
+    actions.get('请选择左侧父宠')(); draw();
     assert.equal(actions.has('选择'), false);
     assert.equal(closeButtons, 1);
     assert.equal(actions.has('取消'), false);
@@ -1320,15 +1346,22 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     assert.deepEqual(drawnSkills, b.skillIds);
     actions.get('关闭')(); draw();
     assert.deepEqual(v.fusionIds, ['', '']);
-    actions.get('选择左侧父宠')(); draw(); picks[1](); draw();
+    actions.get('请选择左侧父宠')(); draw(); picks[1](); draw();
     actions.get('选择')(); draw();
     assert.deepEqual(v.fusionIds, [a.id, '']);
-    actions.get('选择右侧父宠')(); draw(); picks[2](); draw();
+    assert.ok(actions.has(a.name));
+    actions.get('请选择右侧父宠')(); draw(); picks[2](); draw();
     assert.deepEqual(v.fusionIds, [a.id, '']);
     actions.get('选择')(); draw();
     assert.deepEqual(v.fusionIds, [a.id, b.id]);
-    assert.ok(labels.some(t => t.includes('90%'))); assert.ok(labels.some(t => t.includes('40%')));
-    assert.deepEqual(preview, [['tingwa', false]]);
+    assert.ok(!labels.includes('资质范围') && actions.has('合宠'));
+    assert.equal(preview.length, 0);
+    assert.ok(labels.some(t => t.includes('40%')));
+    actions.get('预览')(); draw();
+    assert.deepEqual(labels.filter(t => /^\d+(?:\.\d+)?%$/.test(t)), ['45%', '45%']);
+    assert.deepEqual(preview.map(([species, mutated]) => [species, mutated]), [['tingwa', false], ['tingwa', false]]);
+    assert.equal(preview[0][3], preview[1][3]);
+    assert.ok(preview[0][2] < preview[1][2]);
     assert.ok(!actions.has('普通') && !actions.has('变异'));
     assert.ok(!labels.includes('已放入变异宠物'));
     assert.ok(!labels.includes('确认后才生成；不消耗道具。'));
@@ -1337,18 +1370,21 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     assert.ok(!labels.some(t => /最多 \d+ 格|不能同时出现/.test(t)));
     assert.ok(actions.has('合宠') && !actions.has('预览详情') && !actions.has('返回'));
     assert.ok(actions.has('重新选宠') && !labels.some(t => /资质 \d/.test(t)));
+    actions.get('重新选宠')(); draw();
+    assert.deepEqual(v.fusionIds, [a.id, b.id]);
+    assert.ok(!labels.includes('资质范围') && actions.has('预览'));
     a.isMutated = true; v.fusionIds = [a.id, '']; draw();
     assert.ok(!labels.includes('已放入变异宠物'));
     assert.ok(!labels.includes('资质范围'));
     v.fusionIds = [a.id, b.id]; draw();
     assert.ok(labels.includes('已放入变异宠物') && labels.includes('普通与变异身份必须相同'));
-    assert.ok(!labels.includes('资质范围') && !actions.has('合宠'));
-    b.isMutated = true; draw();
+    assert.ok(!labels.includes('资质范围') && !actions.has('合宠') && !actions.has('预览'));
+    b.isMutated = true; draw(); actions.get('预览')(); draw();
     assert.ok(labels.includes('已放入变异宠物') && labels.includes('资质范围'));
-    assert.equal(preview.length, 1);
+    assert.equal(preview.length, 2);
     assert.ok(preview.every(([, mutated]) => mutated));
     b.species = 'maomaochong'; draw();
-    assert.deepEqual(preview, [['tingwa', true], ['maomaochong', true]]);
+    assert.deepEqual(preview.map(([species, mutated]) => [species, mutated]), [['tingwa', true], ['maomaochong', true]]);
     assert.deepEqual(labels.filter(t => /^\d+(?:\.\d+)?%$/.test(t)), ['47.5%', '47.5%']);
     b.species = a.species;
     a.isMutated = b.isMutated = false;
@@ -1358,13 +1394,15 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     v.fusionIds = [session.selectedPetId, b.id]; draw();
     assert.deepEqual(preview, []);
     assert.ok(labels.includes('出战宠不能合宠'));
-    assert.ok(!labels.includes('资质范围') && !actions.has('合宠'));
+    assert.ok(!labels.includes('资质范围') && !actions.has('合宠') && !actions.has('预览'));
     assert.ok(!actions.has('重新选宠'));
     v.fusionIds = [a.id, b.id]; draw();
     const before = townDisk.raw, writes = townDisk.writes;
     actions.get('合宠')(); draw(); assert.ok(labels.some(t => t.includes('两只原宠将消失')));
     const cancelled = actions.get('确认合宠'); actions.get('取消')(); cancelled();
     assert.equal(townDisk.raw, before); assert.equal(townDisk.writes, writes); assert.equal(rolls, 0);
+    actions.get('关闭')(); draw();
+    assert.equal(v.fusionOpen, true); assert.ok(!labels.includes('资质范围'));
     actions.get('关闭')(); assert.equal(v.fusionOpen, false);
   }
   v.openFusion(); v.fusionIds = [a.id, b.id]; draw(); actions.get('合宠')(); draw();

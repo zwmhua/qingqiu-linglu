@@ -1,6 +1,6 @@
 import { FUSION, fusionPlan } from '../logic/pet-fusion';
 import { buildFusionPreview } from './fusion-preview';
-import { assetManager, game, Game, _decorator, BlockInputEvents, Color, Component, EventTouch, Graphics, Label, Mask, Node, ResolutionPolicy, RichText, Sprite, SpriteFrame, sys, tween, Tween, UIOpacity, UITransform, Vec3, view } from 'cc';
+import { assetManager, game, Game, _decorator, BlockInputEvents, Color, Component, type EventMouse, EventTouch, Graphics, Label, Mask, Node, ResolutionPolicy, RichText, Sprite, SpriteFrame, sys, tween, Tween, UIOpacity, UITransform, Vec3, view } from 'cc';
 import { TownView } from './TownView';
 import { AttackEvent, Battle, BattleEvent, SpellEvent, Unit } from './Battle';
 import { COMMAND_ICON_SIZE, COMMAND_LAYOUT, CONFIG, SPELL_TINTS } from './config';
@@ -95,7 +95,9 @@ export class BattleView extends Component {
   private fusionConfirmation?: ReturnType<SessionProgress['prepareFusion']>;
   private fusionResult = false;
   private fusionPreviewSpecies?: WildSpecies;
-  private fusionPicking = false;
+  private fusionPreviewOpen = false;
+  private fusionSkillRows = [0, 0, 0];
+  private fusionTabNotice = false;
   private fusionPicker?: { side: number; id: string };
   private inventoryOpen = false;
   private inventoryItem?: string;
@@ -1521,7 +1523,8 @@ export class BattleView extends Component {
     this.fusionMessage = '';
     this.fusionConfirmation = undefined;
     this.fusionPreviewSpecies = undefined;
-    this.fusionPicking = false;
+    this.fusionPreviewOpen = this.fusionTabNotice = false;
+    this.fusionSkillRows = [0, 0, 0];
     this.fusionPicker = undefined;
     this.skillOpen = undefined;
     this.loadSkillArt();
@@ -1530,63 +1533,68 @@ export class BattleView extends Component {
 
   private renderFusion(): void {
     const ink = '#4A2C1D';
-    const close = () => { this.fusionConfirmation = undefined; this.fusionOpen = this.rosterOpen = false; this.render(); };
     let reason = '', plan: ReturnType<typeof fusionPlan> | undefined;
     const entries = this.progress.roster.entries;
     const parents = this.fusionIds.map(id => entries.find(pet => pet.id === id));
     try { plan = fusionPlan(entries, this.fusionIds, this.progress.selectedPetId, !this.onMap); }
     catch (error) { reason = error instanceof Error ? error.message : String(error); }
-    const outcomes = plan ? buildFusionPreview(plan).filter(outcome =>
-      parents.some(pet => pet?.species === outcome.species)) : [];
-    const preview = outcomes.length > 0 && !this.fusionPicking;
+    const preview = !!plan && this.fusionPreviewOpen;
+    const close = () => {
+      this.fusionConfirmation = this.skillOpen = undefined;
+      this.fusionPreviewOpen = false;
+      if (!preview) this.fusionOpen = this.rosterOpen = false;
+      this.render();
+    };
     this.rect(0, 0, CONFIG.width, CONFIG.height, '#000000', '', 0, close, 150).addComponent(BlockInputEvents);
     this.rect(54, 35, 1226, 680, '#000000', '', 0, undefined, 0).addComponent(BlockInputEvents);
     if (preview) this.rect(150, 35, 1034, 680, '#FBF0DA', '#B99A63', 18);
-    else if (this.fusionArt) this.image(0, 0, CONFIG.width, CONFIG.height, this.fusionArt);
-    this.text(preview ? '合宠预览' : '合宠 · 两旧换一新', 510, 51, 27, ink, 314, 1);
-    if (!this.fusionPicker) this.button('关闭', preview ? 1100 : 1206, 47, 65, 55, true, close, !preview);
+    else if (this.fusionArt) this.image(0, 0, 1242, CONFIG.height, this.fusionArt);
+    this.text(preview ? '合宠预览' : '合宠 · 两旧换一新', preview ? 510 : 464, 51, 27, ink, 314, 1);
+    if (!this.fusionPicker) this.button('关闭', preview ? 1100 : 1122, 44, 62, 54, true, close, !preview);
     if (parents.every(Boolean) && parents.some(pet => pet?.isMutated))
-      this.text('已放入变异宠物', 517, 96, 18, '#755821', 300, 1);
+      this.text('已放入变异宠物', preview ? 517 : 471, 96, 18, '#755821', 300, 1);
     if (!preview) parents.forEach((pet, side) => {
-      const x = side ? 826 : 134, sideName = side ? '右' : '左';
-      this.button(pet ? `${pet.name} · 更换` : `选择${sideName}侧父宠`, x, 52, 372, 52,
+      const x = side ? 774 : 126, sideName = side ? '右' : '左';
+      this.button(pet?.name ?? `请选择${sideName}侧父宠`, x, 617, 340, 38,
         this.onMap && !this.fusionConfirmation, () => {
+          this.fusionTabNotice = false;
           this.fusionPicker = { side, id: pet?.id ?? '' };
           this.render();
-        });
-      this.text(pet ? `${pet.name} · ${pet.isMutated ? '变异' : '普通'}${pet.isBaby ? '宝宝' : '野生'}`
-        : side ? '请选择右侧父宠' : '请选择左侧父宠', x + 4, 622, 20, ink, 362, 1);
+        }, true);
+      this.renderFusionSkills(pet, pet?.skillIds ?? [], x + 20, 287, 81, 58, side);
       if (!pet) return;
       APTITUDE_KEYS.forEach((key, i) => this.text(`${['攻击', '防御', '体力', '法力', '躲避', '速度'][i]}资质 ${pet.aptitudes[key]}`,
-        x + 10 + i % 2 * 186, 132 + Math.floor(i / 2) * 45, 19, ink, 164, 1));
-      this.drawPetPortrait(pet, x + 186, 528, 118);
-      this.text(`成长 ${pet.growth.toFixed(3)}`, x + 6, 525, 17, ink, 116);
-      const columns = pet.skillIds && pet.skillIds.length > 8 ? 6 : 4, step = 380 / columns;
-      if (columns === 6) this.rect(x, 286, 372, 188, '#F6E6C6', '#C6A971', 8);
-      for (let i = 0; i < columns * 2; i++) {
-        const skill = pet.skillIds?.[i], sx = x + i % columns * step, sy = 286 + Math.floor(i / columns) * 98;
-        const size = step - 9;
-        if (skill) {
-          this.drawSkillIcon(pet, skill, sx, sy, size);
-          this.rect(sx, sy, size, size, '#000000', '', 0, () => {
-            this.skillOpen = { pet, id: skill, x: sx, y: sy };
-            this.render();
-          }, 0);
-        } else this.text('空', sx, sy + 29, 14, ink, size, 1);
-      }
+        x + 4 + i % 2 * 176, 132 + Math.floor(i / 2) * 44, 19, ink, 156, 1));
+      this.text(`成长 ${pet.growth.toFixed(3)}`, x + 4, 244, 16, ink, 333, 1);
+      this.drawPetPortrait(pet, x + 172, 536, 116);
+      this.text(`${pet.isMutated ? '变异' : '普通'}${pet.isBaby ? '宝宝' : '野生'}`, x + 245, 538, 16, ink, 86, 1);
     });
-    this.text(`非必带遗传${FUSION.inheritance * 100}%`, preview ? 368 : 533, preview ? 660 : 140, 17, ink, 268, 1);
-    this.text('结果可能变弱', preview ? 645 : 533, preview ? 660 : 171, 17, '#873E28', 268, 1);
-    if (preview) {
-      const selected = outcomes.find(outcome => outcome.species === this.fusionPreviewSpecies) ?? outcomes[0];
-      this.renderFusionPreview(outcomes, selected);
-      this.button('重新选宠', 174, 642, 182, 54, !this.fusionConfirmation, () => {
-        this.fusionPicking = true;
+    this.text(`非必带遗传${FUSION.inheritance * 100}%`, preview ? 368 : 487, preview ? 660 : 140, 17, ink, 268, 1);
+    this.text('结果可能变弱', preview ? 645 : 487, preview ? 660 : 171, 17, '#873E28', 268, 1);
+    if (preview && plan) {
+      const outcomes = buildFusionPreview(plan);
+      const cards = plan.parents.map(pet => outcomes.find(outcome => outcome.species === pet.species)!);
+      const selected = cards.find(outcome => outcome.species === this.fusionPreviewSpecies) ?? cards[0];
+      this.renderFusionPreview(cards, selected);
+      this.button('重新选宠', 174, 642, 182, 54, !this.fusionConfirmation, close);
+    } else {
+      for (const [i, tab] of ['洗宝宝', '打书', '合宠'].entries()) {
+        const y = 155 + i * 58, active = i === 2;
+        this.rect(1242, y, 88, 49, active ? '#DFE9D6' : '#FAEED5', active ? '#527561' : '#B99A63', 8);
+        if (active) this.text(tab, 1242, y + 10, 20, ink, 88, 1);
+        else this.button(tab, 1242, y, 88, 49, true, () => { this.fusionTabNotice = true; this.render(); }, true);
+      }
+      if (this.fusionTabNotice) this.text('尚未开放', 487, 203, 18, '#873E28', 268, 1);
+      this.button('预览', 586, 574, 71, 74, !!plan && !this.fusionConfirmation, () => {
+        this.fusionTabNotice = false;
+        this.fusionPreviewSpecies = undefined;
+        this.fusionPreviewOpen = true;
+        this.fusionSkillRows[2] = 0;
         this.render();
-      });
+      }, true);
     }
-    this.button('合宠', preview ? 961 : 630, preview ? 642 : 574, preview ? 197 : 74, preview ? 54 : 74,
-      preview && !this.fusionConfirmation, () => {
+    this.button('合宠', preview ? 961 : 566, preview ? 642 : 378, preview ? 197 : 110, preview ? 54 : 110,
+      !!plan && !this.fusionConfirmation, () => {
       try { this.fusionConfirmation = this.progress.prepareFusion(!this.onMap || !this.fusionOpen, this.fusionIds); }
       catch (error) { this.fusionMessage = String(error); }
       this.render();
@@ -1691,7 +1699,7 @@ export class BattleView extends Component {
       const pet = this.progress.roster.entries.find(entry => entry.id === picker.id);
       if (this.fusionPicker !== picker || !pet || this.fusionPickError(pet, picker.side)) return;
       this.fusionIds[picker.side] = pet.id;
-      this.fusionPicking = false;
+      this.fusionSkillRows[picker.side] = 0;
       this.fusionMessage = '';
       close();
     });
@@ -1703,15 +1711,20 @@ export class BattleView extends Component {
     this.rect(174, 143, 345, 469, '#F7E9CF', '#C6A971', 12);
     this.rect(541, 143, 617, 469, '#EEDDBF', '#C6A971', 12);
     this.text('合宠造型概率', 189, 151, 23, ink, 315, 1);
+    const same = outcomes[0] === outcomes[1];
     outcomes.forEach((outcome, i) => {
-      const y = 185 + i * 140, active = outcome === selected;
-      this.rect(193, y, 307, 131, active ? '#E5EDD9' : '#FCF0D8', active ? '#527561' : '#C6A971', 10, () => {
+      const x = same ? 193 + i * 156 : 193, y = same ? 232 : 185 + i * 140;
+      const width = same ? 151 : 307, active = outcome === selected;
+      this.rect(x, y, width, same ? 215 : 131, active ? '#E5EDD9' : '#FCF0D8', active ? '#527561' : '#C6A971', 10, () => {
+        if (active) return;
         this.fusionPreviewSpecies = outcome.species;
+        this.fusionSkillRows[2] = 0;
         this.render();
       });
-      this.drawPetPortrait(outcome, 346, y + 53, 104);
-      this.text(WILD_SPECIES[outcome.species].name, 207, y + 100, 20, ink, 178, 2);
-      this.text(this.fusionPercent(outcome.probability), 396, y + 100, 20, '#356456', 96);
+      this.drawPetPortrait(outcome, x + width / 2, y + (same ? 77 : 53), same ? 132 : 104);
+      this.text(WILD_SPECIES[outcome.species].name, x + (same ? 0 : 14), y + (same ? 150 : 100), 20, ink, same ? width : 178, same ? 1 : 2);
+      this.text(this.fusionPercent(outcome.probability / (same ? 2 : 1)),
+        x + (same ? 0 : 203), y + (same ? 178 : 100), 20, '#356456', same ? width : 96, same ? 1 : 0);
     });
     this.text('仅列双亲造型，实际仍可能抽到其他物种。', 194, 566, 15, ink, 307, 1);
 
@@ -1727,18 +1740,43 @@ export class BattleView extends Component {
     });
 
     this.text('技能最多情况', 565, 350, 23, ink, 230);
-    this.text(`必带 ${selected.innate.length} · 遗传候选 ${selected.candidates.length}`, 565, 389, 18, ink, 550);
-    const skills = [...selected.innate, ...selected.candidates];
-    const columns = skills.length <= 8 ? 4 : 6, step = 550 / columns;
-    skills.forEach((id, i) => {
-      const x = 575 + (i % columns) * step + (step - 72) / 2, y = 423 + Math.floor(i / columns) * 82;
-      this.drawSkillIcon(selected, id, x, y, 72);
-      this.rect(x, y, 72, 72, '#000000', '', 0, () => {
-        this.skillOpen = { pet: selected, id, x, y };
-        this.render();
-      }, 0);
-    });
-    if (!skills.length) this.text('无可带技能', 565, 437, 19, ink, 550);
+    this.text(`必带 ${selected.innate.length} · 遗传候选 ${selected.candidates.length}`, 565, 379, 18, ink, 550);
+    this.renderFusionSkills(selected, [...selected.innate, ...selected.candidates], 590, 411, 138, 55, 2);
+  }
+
+  private renderFusionSkills(pet: Pick<CarriedPet, 'species'> | undefined, ids: readonly string[],
+    x: number, y: number, step: number, size: number, grid: number): void {
+    const maxRow = Math.max(0, Math.ceil(ids.length / 4) - 3);
+    const row = Math.min(this.fusionSkillRows[grid], maxRow), pitch = size + 6;
+    const scroll = (dir: number) => {
+      const next = Math.min(maxRow, Math.max(0, row + Math.sign(dir)));
+      if (next === row) return;
+      this.fusionSkillRows[grid] = next;
+      this.render();
+    };
+    const swipe = (event: EventTouch) => {
+      const delta = event.getUILocation().y - event.getUIStartLocation().y;
+      if (Math.abs(delta) < 24) return false;
+      scroll(delta);
+      return true;
+    };
+    const bindScroll = (node: Node, open?: () => void) => {
+      if (!maxRow) return;
+      node.on(Node.EventType.MOUSE_WHEEL, (event: EventMouse) => scroll(-event.getScrollY()));
+      node.on(Node.EventType.TOUCH_CANCEL, swipe);
+      node.on(Node.EventType.TOUCH_END, (event: EventTouch) => { if (!swipe(event)) open?.(); });
+    };
+    const width = step * 3 + size;
+    bindScroll(this.rect(x - 24, y - 6, width + 48, pitch * 3 + 6, '#F4E4C7', '#C6A971', 8));
+    for (let i = 0; i < 12; i++) {
+      const id = ids[row * 4 + i], sx = x + (i % 4) * step, sy = y + Math.floor(i / 4) * pitch;
+      const open = id && pet ? () => { this.skillOpen = { pet, id, x: sx, y: sy }; this.render(); } : undefined;
+      const cell = this.rect(sx, sy, size, size, '#E6D2AA', '#C6A971', 7, maxRow ? undefined : open);
+      if (id && pet) this.drawSkillIcon(pet, id, sx, sy, size);
+      else this.text('空', sx, sy + (size - 24) / 2, 15, '#634E38', size, 1);
+      bindScroll(cell, open);
+    }
+    if (maxRow) this.text(row === maxRow ? '向下滑动' : '向上滑动', x + width - 84, y + 3 * pitch, 13, '#634E38', 84, 2);
   }
 
   private openInventory(): void {
