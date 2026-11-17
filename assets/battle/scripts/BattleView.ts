@@ -96,6 +96,7 @@ export class BattleView extends Component {
   private fusionResult = false;
   private fusionPreviewSpecies?: WildSpecies;
   private fusionPicking = false;
+  private fusionPicker?: { side: number; id: string };
   private inventoryOpen = false;
   private inventoryItem?: string;
   private inventoryPet?: string;
@@ -1440,15 +1441,16 @@ export class BattleView extends Component {
 
   private renderPetSkills(pet: CarriedPet): void {
     this.loadSkillArt();
+    const unlocked = Math.max(8, pet.skillIds?.length ?? 0);
     for (let i = 0; i < 12; i++) {
-      const id = i < 8 ? pet.skillIds?.[i] : undefined;
+      const id = pet.skillIds?.[i], locked = i >= unlocked;
       const x = 621 + i % 4 * 99, y = 453 + Math.floor(i / 4) * 74;
       this.rect(x, y, 78, 67, '#7E735E', '', 10, id ? () => {
         this.skillOpen = { pet, id, x, y };
         this.render();
-      } : undefined, i < 8 ? 0 : 74).addComponent(BlockInputEvents);
+      } : undefined, locked ? 74 : 0).addComponent(BlockInputEvents);
       if (id) this.drawSkillIcon(pet, id, x, y, 78, 67);
-      else this.text(i < 8 ? '空' : '锁定', x, y + 20, 20, '#4A2C1D', 78, 1);
+      else this.text(locked ? '锁定' : '空', x, y + 20, 20, '#4A2C1D', 78, 1);
     }
     if (this.skillOpen?.pet === pet && pet.skillIds?.includes(this.skillOpen.id)) this.renderSkillDetail();
   }
@@ -1520,6 +1522,7 @@ export class BattleView extends Component {
     this.fusionConfirmation = undefined;
     this.fusionPreviewSpecies = undefined;
     this.fusionPicking = false;
+    this.fusionPicker = undefined;
     this.skillOpen = undefined;
     this.loadSkillArt();
     this.render();
@@ -1533,7 +1536,8 @@ export class BattleView extends Component {
     const parents = this.fusionIds.map(id => entries.find(pet => pet.id === id));
     try { plan = fusionPlan(entries, this.fusionIds, this.progress.selectedPetId, !this.onMap); }
     catch (error) { reason = error instanceof Error ? error.message : String(error); }
-    const outcomes = plan ? buildFusionPreview(plan) : [];
+    const outcomes = plan ? buildFusionPreview(plan).filter(outcome =>
+      parents.some(pet => pet?.species === outcome.species)) : [];
     const preview = outcomes.length > 0 && !this.fusionPicking;
     this.rect(0, 0, CONFIG.width, CONFIG.height, '#000000', '', 0, close, 150).addComponent(BlockInputEvents);
     this.rect(54, 35, 1226, 680, '#000000', '', 0, undefined, 0).addComponent(BlockInputEvents);
@@ -1543,20 +1547,13 @@ export class BattleView extends Component {
     this.button('关闭', preview ? 1100 : 1206, 47, 65, 55, true, close, !preview);
     if (parents.every(Boolean) && parents.some(pet => pet?.isMutated))
       this.text('已放入变异宠物', 517, 96, 18, '#755821', 300, 1);
-    if (!preview) this.fusionIds.forEach((id, side) => {
-      const x = side ? 826 : 134, pet = parents[side];
-      entries.forEach((entry, i) => {
-        const bx = x + i % 3 * 126, by = 48 + Math.floor(i / 3) * 30;
-        const selected = entry.id === id;
-        const choose = this.onMap && !this.fusionConfirmation ? () => {
-          this.fusionIds[side] = entry.id;
-          this.fusionPicking = false;
-          this.fusionMessage = '';
+    if (!preview) parents.forEach((pet, side) => {
+      const x = side ? 826 : 134, sideName = side ? '右' : '左';
+      this.button(pet ? `${pet.name} · 更换` : `选择${sideName}侧父宠`, x, 52, 372, 52,
+        this.onMap && !this.fusionConfirmation, () => {
+          this.fusionPicker = { side, id: pet?.id ?? '' };
           this.render();
-        } : undefined;
-        this.rect(bx, by, 120, 28, selected ? '#497566' : '#FCEDCC', '#BA975C', 6, choose);
-        this.text(`${entry.name} Lv.${entry.level}`, bx, by + 2, 15, selected ? '#FFF4D6' : ink, 120, 1);
-      });
+        });
       this.text(pet ? `${pet.name} · ${pet.isMutated ? '变异' : '普通'}${pet.isBaby ? '宝宝' : '野生'}`
         : side ? '请选择右侧父宠' : '请选择左侧父宠', x + 4, 622, 20, ink, 362, 1);
       if (!pet) return;
@@ -1564,15 +1561,18 @@ export class BattleView extends Component {
         x + 10 + i % 2 * 186, 132 + Math.floor(i / 2) * 45, 19, ink, 164, 1));
       this.drawPetPortrait(pet, x + 186, 528, 118);
       this.text(`成长 ${pet.growth.toFixed(3)}`, x + 6, 525, 17, ink, 116);
-      for (let i = 0; i < 8; i++) {
-        const skill = pet.skillIds?.[i], sx = x + i % 4 * 95, sy = 286 + Math.floor(i / 4) * 98;
+      const columns = pet.skillIds && pet.skillIds.length > 8 ? 6 : 4, step = 380 / columns;
+      if (columns === 6) this.rect(x, 286, 372, 188, '#F6E6C6', '#C6A971', 8);
+      for (let i = 0; i < columns * 2; i++) {
+        const skill = pet.skillIds?.[i], sx = x + i % columns * step, sy = 286 + Math.floor(i / columns) * 98;
+        const size = step - 9;
         if (skill) {
-          this.drawSkillIcon(pet, skill, sx, sy, 86);
-          this.rect(sx, sy, 86, 86, '#000000', '', 0, () => {
+          this.drawSkillIcon(pet, skill, sx, sy, size);
+          this.rect(sx, sy, size, size, '#000000', '', 0, () => {
             this.skillOpen = { pet, id: skill, x: sx, y: sy };
             this.render();
           }, 0);
-        } else this.text('空', sx, sy + 29, 14, ink, 86, 1);
+        } else this.text('空', sx, sy + 29, 14, ink, size, 1);
       }
     });
     this.text(`非必带遗传${FUSION.inheritance * 100}%`, preview ? 368 : 533, preview ? 660 : 140, 17, ink, 268, 1);
@@ -1593,6 +1593,7 @@ export class BattleView extends Component {
     }, !preview);
     const message = this.fusionMessage || reason;
     if (message) this.text(message, 142, preview ? 617 : 675, 20, '#873E28', 1050, 1);
+    if (this.fusionPicker) { this.renderFusionPicker(entries, this.fusionPicker); return; }
     this.renderSkillDetail();
     const pending = this.fusionConfirmation;
     if (!pending) return;
@@ -1618,6 +1619,48 @@ export class BattleView extends Component {
     return `${Number((probability * 100).toFixed(2))}%`;
   }
 
+  private fusionPickError(pet: CarriedPet, side: number): string {
+    const other = this.fusionIds[1 - side], entries = this.progress.roster.entries;
+    if (!this.onMap) return '战斗中或待保存时不能合宠';
+    if (other) {
+      const ids = side ? [other, pet.id] : [pet.id, other];
+      try { fusionPlan(entries, ids, this.progress.selectedPetId, false); }
+      catch (error) { return error instanceof Error ? error.message : String(error); }
+      return '';
+    }
+    if (pet.id === this.progress.selectedPetId) return '出战宠不能合宠';
+    return pet.level < FUSION.minLevel ? `合宠需要双方至少${FUSION.minLevel}级` : '';
+  }
+
+  private renderFusionPicker(entries: readonly CarriedPet[], picker: { side: number; id: string }): void {
+    const ink = '#4A2C1D';
+    const close = () => { this.fusionPicker = undefined; this.render(); };
+    this.rect(0, 0, CONFIG.width, CONFIG.height, '#152723', '', 0, close, 150).addComponent(BlockInputEvents);
+    this.rect(182, 113, 970, 522, '#FAEED5', '#93734D', 16).addComponent(BlockInputEvents);
+    this.text(`选择${picker.side ? '右' : '左'}侧父宠`, 208, 137, 29, ink, 918, 1);
+    entries.forEach((entry, i) => {
+      const x = 212 + i * 181, active = entry.id === picker.id, error = this.fusionPickError(entry, picker.side);
+      this.rect(x, 207, 171, 232, active ? '#DFE9D6' : error ? '#E8DECD' : '#F6E6C6',
+        active ? '#527561' : '#BA975C', 10, () => { picker.id = entry.id; this.render(); });
+      this.drawPetPortrait(entry, x + 85, 284, 114);
+      this.text(entry.name, x + 5, 348, 20, ink, 161, 1);
+      this.text(`${entry.level}级 · ${entry.isMutated ? '变异' : '普通'}`, x + 5, 382, 15, ink, 161, 1);
+      if (error) this.text('不可放入', x + 5, 408, 15, '#873E28', 161, 1);
+    });
+    const selected = entries.find(pet => pet.id === picker.id);
+    const error = selected ? this.fusionPickError(selected, picker.side) : '请选择一只灵宠';
+    if (error) this.text(error, 208, 468, 21, '#873E28', 918, 1);
+    this.button('取消', 426, 548, 185, 55, true, close);
+    this.button('确认放入', 722, 548, 185, 55, !!selected && !error, () => {
+      const pet = this.progress.roster.entries.find(entry => entry.id === picker.id);
+      if (this.fusionPicker !== picker || !pet || this.fusionPickError(pet, picker.side)) return;
+      this.fusionIds[picker.side] = pet.id;
+      this.fusionPicking = false;
+      this.fusionMessage = '';
+      close();
+    });
+  }
+
   private renderFusionPreview(outcomes: ReturnType<typeof buildFusionPreview>,
     selected: ReturnType<typeof buildFusionPreview>[number]): void {
     const ink = '#4A2C1D';
@@ -1634,6 +1677,7 @@ export class BattleView extends Component {
       this.text(WILD_SPECIES[outcome.species].name, 207, y + 100, 20, ink, 178, 2);
       this.text(this.fusionPercent(outcome.probability), 396, y + 100, 20, '#356456', 96);
     });
+    this.text('仅列双亲造型，实际仍可能抽到其他物种。', 194, 566, 15, ink, 307, 1);
 
     const names = ['攻击资质', '防御资质', '体力资质', '法力资质', '躲避资质', '速度资质', '成长'];
     const ranges = [...selected.aptitudes, selected.growth.map(value => value.toFixed(3))];
@@ -1647,7 +1691,6 @@ export class BattleView extends Component {
     });
 
     this.text('技能最多情况', 565, 350, 23, ink, 230);
-    this.text(`最多 ${selected.maxSkills} 格`, 988, 350, 23, '#356456', 147, 2);
     this.text(`必带 ${selected.innate.length} · 遗传候选 ${selected.candidates.length}`, 565, 389, 18, ink, 550);
     const skills = [...selected.innate, ...selected.candidates];
     const columns = skills.length <= 8 ? 4 : 6, step = 550 / columns;
@@ -1660,8 +1703,6 @@ export class BattleView extends Component {
       }, 0);
     });
     if (!skills.length) this.text('无可带技能', 565, 437, 19, ink, 550);
-    if (skills.length > selected.maxSkills)
-      this.text('候选多于可用格数，不能同时出现。', 565, 584, 17, '#873E28', 550);
   }
 
   private openInventory(): void {

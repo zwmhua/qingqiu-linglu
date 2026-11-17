@@ -1266,28 +1266,48 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
       baseStats: { constitution: 20, mana: 20, strength: 20, endurance: 20, agility: 20 } });
     Object.assign(pet, petCombat(pet));
   }
+  const skills = Object.keys(PET_SKILLS);
+  a.skillIds = skills.slice(0, 8);
+  b.skillIds = skills.slice(4);
   session.roster.entries.push(b); saveProgress(townDisk, session);
-  const labels = [], actions = new Map(), preview = [];
+  const labels = [], actions = new Map(), preview = [], picks = [];
   v.drawPetPortrait = pet => {
     if ('probability' in pet) preview.push([pet.species, pet.isMutated]);
   };
-  v.text = text => labels.push(text); v.rect = () => ({ addComponent() {} });
+  v.text = text => labels.push(text);
+  v.rect = (_x, _y, width, height, _color, _border, _radius, click) => {
+    if (width === 171 && height === 232 && click) picks.push(click);
+    return { addComponent() {} };
+  };
   v.button = (text, _x, _y, _w, _h, enabled, click) => { if (enabled) actions.set(text, click); return { addComponent() {} }; };
-  const draw = () => { labels.length = preview.length = 0; actions.clear(); v.renderFusion(); };
+  const draw = () => { labels.length = preview.length = picks.length = 0; actions.clear(); v.renderFusion(); };
   let rolls = 0; v.fusionRandom = () => { rolls++; return 0; };
   for (const region of ['town', 'outskirts']) {
     v.town.load(region); complete();
     const start = v.town.movement.position;
     assert.equal(v.town.movement.select({ x: start.x + 20, y: start.y }), true);
     assert.ok(v.town.movement.target); v.openFusion(); assert.equal(v.mapBlocked, true);
-    assert.equal(v.town.movement.target, undefined); v.fusionIds = [a.id, b.id]; draw();
+    assert.equal(v.town.movement.target, undefined);
+    draw(); assert.ok(actions.has('选择左侧父宠'));
+    actions.get('选择左侧父宠')(); draw();
+    assert.equal(actions.has('确认放入'), false);
+    assert.equal(picks.length, 3);
+    picks[1](); draw();
+    assert.deepEqual(v.fusionIds, ['', '']);
+    actions.get('确认放入')(); draw();
+    assert.deepEqual(v.fusionIds, [a.id, '']);
+    actions.get('选择右侧父宠')(); draw(); picks[2](); draw();
+    assert.deepEqual(v.fusionIds, [a.id, '']);
+    actions.get('确认放入')(); draw();
+    assert.deepEqual(v.fusionIds, [a.id, b.id]);
     assert.ok(labels.some(t => t.includes('90%'))); assert.ok(labels.some(t => t.includes('40%')));
-    assert.deepEqual(preview, [['tingwa', false], ['maomaochong', false], ['pangui', false]]);
+    assert.deepEqual(preview, [['tingwa', false]]);
     assert.ok(!actions.has('普通') && !actions.has('变异'));
     assert.ok(!labels.includes('已放入变异宠物'));
     assert.ok(!labels.includes('确认后才生成；不消耗道具。'));
     assert.ok(labels.includes('合宠造型概率') && labels.includes('资质范围'));
-    assert.ok(labels.some(t => t.includes('最多') && t.includes('格')));
+    assert.ok(labels.includes('技能最多情况'));
+    assert.ok(!labels.some(t => /最多 \d+ 格|不能同时出现/.test(t)));
     assert.ok(actions.has('合宠') && !actions.has('预览详情') && !actions.has('返回'));
     assert.ok(actions.has('重新选宠') && !labels.some(t => /资质 \d/.test(t)));
     a.isMutated = true; v.fusionIds = [a.id, '']; draw();
@@ -1298,8 +1318,12 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     assert.ok(!labels.includes('资质范围') && !actions.has('合宠'));
     b.isMutated = true; draw();
     assert.ok(labels.includes('已放入变异宠物') && labels.includes('资质范围'));
-    assert.equal(preview.length, 3);
+    assert.equal(preview.length, 1);
     assert.ok(preview.every(([, mutated]) => mutated));
+    b.species = 'maomaochong'; draw();
+    assert.deepEqual(preview, [['tingwa', true], ['maomaochong', true]]);
+    assert.deepEqual(labels.filter(t => /^\d+(?:\.\d+)?%$/.test(t)), ['47.5%', '47.5%']);
+    b.species = a.species;
     a.isMutated = b.isMutated = false;
     draw();
     assert.deepEqual(v.fusionIds, [a.id, b.id]);
@@ -1325,7 +1349,15 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
   assert.equal(v.fusionOpen, false); assert.equal(v.rosterOpen, true); assert.equal(v.isPet({ id: 'fused-1' }), true);
   assert.equal(v.petPanelPage, 'aptitude');
   assert.equal(v.fusionResult, true);
-  assert.equal(loadSessionProgress(townDisk).roster.nextFusedId, 2);
+  const reloaded = loadSessionProgress(townDisk).roster;
+  assert.equal(reloaded.nextFusedId, 2);
+  assert.deepEqual(reloaded.entries.find(pet => pet.id === 'fused-1').skillIds, skills);
+  const raw = JSON.parse(townDisk.raw), fused = raw.pets.find(pet => pet.id === 'fused-1');
+  for (const invalid of [{ ...fused, origin: 'captured', id: 'caught-9' },
+    { ...fused, skillIds: [...skills, skills[0]] }, { ...fused, skillIds: [...skills, 'unknown-skill'] }]) {
+    const snapshot = { ...raw, pets: raw.pets.map(pet => pet.id === fused.id ? invalid : pet) };
+    assert.throws(() => loadSessionProgress({ ...townDisk, raw: JSON.stringify(snapshot) }), /存档技能/);
+  }
   v.rosterOpen = false; v.mapBattle = true; v.openFusion(); assert.equal(v.fusionOpen, false);
   v.battle.phase = 'ended'; v.resultSaved = false; v.openFusion(); assert.equal(v.fusionOpen, false);
 });

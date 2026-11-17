@@ -52,18 +52,17 @@ test('species boundaries, independent factors, caps, low values and baby/wild bu
   }
   for (const value of [-1, NaN, 1.01]) assert.throws(() => fusePets(a, b, 'fused-1', () => value), /随机/);
 });
-test('parent-specific innate exclusion, deduplication, 40 percent and unbiased truncation', () => {
+test('parent-specific innate exclusion, deduplication and 40 percent inheritance without truncation', () => {
   const [a, b] = parents();
   assert.deepEqual(fusePets(a, b, 'fused-1', () => 0).skillIds, ['combo', 'waterarrow', 'counter']);
   const left = { ...a, skillIds: ['armor', 'thunder', 'fireball'] }, right = { ...b, skillIds: ['armor', 'thunder'] };
   assert.deepEqual(fusePets(left, right, 'fused-1', () => 0).skillIds, ['armor', 'thunder', 'fireball']);
   assert.deepEqual(fusePets(left, right, 'fused-1', sequence(0, ...Array(7).fill(0), ...Array(45).fill(0), 0.3999, 0.4, 0.4)).skillIds, ['armor']);
   const ids = Object.keys(PET_SKILLS), x = { ...a, skillIds: ids.slice(0, 8) }, y = { ...a, id: b.id, skillIds: ids.slice(4) };
-  for (const edge of [0, 1]) {
-    const child = fusePets(x, y, 'fused-1', sequence(0, ...Array(7 + 45 + 12).fill(0), ...Array(8).fill(edge)));
-    assert.equal(child.skillIds.length, 8); assert.equal(new Set(child.skillIds).size, 8);
-    assert.deepEqual(child.skillIds, edge ? ids.slice(4).reverse() : ids.slice(0, 8));
-  }
+  let calls = 0;
+  const child = fusePets(x, y, 'fused-1', () => { calls++; return 0; });
+  assert.deepEqual(child.skillIds, ids);
+  assert.equal(calls, 1 + 7 + 45 + ids.length);
 });
 
 test('preview probabilities and species ranges match actual fusion at both endpoints', async () => {
@@ -92,7 +91,7 @@ test('preview probabilities and species ranges match actual fusion at both endpo
   }
 });
 
-test('preview preserves innate skills and lists deduplicated candidates even when they exceed the cap', async () => {
+test('preview preserves innate skills and lists all deduplicated candidates above eight', async () => {
   const { buildFusionPreview } = await import('../assets/battle/scripts/fusion-preview.ts');
   const [a, b] = parents();
   const ids = Object.keys(PET_SKILLS);
@@ -104,6 +103,6 @@ test('preview preserves innate skills and lists deduplicated candidates even whe
   const eligible = ids.filter(id => id !== 'armor').sort();
   assert.deepEqual([...frog.candidates].sort(), eligible);
   assert.deepEqual([...turtle.candidates].sort(), eligible);
-  assert.equal(frog.maxSkills, FUSION.maxSkills);
-  assert.equal(turtle.maxSkills, FUSION.maxSkills);
+  assert.equal(frog.innate.length + frog.candidates.length, 11);
+  assert.equal(turtle.innate.length + turtle.candidates.length, 12);
 });

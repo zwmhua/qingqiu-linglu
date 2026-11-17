@@ -43,8 +43,8 @@ export const SKILL_POOLS: Record<WildSpecies, { innate: string[]; random: string
   pangui: { innate: ['armor'], random: ['reflect', 'counter', 'regen', 'power'] },
   maomaochong: { innate: [], random: ['crit', 'combo', 'lifesteal', 'swift', 'power'] },
 };
-export function validSkills(species: WildSpecies, ids: unknown, requireInnate = true): ids is string[] {
-  return Array.isArray(ids) && ids.length <= 8 && new Set(ids).size === ids.length
+export function validSkills(species: WildSpecies, ids: unknown, requireInnate = true, limit = 8): ids is string[] {
+  return Array.isArray(ids) && ids.length <= limit && new Set(ids).size === ids.length
     && ids.every(id => typeof id === 'string' && Object.hasOwn(PET_SKILLS, id))
     && (!requireInnate || SKILL_POOLS[species].innate.every(id => ids.includes(id)));
 }

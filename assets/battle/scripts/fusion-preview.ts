@@ -23,7 +23,6 @@ export function buildFusionPreview(plan: ReturnType<typeof fusionPlan>) {
       Math.min(Number((averageGrowth * factor).toFixed(3)), config.growth.max));
     const innate = SKILL_POOLS[species].innate;
     const candidates = unique.filter(id => !innate.includes(id));
-    const maxSkills = Math.min(FUSION.maxSkills, innate.length + candidates.length);
-    return { species, probability, isMutated, aptitudes, growth, innate, candidates, maxSkills };
+    return { species, probability, isMutated, aptitudes, growth, innate, candidates };
   });
 }

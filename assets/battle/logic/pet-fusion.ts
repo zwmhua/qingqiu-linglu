@@ -8,7 +8,7 @@ import type { CarriedPet } from './roster';
 import { speciesKeys, WILD_SPECIES, type WildSpecies } from './wild-encounter';
 
 export const FUSION = { minLevel: 10, parentRate: 0.45, sameRate: 0.9, panguiRate: 0.05, inheritance: 0.4,
-  aptitude: [0.7, 1.1], growth: [0.96, 1.02], maxSkills: 8 } as const;
+  aptitude: [0.7, 1.1], growth: [0.96, 1.02] } as const;
 export function fusionPlan(entries: readonly CarriedPet[], ids: readonly string[], selected: string,
   blocked: boolean, pool: readonly WildSpecies[] = speciesKeys) {
   if (blocked) throw new Error('战斗中或待保存时不能合宠');
@@ -49,7 +49,6 @@ export function fusePets(a: CarriedPet, b: CarriedPet, id: string, random = Math
     if (!Number.isFinite(value) || value < 0 || value > 1) throw new Error('合宠随机值无效');
     return value;
   };
-  const pick = (count: number) => Math.min(count - 1, Math.floor(roll() * count));
   const r = roll(), last = outcomes[outcomes.length - 1];
   let upper = 0;
   const species = r >= 1 - last.probability ? last.species
@@ -68,16 +67,13 @@ export function fusePets(a: CarriedPet, b: CarriedPet, id: string, random = Math
     .filter(skill => !SKILL_POOLS[pet.species].innate.includes(skill)));
   const available = candidates.filter((skill, index) => candidates.indexOf(skill) === index)
     .filter(skill => !skillIds.includes(skill));
-  const inherited = available.filter(() => roll() < FUSION.inheritance);
-  const room = FUSION.maxSkills - skillIds.length;
-  if (inherited.length <= room) skillIds.push(...inherited);
-  else while (skillIds.length < FUSION.maxSkills) skillIds.push(...inherited.splice(pick(inherited.length), 1));
+  skillIds.push(...available.filter(() => roll() < FUSION.inheritance));
   const child = { id, name: config.name, species, isBaby, isMutated: a.isMutated, level, exp: 0,
     potential: isBaby ? level * HERO_PROGRESSION.potentialPerLevel : 0,
     aptitudes, growth, baseStats, skillIds, origin: 'fused' as const };
   if (!/^fused-[1-9]\d*$/.test(id) || !Number.isSafeInteger(Number(id.slice(6))) || id === a.id || id === b.id
     || !APTITUDE_KEYS.every(key => Number.isInteger(aptitudes[key]) && aptitudes[key] > 0)
-    || !Number.isFinite(growth) || growth <= 0 || !validSkills(species, skillIds)
+    || !Number.isFinite(growth) || growth <= 0 || !validSkills(species, skillIds, true, Infinity)
     || BASE_STAT_KEYS.reduce((sum, key) => sum + baseStats[key], child.potential) !== baseStatTotal(level))
     throw new Error('合宠候选资料无效');
   return { ...child, ...petCombat(child) };
