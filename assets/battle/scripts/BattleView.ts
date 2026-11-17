@@ -1544,7 +1544,7 @@ export class BattleView extends Component {
     if (preview) this.rect(150, 35, 1034, 680, '#FBF0DA', '#B99A63', 18);
     else if (this.fusionArt) this.image(0, 0, CONFIG.width, CONFIG.height, this.fusionArt);
     this.text(preview ? '合宠预览' : '合宠 · 两旧换一新', 510, 51, 27, ink, 314, 1);
-    this.button('关闭', preview ? 1100 : 1206, 47, 65, 55, true, close, !preview);
+    if (!this.fusionPicker) this.button('关闭', preview ? 1100 : 1206, 47, 65, 55, true, close, !preview);
     if (parents.every(Boolean) && parents.some(pet => pet?.isMutated))
       this.text('已放入变异宠物', 517, 96, 18, '#755821', 300, 1);
     if (!preview) parents.forEach((pet, side) => {
@@ -1644,47 +1644,50 @@ export class BattleView extends Component {
       this.render();
     };
     const selected = entries.find(pet => pet.id === picker.id);
-    this.rect(0, 0, CONFIG.width, CONFIG.height, '#152723', '', 0, close, 150).addComponent(BlockInputEvents);
-    this.rect(330, 32, 674, 686, '#FAEED5', '#93734D', 16).addComponent(BlockInputEvents);
-    this.text(`选择${picker.side ? '右' : '左'}侧父宠`, 354, 46, 27, ink, 480);
-    this.button('关闭', 889, 45, 91, 43, true, close);
-    this.rect(350, 102, 634, 331, '#F4E4C7', '#C6A971', 10);
-    this.text(selected?.name ?? '请选择一只灵宠', 371, 113, 22, ink, 589);
+    this.rect(0, 0, CONFIG.width, CONFIG.height, '#152723', '', 0, undefined, 150).addComponent(BlockInputEvents);
+    this.rect(407, 99, 520, 556, '#FAEED5', '#93734D', 14).addComponent(BlockInputEvents);
+    this.text(`选择${picker.side ? '右' : '左'}侧父宠`, 425, 109, 23, ink, 391);
+    this.button('关闭', 836, 108, 73, 35, true, close);
+    this.rect(422, 150, 490, 278, '#F4E4C7', '#C6A971', 9);
+    this.text(selected?.name ?? '请选择一只灵宠', 438, 156, 20, ink, 454);
     const names = ['攻击资质', '防御资质', '体力资质', '法力资质', '躲避资质', '速度资质', '成长'];
     const values = [...APTITUDE_KEYS.map(key => selected?.aptitudes[key]), selected?.growth.toFixed(3)];
     values.forEach((value, i) => {
-      const x = 371 + i % 2 * 302, y = 151 + Math.floor(i / 2) * 32;
-      this.text(names[i], x, y, 18, ink, 104);
-      this.rect(x + 106, y, 159, 28, '#FBF1DC', '', 5);
-      this.text(String(value ?? '—'), x + 106, y, 18, ink, 159, 1);
+      const x = 438 + i % 2 * 231, y = 185 + Math.floor(i / 2) * 26;
+      this.text(names[i], x, y, 16, ink, 84);
+      this.rect(x + 84, y, 126, 22, '#FBF1DC', '', 4);
+      this.text(String(value ?? '—'), x + 84, y, 16, ink, 126, 1);
     });
-    this.text('技能', 371, 276, 18, ink, 150);
+    this.text('技能', 438, 287, 16, ink, 150);
     const ids = selected?.skillIds ?? [];
-    const columns = ids.length > 8 ? 6 : 4, step = 580 / columns;
+    const columns = ids.length > 8 ? 6 : 4, step = 458 / columns;
     for (let i = 0; i < 2 * columns; i++) {
-      const id = ids[i], x = 377 + i % columns * step + (step - 58) / 2, y = 304 + Math.floor(i / columns) * 62;
-      this.rect(x, y, 58, 58, '#E6D2AA', '#C6A971', 6, selected && id ? () => {
+      const id = ids[i], x = 438 + i % columns * step + (step - 48) / 2, y = 312 + Math.floor(i / columns) * 55;
+      this.rect(x, y, 48, 48, '#E6D2AA', '#C6A971', 6, selected && id ? () => {
         this.skillOpen = { pet: selected, id, x, y };
         this.render();
       } : undefined);
-      if (selected && id) this.drawSkillIcon(selected, id, x, y, 58);
+      if (selected && id) this.drawSkillIcon(selected, id, x, y, 48);
     }
 
-    this.text('携带灵宠', 354, 435, 18, ink, 560);
-    entries.forEach((entry, i) => {
-      const x = 356 + i * 124, active = entry.id === picker.id, error = this.fusionPickError(entry, picker.side);
-      this.rect(x, 461, 114, 145, active ? '#DFE9D6' : error ? '#E8DECD' : '#F6E6C6',
-        active ? '#527561' : '#BA975C', 10, () => { picker.id = entry.id; this.render(); });
-      this.drawPetPortrait(entry, x + 57, 500, 70);
-      this.text(entry.name, x + 3, 538, 16, ink, 108, 1);
-      this.text(`${entry.level}级 · ${entry.isMutated ? '变异' : '普通'}`, x + 3, 562, 14, ink, 108, 1);
-      if (error) this.text(entry.id === this.progress.selectedPetId ? '出战 · 不可放入' : '不可放入',
-        x + 3, 582, 13, '#873E28', 108, 1);
-    });
+    this.text('携带灵宠', 425, 434, 16, ink, 480);
+    for (let i = 0; i < BATTLE_RULES.maxCarriedPets; i++) {
+      const entry = entries[i], x = 431 + i * 96;
+      const active = entry?.id === picker.id, error = entry ? this.fusionPickError(entry, picker.side) : '';
+      this.rect(x, 462, 88, 88, active ? '#DFE9D6' : error || !entry ? '#E8DECD' : '#F6E6C6',
+        active ? '#527561' : '#BA975C', 7, entry ? () => { picker.id = entry.id; this.render(); } : undefined);
+      if (!entry) continue;
+      this.drawPetPortrait(entry, x + 44, 489, 42);
+      this.text(`${entry.level}级`, x, 512, 13, ink, 88, 1);
+      this.text(entry.isMutated ? '变异' : '普通', x, 529, 12, ink, 88, 1);
+      if (error) {
+        this.rect(x + 4, 466, 49, 16, '#935140', '', 4);
+        this.text(entry.id === this.progress.selectedPetId ? '出战' : '不可放入', x + 4, 465, 10, '#FFF1D6', 49, 1);
+      }
+    }
     const error = selected ? this.fusionPickError(selected, picker.side) : '';
-    if (error) this.text(error, 354, 617, 19, '#873E28', 626, 1);
-    this.button('取消', 477, 655, 166, 47, true, close);
-    this.button('选择', 691, 655, 166, 47, !!selected && !error, () => {
+    if (error) this.text(error, 425, 562, 17, '#873E28', 484, 1);
+    this.button('选择', 591, 603, 152, 39, !!selected && !error, () => {
       const pet = this.progress.roster.entries.find(entry => entry.id === picker.id);
       if (this.fusionPicker !== picker || !pet || this.fusionPickError(pet, picker.side)) return;
       this.fusionIds[picker.side] = pet.id;
