@@ -1,5 +1,5 @@
 import { FUSION, fusionPlan } from '../logic/pet-fusion';
-import { assetManager, game, Game, _decorator, BlockInputEvents, Color, Component, EventTouch, Graphics, Label, Mask, Node, ResolutionPolicy, RichText, ScrollView, Sprite, SpriteFrame, sys, tween, Tween, UIOpacity, UITransform, Vec2, Vec3, view } from 'cc';
+import { assetManager, game, Game, _decorator, BlockInputEvents, Color, Component, EventTouch, Graphics, Label, Mask, Node, Rect, ResolutionPolicy, RichText, ScrollView, Sprite, SpriteFrame, sys, tween, Tween, UIOpacity, UITransform, Vec2, Vec3, view } from 'cc';
 import { TownView } from './TownView';
 import { AttackEvent, Battle, BattleEvent, SpellEvent, Unit } from './Battle';
 import { COMMAND_ICON_SIZE, COMMAND_LAYOUT, CONFIG, SPELL_TINTS } from './config';
@@ -36,8 +36,11 @@ const POTENTIAL_RELEASE_EVENTS = ['pointerup', 'pointercancel', 'pointerout', 'm
 const C = (hex: string) => new Color(hex);
 const COMMAND_NAMES = ['攻击', '防御', '保护', '召唤', '抓取', '道具', '逃跑', '灵术', '撤退'] as const;
 const BAG_ART = {
-  book: 'item_skillbook', rejuvenation: 'item_rebirth_dew', 'mutation-rejuvenation': 'item_rebirth_dew_mutant',
+  panel: 'bag_panel', book: 'items/item_skillbook',
+  rejuvenation: 'items/item_rebirth_dew', 'mutation-rejuvenation': 'items/item_rebirth_dew_mutant',
 } as const;
+const BAG_PANEL = { x: 10, y: 0, width: 1313, height: 740 };
+const BAG_GRID = { x: 691, y: 147, width: 506, colStep: 101.5, rowStep: 85, columns: 5, visibleRows: 5 };
 declare const wx: Parameters<typeof wechatStorage>[0] & {
   showModal(options: { content: string; showCancel: boolean; success?: (result: { confirm: boolean }) => void;
     complete?: () => void }): void;
@@ -96,6 +99,7 @@ export class BattleView extends Component {
   private inventoryChoosingPet = false;
   private inventoryScrollY = 0;
   private bagFrames = new Map<string, SpriteFrame>();
+  private bagRowFrame?: SpriteFrame;
   private bagArtLoading = false;
   private bagArtFailed = false;
   private bookRandom = Math.random;
@@ -220,7 +224,10 @@ export class BattleView extends Component {
     this.stopPotentialRepeat();
   }
 
-  onDestroy(): void { this.town?.dispose(); }
+  onDestroy(): void {
+    this.town?.dispose();
+    this.bagRowFrame?.destroy();
+  }
 
   start(): void {
     let saved: SessionProgress | null = null;
@@ -1568,26 +1575,30 @@ export class BattleView extends Component {
   }
 
   private loadBagArt(): void {
-    if (this.bagArtLoading || this.bagFrames.size) return;
+    if (this.bagArtLoading || (this.bagFrames.has('panel') && !this.bagArtFailed)) return;
     this.bagArtLoading = true;
     this.bagArtFailed = false;
-    const load = (name: string, folder: string, icons: Record<string, string>) =>
-      new Promise<[string, SpriteFrame][]>((resolve, reject) => {
+    const reportFailure = (error: unknown) => {
+      this.bagArtFailed = true;
+      console.warn('背包素材加载失败', error);
+    };
+    const load = (name: string, paths: Record<string, string>) =>
+      new Promise<void>((resolve, reject) => {
         assetManager.loadBundle(name, (error, bundle) => {
           if (error || !bundle) { reject(error ?? new Error(name)); return; }
-          resolve(Promise.all(Object.entries(icons).map(([key, file]) =>
-            new Promise<[string, SpriteFrame]>((ready, failed) => {
-              bundle.load(`textures/${folder}/${file}/spriteFrame`, SpriteFrame, (err, frame) => {
+          resolve(Promise.allSettled(Object.entries(paths).map(([key, file]) =>
+            new Promise<void>((ready, failed) => {
+              bundle.load(`textures/${file}/spriteFrame`, SpriteFrame, (err, frame) => {
                 if (err || !frame) failed(err ?? new Error(file));
-                else ready([key, frame]);
+                else { this.bagFrames.set(key, frame); ready(); }
               });
-            }))));
+            }))).then(results => {
+            for (const result of results) if (result.status === 'rejected') reportFailure(result.reason);
+          }));
         });
       });
-    const skills = Object.fromEntries(Object.keys(PET_SKILLS).map(id => [id, `skill_${id}`]));
-    Promise.all([load('inventory', 'items', BAG_ART), load('battle', 'ui/skills', skills)])
-      .then(frames => { this.bagFrames = new Map(frames.flat()); })
-      .catch(error => { this.bagArtFailed = true; console.warn('背包图标加载失败', error); })
+    const skills = Object.fromEntries(Object.keys(PET_SKILLS).map(id => [id, `ui/skills/skill_${id}`]));
+    Promise.all([load('inventory', BAG_ART).catch(reportFailure), load('battle', skills).catch(reportFailure)])
       .finally(() => {
         this.bagArtLoading = false;
         if (this.isValid && this.inventoryOpen) this.render();
@@ -1651,62 +1662,58 @@ export class BattleView extends Component {
       this.render();
     };
     this.rect(0, 0, CONFIG.width, CONFIG.height, '#000000', '', 0, close, 150).addComponent(BlockInputEvents);
-    this.rect(140, 62, 1054, 626, '#1E3835', '#E5CB8D', 16).addComponent(BlockInputEvents);
-    this.rect(157, 74, 1020, 59, '#29483F', '#92784B', 10);
-    this.text('背包', 184, 83, 31, '#F3DFAD', 190);
-    this.rect(279, 105, 725, 2, '#B2945E');
-    [287, 651, 995].forEach(x => this.text('◆', x - 10, 96, 12, '#E5CB8D', 20, 1));
-    this.button('关闭', 1028, 79, 132, 48, true, close);
-    this.rect(165, 143, 411, 472, '#DCCBA6', '#E5CB8D', 12);
-    this.rect(176, 154, 389, 450, '#EFDFC0', '#9C8156', 9);
-    this.text(BATTLE_RULES.hero.name, 176, 175, 24, '#4A2C1D', 389, 1);
-    if (this.heroArt) this.image(218, 245, 305, 305, this.heroArt);
-    this.text('金币  0', 176, 643, 22, '#F3DFAD', 180);
-
+    const panel = this.bagFrames.get('panel');
+    if (!panel) {
+      this.text(this.bagArtFailed ? '背包界面加载失败' : '加载中…', 467, 346, 25, '#F3DFAD', 400, 1);
+      this.button('关闭', 601, 399, 132, 48, true, close);
+      return;
+    }
+    const { x, y, width, height } = BAG_PANEL;
+    const background = this.image(x, y, width, height, panel).node;
+    background.name = 'bag-panel';
+    background.addComponent(BlockInputEvents);
+    if (this.heroArt) this.image(198, 205, 335, 335, this.heroArt);
     const unavailable = (label: string) => () => {
       this.bookMessage = `${label}·未开放`;
       this.render();
     };
-    const tab = (label: string, x: number, y: number, w: number, h: number, current: boolean) => {
-      this.rect(x, y, w, h, current ? '#527561' : '#29463D',
-        current ? '#FFD889' : '#92784B', 8, current ? undefined : unavailable(label));
-      this.text(label, x, y + h / 2 - 16, 20, '#F3DFAD', w, 1);
-    };
-    tab('物品', 608, 143, 256, 36, true);
-    tab('任务', 871, 143, 256, 36, false);
-    this.rect(608, 183, 519, 418, '#172E2A', '#92784B', 12);
-    tab('背包', 1126, 193, 68, 88, true);
-    tab('仓库', 1126, 289, 68, 88, false);
+    this.bagControl('关闭', 1191, 14, 106, 57, true, close);
+    this.bagControl('任务', 953, 90, 229, 47, true, unavailable('任务'));
+    this.bagControl('仓库', 1235, 259, 64, 127, true, unavailable('仓库'));
 
     const inventory = this.progress.inventory;
-    this.renderInventoryGrid(inventory);
+    this.renderInventoryGrid(inventory, panel);
     const id = this.inventoryItem;
     const hasSelection = !!id && inventory[id] > 0;
-    if (hasSelection) this.text(`${ITEMS[id].name}  ·  ${ITEMS[id].description}`, 608, 603, 14, '#F3DFAD', 519);
-    const notice = !this.onMap ? '战斗中只读'
-      : this.bookMessage || (this.bagArtFailed ? '图标暂不可用，可按名称查看道具。' : '');
-    if (notice) this.text(notice, 608, 623, 14, '#F4DC9C', 519);
-    this.button('使用', 608, 644, 256, 37, hasSelection && this.onMap, () => {
+    if (hasSelection) this.text(`${ITEMS[id].name}  ·  ${ITEMS[id].description}`, 698, 590, 15, '#4A2C1D', 494);
+    const notice = this.bookMessage || (!this.onMap ? '战斗中只读'
+      : this.bagArtFailed ? '图标暂不可用，可按名称查看道具。' : '');
+    if (notice) this.text(notice, 698, 615, 15, '#513B25', 494);
+    this.bagControl('使用', 705, 652, 225, 51, hasSelection && this.onMap, () => {
       if (!this.onMap || !this.inventoryOpen || !id || id !== this.inventoryItem || !this.progress.inventory[id]) return;
       this.bookMessage = '';
       this.inventoryChoosingPet = true;
       this.render();
     });
-    this.button('整理', 871, 644, 256, 37, true, unavailable('整理'));
+    this.bagControl('整理', 957, 652, 225, 51, true, unavailable('整理'));
     if (this.inventoryChoosingPet && id) this.renderInventoryPets(id);
     this.renderBookConfirmation();
   }
 
-  private renderInventoryGrid(inventory: Inventory): void {
+  private bagControl(label: string, x: number, y: number, w: number, h: number,
+    enabled: boolean, click: () => void): void {
+    this.rect(x, y, w, h, '#233B30', '', 22, enabled ? click : undefined, enabled ? 0 : 115).name = label;
+  }
+
+  private renderInventoryGrid(inventory: Inventory, frame: SpriteFrame): void {
     const ids = Object.keys(ITEMS).filter(id => inventory[id] > 0);
-    const columns = 5, visibleRows = 5, slotSize = 74, gap = 8, pitch = slotSize + gap;
+    const { x: gridX, y: gridY, width, colStep, rowStep, columns, visibleRows } = BAG_GRID;
     const rows = Math.max(visibleRows, Math.ceil(ids.length / columns));
-    const width = columns * pitch + gap, height = visibleRows * pitch + gap;
-    const contentHeight = rows * pitch + gap;
+    const height = visibleRows * rowStep, contentHeight = rows * rowStep;
     const panel = this.layer;
     const grid = new Node('bag-grid');
     panel.addChild(grid);
-    this.pos(grid, 868, 183 + height / 2);
+    this.pos(grid, gridX + width / 2, gridY + height / 2);
     grid.addComponent(UITransform).setContentSize(width, height);
     const content = new Node('bag-items');
     grid.addChild(content);
@@ -1727,27 +1734,36 @@ export class BattleView extends Component {
 
     this.layer = content;
     // Drawing helpers subtract the screen center. In this layer the origin is the grid's top center.
-    const left = CONFIG.width / 2 - width / 2 + gap, top = CONFIG.height / 2 + gap;
+    const left = CONFIG.width / 2 - width / 2, top = CONFIG.height / 2;
+    if (rows > visibleRows) {
+      // Scroll the original cells with the items, reusing the same texture.
+      if (!this.bagRowFrame) {
+        this.bagRowFrame = new SpriteFrame();
+        this.bagRowFrame.reset({ texture: frame.texture,
+          rect: new Rect(gridX - BAG_PANEL.x, gridY - BAG_PANEL.y, width, rowStep) });
+        this.bagRowFrame.packable = false;
+      }
+      for (let row = 0; row < rows; row++) this.image(left, top + row * rowStep, width, rowStep, this.bagRowFrame);
+    }
     for (let i = 0; i < rows * columns; i++) {
       const id = ids[i], count = inventory[id] ?? 0;
-      const x = left + i % columns * pitch, y = top + Math.floor(i / columns) * pitch;
+      const x = left + 3 + i % columns * colStep, y = top + 3 + Math.floor(i / columns) * rowStep;
       const selected = count > 0 && id === this.inventoryItem;
-      const slot = this.rect(x, y, slotSize, slotSize, selected ? '#527561' : '#29463D',
-        selected ? '#FFD889' : '#776A4C', 8, () => {
+      const slot = this.rect(x, y, 94, 79, '#F9D783', selected ? '#FFF1B3' : '', 9, () => {
           this.inventoryItem = count > 0 ? id : undefined;
           this.bookMessage = '';
           this.render();
-        });
+        }, selected ? 55 : 0);
       slot.name = `bag-slot-${i}`;
       if (!count) continue;
       const skill = id.startsWith('book:') ? id.slice(5) : undefined;
       const art = this.bagFrames.get(skill ? 'book' : id);
       const emblem = skill ? this.bagFrames.get(skill) : undefined;
-      if (art) this.image(x + 11, y + 6, 52, 52, art);
-      else this.text(ITEMS[id].name, x + 2, y + 28, 11, '#F3DFAD', 70, 1);
-      if (emblem) this.image(x + 27, y + 21, 20, 20, emblem);
+      if (art) this.image(x + 19, y + 5, 56, 56, art);
+      else this.text(ITEMS[id].name, x + 3, y + 26, 13, '#FFF2C5', 88, 1);
+      if (emblem) this.image(x + 36, y + 21, 22, 22, emblem);
       const large = count > 999999999;
-      this.text(String(count), x + 2, y + (large ? 60 : 53), large ? 8 : 15, '#FFF2C5', 68, 2);
+      this.text(String(count), x + 4, y + (large ? 61 : 56), large ? 9 : 16, '#FFF2C5', 85, 2);
     }
     this.layer = panel;
   }

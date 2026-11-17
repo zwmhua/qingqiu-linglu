@@ -87,7 +87,7 @@ registerHooks({
   },
 });
 const { BattleView } = await import('../assets/battle/scripts/BattleView.ts');
-const { Node, Texture2D } = await import('cc');
+const { Node, SpriteFrame, Texture2D } = await import('cc');
 const { ITEMS, INVENTORY_CONFIG } = await import('../assets/battle/logic/inventory.ts');
 const { SessionProgress } = await import('../assets/battle/logic/session-progress.ts');
 const { initialHero, awardExperience, adjustPotential } = await import('../assets/battle/logic/hero-progress.ts');
@@ -1045,7 +1045,18 @@ test('skill slots open only owned skills and close on switching pets', () => {
   assert.equal(v.skillOpen, undefined);
 });
 
-test('bag lays out 25 slots, stacks by ID, and only enters pet selection through Use', async () => {
+function mockBagArt(v) {
+  const panel = new SpriteFrame(), images = [];
+  v.bagFrames.set('panel', panel);
+  v.image = (x, y, width, height, frame) => {
+    images.push({ x, y, width, height, frame });
+    return { node: { addComponent() {} } };
+  };
+  v.bagControl = (...args) => v.button(...args);
+  return { panel, images };
+}
+
+test('bag lays out 25 slots on its art, stacks by ID, and only enters pet selection through Use', async () => {
   const { v, session } = await roundTripView(), slots = [], labels = new Map(), actions = new Map();
   v.mapBattle = false;
   const stock = { rejuvenation: 105, 'mutation-rejuvenation': 1 };
@@ -1060,8 +1071,9 @@ test('bag lays out 25 slots, stacks by ID, and only enters pet selection through
     if (enabled) actions.set(value, click);
     labels.set(value, { x, y });
   };
+  const { panel, images } = mockBagArt(v);
   const draw = () => {
-    slots.length = 0; labels.clear(); actions.clear();
+    slots.length = 0; images.length = 0; labels.clear(); actions.clear();
     v.layer = new Node('bag'); v.renderInventory();
     return slots.filter(node => node.name?.startsWith('bag-slot-'));
   };
@@ -1073,8 +1085,11 @@ test('bag lays out 25 slots, stacks by ID, and only enters pet selection through
   assert.ok(grid[0].x < grid[1].x && grid[0].y === grid[4].y && grid[0].y < grid[5].y);
   assert.deepEqual([...labels.keys()].filter(label => /^\d+$/.test(label)), ['105', '1']);
   assert.deepEqual(INVENTORY_CONFIG, { pageSize: 20, stackLimit: 99 });
-  assert.ok(labels.get('金币  0').x < labels.get('物品').x);
-  assert.equal(labels.get('金币  0').click, undefined);
+  assert.deepEqual(images[0], { x: 10, y: 0, width: 1313, height: 740, frame: panel });
+  assert.equal(images.filter(image => image.frame === panel).length, 1);
+  assert.equal(actions.has('金币  0'), false);
+  assert.equal(actions.has('撷灵客'), false);
+  assert.equal(slots.some(slot => slot.click && slot.x > 0 && slot.x < 650 && !slot.name?.startsWith('bag-slot-')), false);
   assert.equal(actions.has('使用'), false);
   assert.equal(labels.has('点击道具查看'), false);
   grid[0].click(); draw();
@@ -1083,7 +1098,7 @@ test('bag lays out 25 slots, stacks by ID, and only enters pet selection through
   assert.ok([...labels.keys()].some(label => label.includes(ITEMS.rejuvenation.description) && label.startsWith('还童露')));
   assert.ok(labels.get('使用').x < labels.get('整理').x);
   for (const tab of ['任务', '仓库', '整理']) {
-    (actions.get(tab) ?? slots.find(slot => slot.click && slot.x === labels.get(tab).x)?.click)();
+    actions.get(tab)();
     draw();
     assert.ok(labels.has(`${tab}·未开放`));
     assert.equal(v.inventoryItem, 'rejuvenation');
@@ -1102,6 +1117,7 @@ test('bag lays out 25 slots, stacks by ID, and only enters pet selection through
     const overflow = draw();
     const viewport = v.layer.children.find(node => node.name === 'bag-grid');
     assert.equal(overflow.length, 30);
+    assert.equal(images.filter(image => image.frame !== panel && image.width === 506 && image.height === 85).length, 6);
     assert.ok(viewport.scroll.vertical && !viewport.scroll.horizontal);
     assert.ok(viewport.scroll.content.size[1] > viewport.size[1]);
     viewport.scroll.scrollToOffset({ x: 0, y: 60 });
@@ -1126,6 +1142,7 @@ test('skill book view confirms on maps, cancels without work and guards stale ca
     if (enabled) actions.set(text, callback);
     return { addComponent() {} };
   };
+  mockBagArt(v);
   const draw = () => { labels.length = 0; actions.clear(); v.layer = new Node('bag'); v.renderInventory(); };
   const choose = () => { draw(); actions.get('使用')(); draw(); actions.get('1. 汀蛙')(); draw(); };
   let rolls = 0; v.bookRandom = () => { rolls++; return 0; };
@@ -1214,6 +1231,7 @@ test('rejuvenation UI covers maps, cancellation, failure, stale confirmation, se
   const labels = [], actions = new Map();
   v.text = text => labels.push(text); v.rect = () => ({ addComponent() {} });
   v.button = (text, _x, _y, _w, _h, enabled, click) => { if (enabled) actions.set(text, click); return { addComponent() {} }; };
+  mockBagArt(v);
   const draw = () => { labels.length = 0; actions.clear(); v.layer = new Node('bag'); v.renderInventory(); };
   const choose = (index = 1) => {
     draw(); actions.get('使用')(); draw(); actions.get(`${index + 1}. ${session.roster.entries[index].name}`)(); draw();
