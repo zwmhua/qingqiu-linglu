@@ -95,8 +95,6 @@ export class BattleView extends Component {
   private fusionConfirmation?: ReturnType<SessionProgress['prepareFusion']>;
   private fusionResult = false;
   private fusionPreviewSpecies?: WildSpecies;
-  private fusionMutated = false;
-  private fusionOtherIds = ['', ''];
   private fusionPicking = false;
   private inventoryOpen = false;
   private inventoryItem?: string;
@@ -1518,8 +1516,6 @@ export class BattleView extends Component {
     this.inventoryOpen = false;
     this.fusionOpen = this.rosterOpen = true;
     this.fusionIds = ['', ''];
-    this.fusionOtherIds = ['', ''];
-    this.fusionMutated = !this.progress.roster.entries.some(pet => !pet.isMutated);
     this.fusionMessage = '';
     this.fusionConfirmation = undefined;
     this.fusionPreviewSpecies = undefined;
@@ -1534,33 +1530,22 @@ export class BattleView extends Component {
     const close = () => { this.fusionConfirmation = undefined; this.fusionOpen = this.rosterOpen = false; this.render(); };
     let reason = '', plan: ReturnType<typeof fusionPlan> | undefined;
     const entries = this.progress.roster.entries;
+    const parents = this.fusionIds.map(id => entries.find(pet => pet.id === id));
     try { plan = fusionPlan(entries, this.fusionIds, this.progress.selectedPetId, !this.onMap); }
     catch (error) { reason = error instanceof Error ? error.message : String(error); }
     const outcomes = plan ? buildFusionPreview(plan) : [];
     const preview = outcomes.length > 0 && !this.fusionPicking;
-    const visiblePets = entries.filter(pet => pet.isMutated === this.fusionMutated);
     this.rect(0, 0, CONFIG.width, CONFIG.height, '#000000', '', 0, close, 150).addComponent(BlockInputEvents);
     this.rect(54, 35, 1226, 680, '#000000', '', 0, undefined, 0).addComponent(BlockInputEvents);
     if (preview) this.rect(150, 35, 1034, 680, '#FBF0DA', '#B99A63', 18);
     else if (this.fusionArt) this.image(0, 0, CONFIG.width, CONFIG.height, this.fusionArt);
     this.text(preview ? '合宠预览' : '合宠 · 两旧换一新', 510, 51, 27, ink, 314, 1);
     this.button('关闭', preview ? 1100 : 1206, 47, 65, 55, true, close, !preview);
-    for (const mutated of [false, true]) {
-      const x = mutated ? 672 : 564, active = mutated === this.fusionMutated;
-      this.rect(x, 95, 96, 35, active ? '#D5E2C9' : '#FCEDCC', '#BA975C', 8);
-      this.button(mutated ? '变异' : '普通', x, 95, 96, 35, !this.fusionConfirmation, () => {
-        if (active) return;
-        this.fusionMutated = mutated;
-        [this.fusionIds, this.fusionOtherIds] = [this.fusionOtherIds, this.fusionIds];
-        this.fusionPreviewSpecies = undefined;
-        this.fusionPicking = false;
-        this.fusionMessage = '';
-        this.render();
-      }, true);
-    }
+    if (parents.every(Boolean) && parents.some(pet => pet?.isMutated))
+      this.text('已放入变异宠物', 517, 96, 18, '#755821', 300, 1);
     if (!preview) this.fusionIds.forEach((id, side) => {
-      const x = side ? 826 : 134, pet = entries.find(p => p.id === id);
-      visiblePets.forEach((entry, i) => {
+      const x = side ? 826 : 134, pet = parents[side];
+      entries.forEach((entry, i) => {
         const bx = x + i % 3 * 126, by = 48 + Math.floor(i / 3) * 30;
         const selected = entry.id === id;
         const choose = this.onMap && !this.fusionConfirmation ? () => {
