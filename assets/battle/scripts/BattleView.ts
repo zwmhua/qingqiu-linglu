@@ -172,6 +172,7 @@ export class BattleView extends Component {
   private summonOpen = false;
   private rosterOpen = false;
   private selectedPetId: string | null = null;
+  private petSlotSelected = false;
   private releasePrompt?: CarriedPet;
   private detailsOpen: 'hero' | null = null;
   private heroPanelPage: 'basic' | 'advanced' | 'points' = 'basic';
@@ -1256,6 +1257,7 @@ export class BattleView extends Component {
   private openPetPanel(id: string, fusionResult = false): void {
     this.skillOpen = undefined;
     this.selectedPetId = id;
+    this.petSlotSelected = false;
     this.fusionResult = fusionResult;
     this.petPanelPage = fusionResult ? 'aptitude' : 'basic';
     this.render();
@@ -1280,6 +1282,7 @@ export class BattleView extends Component {
       this.stopPotentialRepeat();
       this.rosterOpen = false;
       this.selectedPetId = null;
+      this.petSlotSelected = false;
       this.allocationPreview = undefined;
       if (returnToPet) this.returnFromFusion();
       else this.render();
@@ -1307,13 +1310,14 @@ export class BattleView extends Component {
       const tagX = 338 + pet.name.length * 23;
       this.rect(tagX, 116, 76, 26, '#4A7764', '', 10);
       this.text(identity.replaceAll(' ', ''), tagX, 116, 15, '#F7E8C1', 76, 1);
+      const showRelease = !this.fusionResult && this.petSlotSelected && pet.isBaby;
+      if (!showRelease) this.rect(437, 452, 90, 44, aptitude ? '#FCEED9' : '#FEEED5', '', 4);
       this.drawPetPortrait(pet, 373, 337, 244);
       if (!this.fusionResult) {
-        const showFusion = this.onMap && !aptitude;
-        this.renderReleaseButton(pet);
-        this.renderDeployButton(pet, showFusion ? 122 : 180);
-        if (showFusion)
-          this.button('炼妖', 368, 455, 70, 36, !this.mapUnavailable && !this.town?.loading, () => this.openFusion(pet.id));
+        if (showRelease) this.renderReleaseButton(pet);
+        this.renderDeployButton(pet);
+        if (this.onMap && !aptitude)
+          this.button('炼妖', 1089, 423, 68, 44, !this.mapUnavailable && !this.town?.loading, () => this.openFusion(pet.id));
         this.renderPetSlots(pet.id);
       }
       this.text('属性', 606, 101, 25, ink, 182, 1, () => open('basic'));
@@ -1337,10 +1341,10 @@ export class BattleView extends Component {
     this.renderAllocation(petProgress(pet), () => open(this.petReturnPage), draft => this.confirmPetPoints(pet.id, draft), 'pet');
   }
 
-  private renderDeployButton(pet: CarriedPet, width = 180): void {
+  private renderDeployButton(pet: CarriedPet): void {
+    if (this.progress.selectedPetId === pet.id) return;
     const blocked = () => !this.onMap || this.progressReadFailed || !this.usesTestProgress;
-    const deployed = this.progress.selectedPetId === pet.id;
-    this.button(deployed ? '已出战' : '设为出战', 240, 455, width, 36, !blocked() && !deployed, () => {
+    this.button('设为出战', 240, 455, 180, 36, !blocked(), () => {
       try {
         this.progress.selectPet(blocked(), pet.id, selectedPetId =>
           saveProgress(progressStorage(), { ...this.progress, selectedPetId }));
@@ -1372,6 +1376,7 @@ export class BattleView extends Component {
         if (this.releaseProgressPet(pet.id)) {
           this.progressError = '';
           this.selectedPetId = this.progress.roster.entries[0].id;
+          this.petSlotSelected = false;
         }
       } catch {
         showNotice('本地进度保存失败。');
@@ -1395,9 +1400,11 @@ export class BattleView extends Component {
     const deployed = this.onMap ? { id: this.progress.selectedPetId } : this.battle.pets.find(pet => pet.deployed && !pet.left);
     this.progress.roster.entries.forEach((pet, i) => {
       const x = 236 + (i % 5) * 61, y = 514 + Math.floor(i / 5) * 77;
-      this.rect(x, y, 52, 66, '#729586', pet.id === selectedId ? '#FFD45C' : '#9C8156', 6, () => {
+      const selected = this.petSlotSelected && pet.id === selectedId;
+      this.rect(x, y, 52, 66, '#729586', selected ? '#FFD45C' : '#9C8156', 6, () => {
         this.skillOpen = undefined;
         this.selectedPetId = pet.id;
+        this.petSlotSelected = true;
         this.render();
       });
       this.drawPetPortrait(pet, x + 26, y + 34, 47);
@@ -2034,6 +2041,7 @@ export class BattleView extends Component {
     this.summonOpen = false;
     this.rosterOpen = false;
     this.selectedPetId = null;
+    this.petSlotSelected = false;
     this.releasePrompt = undefined;
     this.animationQueue = [];
     this.displayedLogEnd = undefined;
@@ -2464,6 +2472,7 @@ export class BattleView extends Component {
         this.stopPotentialRepeat();
         this.rosterOpen = !this.rosterOpen;
         this.selectedPetId = null;
+        this.petSlotSelected = false;
         this.petPanelPage = 'basic';
         this.allocationPreview = undefined;
         this.render();

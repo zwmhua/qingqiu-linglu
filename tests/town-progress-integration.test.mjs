@@ -1205,7 +1205,7 @@ test('map deployment saves before changing selection; battle and pending settlem
   v.button = (text, _x, _y, _w, _h, enabled, click) => { buttons.set(text, { enabled, click }); return { addComponent() {} }; };
   v.text = () => {}; v.rect = (_x, _y, _w, _h, _c, _b, _r, click) => { if (click) clicks.push(click); return { addComponent() {} }; };
   v.drawPetPortrait = () => {};
-  const draw = () => { buttons.clear(); v.renderDeployButton(target); return buttons.get(session.selectedPetId === target.id ? '已出战' : '设为出战'); };
+  const draw = () => { buttons.clear(); v.renderDeployButton(target); return buttons.get('设为出战'); };
   assert.equal(draw().enabled, false);
   const battleCallback = draw().click, beforeBattle = townDisk.raw;
   battleCallback(); assert.equal(townDisk.raw, beforeBattle);
@@ -1226,15 +1226,14 @@ test('map deployment saves before changing selection; battle and pending settlem
   assert.equal(townDisk.raw, before); assert.equal(session.selectedPetId, 'pet');
   townDisk.fail = false; callback(); callback();
   assert.equal(session.selectedPetId, target.id); assert.equal(townDisk.writes, writes + 1);
-  assert.equal(buttons.has('已出战'), false); // Rendering is stubbed; explicitly redraw below.
-  draw(); assert.equal(buttons.get('已出战').enabled, false);
+  draw(); assert.equal(buttons.size, 0);
   v.statusCard = (kind, _x, unit) => portraits.push([kind, unit.id]);
   v.renderTown(); assert.ok(portraits.some(([kind, id]) => kind === 'pet' && id === target.id));
   const restored = loadSessionProgress(townDisk);
   assert.equal(restored.selectedPetId, target.id);
   assert.deepEqual({ ...JSON.parse(townDisk.raw), selectedPetId: 'pet' }, JSON.parse(before));
   v.startFixedBattle(); assert.equal(v.battle.pets.find(pet => pet.deployed).id, target.id);
-  assert.equal(draw().enabled, false);
+  draw(); assert.equal(buttons.size, 0);
 });
 
 
@@ -1306,7 +1305,7 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
   b.skillIds = skills.slice(4);
   session.roster.entries.push(b); saveProgress(townDisk, session);
   const labels = [], actions = new Map(), preview = [], picks = [], drawnSkills = [], tabs = [], panels = [];
-  let tiles = 0, closeButtons = 0, closePet;
+  let tiles = 0, closeButtons = 0, closePet, selectBaby;
   v.skillFrames = new Map(skills.map(id => [id, id]));
   v.image = (_x, _y, _w, _h, frame) => {
     drawnSkills.push(frame);
@@ -1318,6 +1317,7 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
   v.text = text => labels.push(text);
   v.rect = (x, _y, width, height, color, _border, _radius, click) => {
     if (x === 1070 && width === 56) closePet = click;
+    if (x === 297 && width === 52) selectBaby = click;
     if (x >= 1150 && x + width <= 1242 && height === 96) tabs.push({ color, click });
     if (width >= 380 && height >= 550 && height < 650 && click) panels.push(click);
     if (width === 88 && height === 88) {
@@ -1326,8 +1326,9 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     }
     return { addComponent() { return {}; } };
   };
-  v.button = (text, _x, _y, _w, _h, enabled, click) => {
+  v.button = (text, x, y, _w, _h, enabled, click) => {
     if (text === '关闭') closeButtons++;
+    if (text === '炼妖') assert.ok(x >= 1080 && y > 409);
     if (enabled) actions.set(text, click);
     return { addComponent() {} };
   };
@@ -1338,7 +1339,16 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
   const openFromPet = () => {
     v.rosterOpen = true;
     v.openPetPanel(a.id);
+    labels.length = 0;
     v.renderPetPanel(a);
+    assert.ok(labels.includes('战') && !labels.includes('放生'));
+    selectBaby();
+    labels.length = 0; v.renderPetPanel(a);
+    assert.ok(labels.includes('放生'));
+    a.isBaby = false;
+    labels.length = 0; v.renderPetPanel(a);
+    assert.ok(!labels.includes('放生'));
+    a.isBaby = true;
     assert.ok(actions.has('炼妖'));
     actions.get('炼妖')();
   };
