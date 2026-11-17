@@ -1295,14 +1295,21 @@ export class BattleView extends Component {
     this.text(`${pet.level}级`, 333, 152, 20, ink, 82, 1);
     const identity = `${pet.isBaby ? '宝宝' : '野生'}${pet.isMutated ? ' · 变异' : ''}`;
     this.drawPetPortrait(pet, 282, 148, 65);
-    if (!points) {
-      const plaque = this.rect(1093, 269, 70, 140, '#000000', '', 0, undefined, 0);
-      plaque.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
-      this.image(167, 153, 1000, 750, this.petPointsArt).node.setParent(plaque, true);
+    const tabs: [string, (() => void) | undefined][] = [
+      ['属性', points ? () => open(this.petReturnPage) : undefined],
+      ['加点', points ? undefined : () => open('points')],
+    ];
+    if (this.onMap && !points && !aptitude && !this.fusionResult) {
+      const enabled = !this.mapUnavailable && !this.town?.loading;
+      tabs.push(['炼妖', enabled ? () => this.openFusion(pet.id) : undefined]);
     }
-    for (const [index, label] of ['属性', '加点'].entries()) {
-      const y = 125 + index * 153;
-      const select = index === Number(points) ? undefined : () => open(index ? 'points' : this.petReturnPage);
+    for (const [index, [label, select]] of tabs.entries()) {
+      const shift = index * 153, y = 125 + shift;
+      if (!points && index > 0) {
+        const plaque = this.rect(1093, y - 9, 70, 140, '#000000', '', 0, undefined, 0);
+        plaque.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
+        this.image(167, shift, 1000, 750, this.petPointsArt).node.setParent(plaque, true);
+      }
       this.rect(1094, y, 58, 116, '#000000', '', 0, select, 0);
       Array.from(label).forEach((char, row) => this.text(char, 1095, y + 20 + row * 37, 26, ink, 56, 1));
     }
@@ -1316,8 +1323,6 @@ export class BattleView extends Component {
       if (!this.fusionResult) {
         if (showRelease) this.renderReleaseButton(pet);
         this.renderDeployButton(pet);
-        if (this.onMap && !aptitude)
-          this.button('炼妖', 1089, 423, 68, 44, !this.mapUnavailable && !this.town?.loading, () => this.openFusion(pet.id));
         this.renderPetSlots(pet.id);
       }
       this.text('属性', 606, 101, 25, ink, 182, 1, () => open('basic'));

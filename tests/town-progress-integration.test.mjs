@@ -1305,7 +1305,8 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
   b.skillIds = skills.slice(4);
   session.roster.entries.push(b); saveProgress(townDisk, session);
   const labels = [], actions = new Map(), preview = [], picks = [], drawnSkills = [], tabs = [], panels = [];
-  let tiles = 0, closeButtons = 0, closePet, selectBaby;
+  const tabLetters = [];
+  let tiles = 0, closeButtons = 0, closePet, selectBaby, openRefine;
   v.skillFrames = new Map(skills.map(id => [id, id]));
   v.image = (_x, _y, _w, _h, frame) => {
     drawnSkills.push(frame);
@@ -1314,10 +1315,14 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
   v.drawPetPortrait = (pet, x, y) => {
     if ('probability' in pet) preview.push([pet.species, pet.isMutated, x, y]);
   };
-  v.text = text => labels.push(text);
-  v.rect = (x, _y, width, height, color, _border, _radius, click) => {
+  v.text = (text, x, y, size) => {
+    labels.push(text);
+    if (x === 1095) tabLetters.push([text, y, size]);
+  };
+  v.rect = (x, y, width, height, color, _border, _radius, click) => {
     if (x === 1070 && width === 56) closePet = click;
     if (x === 297 && width === 52) selectBaby = click;
+    if (x === 1094 && y === 431 && width === 58 && height === 116) openRefine = click;
     if (x >= 1150 && x + width <= 1242 && height === 96) tabs.push({ color, click });
     if (width >= 380 && height >= 550 && height < 650 && click) panels.push(click);
     if (width === 88 && height === 88) {
@@ -1326,9 +1331,8 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     }
     return { addComponent() { return {}; } };
   };
-  v.button = (text, x, y, _w, _h, enabled, click) => {
+  v.button = (text, _x, _y, _w, _h, enabled, click) => {
     if (text === '关闭') closeButtons++;
-    if (text === '炼妖') assert.ok(x >= 1080 && y > 409);
     if (enabled) actions.set(text, click);
     return { addComponent() {} };
   };
@@ -1339,9 +1343,10 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
   const openFromPet = () => {
     v.rosterOpen = true;
     v.openPetPanel(a.id);
-    labels.length = 0;
+    labels.length = tabLetters.length = 0;
     v.renderPetPanel(a);
     assert.ok(labels.includes('战') && !labels.includes('放生'));
+    assert.deepEqual(tabLetters.slice(-4), [['加', 298, 26], ['点', 335, 26], ['炼', 451, 26], ['妖', 488, 26]]);
     selectBaby();
     labels.length = 0; v.renderPetPanel(a);
     assert.ok(labels.includes('放生'));
@@ -1349,8 +1354,8 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     labels.length = 0; v.renderPetPanel(a);
     assert.ok(!labels.includes('放生'));
     a.isBaby = true;
-    assert.ok(actions.has('炼妖'));
-    actions.get('炼妖')();
+    assert.equal(typeof openRefine, 'function');
+    openRefine();
   };
   let rolls = 0; v.fusionRandom = () => { rolls++; return 0; };
   for (const region of ['town', 'outskirts']) {
