@@ -1549,7 +1549,7 @@ export class BattleView extends Component {
     this.rect(54, 35, 1226, 680, '#000000', '', 0, undefined, 0).addComponent(BlockInputEvents);
     if (preview) this.rect(150, 35, 1034, 680, '#FBF0DA', '#B99A63', 18);
     else if (this.fusionArt) this.image(0, 0, 1242, CONFIG.height, this.fusionArt);
-    this.text(preview ? '合宠预览' : '合宠 · 两旧换一新', preview ? 510 : 464, 51, 27, ink, 314, 1);
+    this.text(preview ? '合宠预览' : '合宠', preview ? 510 : 464, 51, 27, ink, 314, 1);
     if (!this.fusionPicker) this.button('关闭', preview ? 1100 : 1122, 44, 62, 54, true, close, !preview);
     if (parents.every(Boolean) && parents.some(pet => pet?.isMutated))
       this.text('已放入变异宠物', preview ? 517 : 471, 96, 18, '#755821', 300, 1);
@@ -1563,21 +1563,23 @@ export class BattleView extends Component {
         }, true);
       this.renderFusionSkills(pet, pet?.skillIds ?? [], x + 20, 287, 81, 58, side);
       if (!pet) return;
-      const { stamina, attack, defense, mana, speed } = pet.aptitudes;
-      const fields = [['体资质', stamina], ['攻资质', attack], ['防资质', defense],
-        ['法资质', mana], ['速度资质', speed], ['成长', pet.growth.toFixed(3)]];
+      this.rect(x - 3, 129, 347, 134, '#FAEBD1', '', 6);
+      for (const y of [162, 194, 226]) this.rect(x + 4, y, 331, 1, '#DAB98C');
+      const { attack, defense, stamina, mana, dodge, speed } = pet.aptitudes;
+      const fields = [['攻击资质', attack], ['防御资质', defense], ['体力资质', stamina],
+        ['法力资质', mana], ['躲避资质', dodge], ['速度资质', speed], ['成长', pet.growth.toFixed(3)]] as const;
       fields.forEach(([label, value], i) => {
-        const left = x + 13 + Math.floor(i / 3) * 169, y = 137 + i % 3 * 44;
-        this.text(String(label), left, y, 19, ink, 83);
+        const left = x + 13 + i % 2 * 169, y = 130 + Math.floor(i / 2) * 32;
+        this.text(label, left, y, 19, ink, 83);
         this.text(String(value), left + 83, y, 19, ink, 62, 2);
       });
       this.drawPetPortrait(pet, x + 172, 536, 116);
       const identity = pet.isBaby ? (pet.isMutated ? '变异宝宝' : '宝宝') : '野生';
       this.text(identity, x + 245, 538, 16, ink, 86, 1);
     });
-    this.text(`非必带遗传${FUSION.inheritance * 100}%`, preview ? 368 : 487, preview ? 660 : 140, 17, ink, 268, 1);
-    this.text('结果可能变弱', preview ? 645 : 487, preview ? 660 : 171, 17, '#873E28', 268, 1);
     if (preview && plan) {
+      this.text(`非必带遗传${FUSION.inheritance * 100}%`, 368, 660, 17, ink, 268, 1);
+      this.text('结果可能变弱', 645, 660, 17, '#873E28', 268, 1);
       const outcomes = buildFusionPreview(plan);
       const cards = plan.parents.map(pet => outcomes.find(outcome => outcome.species === pet.species)!);
       const selected = cards.find(outcome => outcome.species === this.fusionPreviewSpecies) ?? cards[0];
@@ -1604,7 +1606,7 @@ export class BattleView extends Component {
         this.render();
       }, true);
     }
-    this.button('合宠', preview ? 961 : 566, preview ? 642 : 378, preview ? 197 : 110, preview ? 54 : 110,
+    this.button(preview ? '合宠' : '合成', preview ? 961 : 566, preview ? 642 : 378, preview ? 197 : 110, preview ? 54 : 110,
       !!plan && !this.fusionConfirmation, () => {
       try { this.fusionConfirmation = this.progress.prepareFusion(!this.onMap || !this.fusionOpen, this.fusionIds); }
       catch (error) { this.fusionMessage = String(error); }

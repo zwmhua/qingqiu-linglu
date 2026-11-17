@@ -1324,7 +1324,7 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     assert.ok(v.town.movement.target); v.openFusion(); assert.equal(v.mapBlocked, true);
     assert.equal(v.town.movement.target, undefined);
     draw(); assert.ok(actions.has('请选择左侧父宠') && !actions.has('选择左侧父宠'));
-    assert.ok(!actions.has('预览') && !actions.has('合宠'));
+    assert.ok(!actions.has('预览') && !actions.has('合成'));
     assert.equal(tabs.length, 3);
     const tabLetters = '洗宝宝打书合宠'.split('');
     assert.deepEqual(labels.filter(label => tabLetters.includes(label)), tabLetters);
@@ -1361,17 +1361,19 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     assert.deepEqual(v.fusionIds, [a.id, '']);
     actions.get('选择')(); draw();
     assert.deepEqual(v.fusionIds, [a.id, b.id]);
-    const fields = ['体资质', '攻资质', '防资质', '法资质', '速度资质', '成长'];
+    const fields = ['攻击资质', '防御资质', '体力资质', '法力资质', '躲避资质', '速度资质', '成长'];
     assert.deepEqual(labels.filter(label => fields.includes(label)), [...fields, ...fields]);
     assert.equal(labels.filter(label => label === '宝宝').length, 2);
     assert.ok(!labels.includes('普通宝宝') && !labels.includes('普通'));
     b.isBaby = false; draw();
     assert.ok(labels.includes('野生'));
     b.isBaby = true; draw();
-    assert.ok(!labels.includes('资质范围') && actions.has('合宠'));
+    assert.ok(!labels.includes('资质范围') && actions.has('合成') && !actions.has('合宠'));
     assert.equal(preview.length, 0);
-    assert.ok(labels.some(t => t.includes('40%')));
+    assert.ok(labels.includes('合宠'));
+    assert.ok(!labels.some(t => /两旧换一新|非必带遗传|结果可能变弱/.test(t)));
     actions.get('预览')(); draw();
+    assert.ok(labels.includes('非必带遗传40%') && labels.includes('结果可能变弱'));
     assert.deepEqual(labels.filter(t => /^\d+(?:\.\d+)?%$/.test(t)), ['45%', '45%']);
     assert.deepEqual(preview.map(([species, mutated]) => [species, mutated]), [['tingwa', false], ['tingwa', false]]);
     assert.equal(preview[0][3], preview[1][3]);
@@ -1392,7 +1394,7 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     assert.ok(!labels.includes('资质范围'));
     v.fusionIds = [a.id, b.id]; draw();
     assert.ok(labels.includes('已放入变异宠物') && labels.includes('普通与变异身份必须相同'));
-    assert.ok(!labels.includes('资质范围') && !actions.has('合宠') && !actions.has('预览'));
+    assert.ok(!labels.includes('资质范围') && !actions.has('合成') && !actions.has('预览'));
     b.isMutated = true; draw();
     assert.equal(labels.filter(label => label === '变异宝宝').length, 2);
     actions.get('预览')(); draw();
@@ -1410,7 +1412,7 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     v.fusionIds = [session.selectedPetId, b.id]; draw();
     assert.deepEqual(preview, []);
     assert.ok(labels.includes('出战宠不能合宠'));
-    assert.ok(!labels.includes('资质范围') && !actions.has('合宠') && !actions.has('预览'));
+    assert.ok(!labels.includes('资质范围') && !actions.has('合成') && !actions.has('预览'));
     assert.ok(!actions.has('重新选宠'));
     v.fusionIds = [a.id, b.id]; draw();
     const before = townDisk.raw, writes = townDisk.writes;
@@ -1421,11 +1423,11 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     assert.equal(v.fusionOpen, true); assert.ok(!labels.includes('资质范围'));
     actions.get('关闭')(); assert.equal(v.fusionOpen, false);
   }
-  v.openFusion(); v.fusionIds = [a.id, b.id]; draw(); actions.get('合宠')(); draw();
+  v.openFusion(); v.fusionIds = [a.id, b.id]; draw(); actions.get('合成')(); draw();
   townDisk.fail = true; const failed = actions.get('确认合宠'); failed(); const used = rolls;
   assert.match(v.fusionMessage, /write failed/); assert.equal(session.roster.entries.length, 3);
   failed(); assert.equal(rolls, used); townDisk.fail = false;
-  draw(); actions.get('合宠')(); draw(); const confirm = actions.get('确认合宠'); confirm(); confirm();
+  draw(); actions.get('合成')(); draw(); const confirm = actions.get('确认合宠'); confirm(); confirm();
   assert.equal(rolls, used); assert.equal(session.roster.entries.length, 2); assert.equal(v.selectedPetId, 'fused-1');
   assert.equal(v.fusionOpen, false); assert.equal(v.rosterOpen, true); assert.equal(v.isPet({ id: 'fused-1' }), true);
   assert.equal(v.petPanelPage, 'aptitude');
