@@ -1270,17 +1270,19 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
   a.skillIds = skills.slice(0, 8);
   b.skillIds = skills.slice(4);
   session.roster.entries.push(b); saveProgress(townDisk, session);
-  const labels = [], actions = new Map(), preview = [], picks = [];
+  const labels = [], actions = new Map(), preview = [], picks = [], drawnSkills = [];
+  v.skillFrames = new Map(skills.map(id => [id, id]));
+  v.image = (_x, _y, _w, _h, frame) => drawnSkills.push(frame);
   v.drawPetPortrait = pet => {
     if ('probability' in pet) preview.push([pet.species, pet.isMutated]);
   };
   v.text = text => labels.push(text);
   v.rect = (_x, _y, width, height, _color, _border, _radius, click) => {
-    if (width === 171 && height === 232 && click) picks.push(click);
+    if (width === 114 && height === 145 && click) picks.push(click);
     return { addComponent() {} };
   };
   v.button = (text, _x, _y, _w, _h, enabled, click) => { if (enabled) actions.set(text, click); return { addComponent() {} }; };
-  const draw = () => { labels.length = preview.length = picks.length = 0; actions.clear(); v.renderFusion(); };
+  const draw = () => { labels.length = preview.length = picks.length = drawnSkills.length = 0; actions.clear(); v.renderFusion(); };
   let rolls = 0; v.fusionRandom = () => { rolls++; return 0; };
   for (const region of ['town', 'outskirts']) {
     v.town.load(region); complete();
@@ -1290,15 +1292,21 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     assert.equal(v.town.movement.target, undefined);
     draw(); assert.ok(actions.has('选择左侧父宠'));
     actions.get('选择左侧父宠')(); draw();
-    assert.equal(actions.has('确认放入'), false);
+    assert.equal(actions.has('选择'), false);
     assert.equal(picks.length, 3);
+    assert.ok(labels.includes('出战 · 不可放入'));
     picks[1](); draw();
     assert.deepEqual(v.fusionIds, ['', '']);
-    actions.get('确认放入')(); draw();
+    assert.ok(labels.includes('成长') && labels.includes(a.growth.toFixed(3)));
+    assert.deepEqual(drawnSkills, a.skillIds);
+    actions.get('取消')(); draw();
+    assert.deepEqual(v.fusionIds, ['', '']);
+    actions.get('选择左侧父宠')(); draw(); picks[1](); draw();
+    actions.get('选择')(); draw();
     assert.deepEqual(v.fusionIds, [a.id, '']);
     actions.get('选择右侧父宠')(); draw(); picks[2](); draw();
     assert.deepEqual(v.fusionIds, [a.id, '']);
-    actions.get('确认放入')(); draw();
+    actions.get('选择')(); draw();
     assert.deepEqual(v.fusionIds, [a.id, b.id]);
     assert.ok(labels.some(t => t.includes('90%'))); assert.ok(labels.some(t => t.includes('40%')));
     assert.deepEqual(preview, [['tingwa', false]]);
