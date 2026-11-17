@@ -7,7 +7,7 @@ import { SKILL_POOLS, validSkills } from './pet-skills';
 import type { CarriedPet } from './roster';
 import { speciesKeys, WILD_SPECIES, type WildSpecies } from './wild-encounter';
 
-export const FUSION = { minLevel: 10, parentRate: 0.45, sameRate: 0.9, inheritance: 0.4,
+export const FUSION = { minLevel: 10, parentRate: 0.45, sameRate: 0.9, panguiRate: 0.05, inheritance: 0.4,
   aptitude: [0.7, 1.1], growth: [0.96, 1.02], maxSkills: 8 } as const;
 export function fusionPlan(entries: readonly CarriedPet[], ids: readonly string[], selected: string,
   blocked: boolean, pool: readonly WildSpecies[] = speciesKeys) {
@@ -25,17 +25,35 @@ export function fusionPlan(entries: readonly CarriedPet[], ids: readonly string[
   return { parents: [a, b] as const, other };
 }
 
+export function fusionOutcomes({ parents: [a, b], other }: ReturnType<typeof fusionPlan>) {
+  const same = a.species === b.species;
+  const weights: { species: WildSpecies; probability: number }[] = [
+    { species: a.species, probability: same ? FUSION.sameRate : FUSION.parentRate },
+  ];
+  if (!same) weights.push({ species: b.species, probability: FUSION.sameRate - FUSION.parentRate });
+  weights.push(...other.map(species => ({ species, probability: (1 - FUSION.sameRate) / other.length })));
+  const remaining = weights.filter(({ species }) => species !== 'pangui');
+  if (remaining.length === weights.length) return weights;
+  const total = remaining.reduce((sum, { probability }) => sum + probability, 0);
+  return [
+    ...remaining.map(({ species, probability }) => ({ species, probability: probability / total * (1 - FUSION.panguiRate) })),
+    { species: 'pangui' as const, probability: FUSION.panguiRate },
+  ];
+}
+
 export function fusePets(a: CarriedPet, b: CarriedPet, id: string, random = Math.random,
   pool: readonly WildSpecies[] = speciesKeys): CarriedPet {
-  const { other } = fusionPlan([a, b], [a.id, b.id], '', false, pool);
+  const outcomes = fusionOutcomes(fusionPlan([a, b], [a.id, b.id], '', false, pool));
   const roll = () => {
     const value = random();
     if (!Number.isFinite(value) || value < 0 || value > 1) throw new Error('合宠随机值无效');
     return value;
   };
   const pick = (count: number) => Math.min(count - 1, Math.floor(roll() * count));
-  const r = roll(), species = r >= FUSION.sameRate ? other[pick(other.length)]
-    : a.species === b.species || r < FUSION.parentRate ? a.species : b.species;
+  const r = roll(), last = outcomes[outcomes.length - 1];
+  let upper = 0;
+  const species = r >= 1 - last.probability ? last.species
+    : outcomes.find(({ probability }) => r < (upper += probability))?.species ?? last.species;
   const config = WILD_SPECIES[species], isBaby = a.isBaby && b.isBaby;
   const level = Math.min(HERO_PROGRESSION.maxLevel, Math.floor((a.level + b.level) / 2));
   const factor = (range: readonly [number, number]) => range[0] + roll() * (range[1] - range[0]);

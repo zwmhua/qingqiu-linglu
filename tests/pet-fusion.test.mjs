@@ -28,10 +28,11 @@ test('fusion eligibility and configuration fail closed without randomness', () =
 });
 test('species boundaries, independent factors, caps, low values and baby/wild budgets', () => {
   const [a, b] = parents();
-  for (const [roll, species] of [[0, 'tingwa'], [0.4499, 'tingwa'], [0.45, 'pangui'], [0.8999, 'pangui'], [0.9, 'maomaochong'], [1, 'maomaochong']])
+  for (const [roll, species] of [[0, 'tingwa'], [0.7772, 'tingwa'], [0.7773, 'maomaochong'],
+    [0.9499, 'maomaochong'], [0.95, 'pangui'], [1, 'pangui']])
     assert.equal(fusePets(a, b, 'fused-1', sequence(roll)).species, species);
-  for (const [roll, other, species] of [[0.8999, 0, 'tingwa'], [0.9, 0, 'pangui'], [0.9, 0.5, 'maomaochong'], [1, 1, 'maomaochong']])
-    assert.equal(fusePets(a, { ...b, species: 'tingwa' }, 'fused-1', sequence(roll, other)).species, species);
+  for (const [roll, species] of [[0.8999, 'tingwa'], [0.9001, 'maomaochong'], [0.9499, 'maomaochong'], [0.95, 'pangui']])
+    assert.equal(fusePets(a, { ...b, species: 'tingwa' }, 'fused-1', sequence(roll)).species, species);
   const low = { ...a, aptitudes: Object.fromEntries(Object.keys(a.aptitudes).map(k => [k, 100])), growth: 0.5 };
   const mixed = fusePets(low, { ...low, id: b.id }, 'fused-1', sequence(0, 0, 0.2, 0.4, 0.6, 0.8, 1, 1));
   assert.deepEqual(Object.values(mixed.aptitudes), [70, 78, 86, 94, 102, 110]); assert.equal(mixed.growth, 0.51);
@@ -67,17 +68,22 @@ test('parent-specific innate exclusion, deduplication, 40 percent and unbiased t
 
 test('preview probabilities and species ranges match actual fusion at both endpoints', async () => {
   const { buildFusionPreview } = await import('../assets/battle/scripts/fusion-preview.ts');
-  for (const same of [false, true]) for (const isMutated of [false, true]) {
+  const cases = [
+    ['tingwa', 'pangui', [77.73, 17.27, 5], [0, 0.9, 0.95]],
+    ['tingwa', 'tingwa', [90, 5, 5], [0, 0.91, 0.95]],
+    ['pangui', 'pangui', [47.5, 47.5, 5], [0, 0.7, 0.95]],
+    ['tingwa', 'maomaochong', [47.5, 47.5, 5], [0, 0.7, 0.95]],
+  ];
+  for (const [left, right, probabilities, draws] of cases) for (const isMutated of [false, true]) {
     const [a, b] = parents().map((pet, i) => ({
-      ...pet, isMutated, growth: i ? 1.04 : 0.97,
+      ...pet, species: i ? right : left, isMutated, growth: i ? 1.04 : 0.97,
       aptitudes: Object.fromEntries(Object.keys(pet.aptitudes).map((key, j) => [key, 370 + j * 240 + i * 9])),
     }));
-    if (same) b.species = a.species;
     const options = buildFusionPreview(fusionPlan([a, b], [a.id, b.id], '', false));
-    assert.deepEqual(options.map(o => Math.round(o.probability * 100)), same ? [90, 5, 5] : [45, 45, 10]);
+    assert.deepEqual(options.map(o => Number((o.probability * 100).toFixed(2))), probabilities);
+    assert.equal(options.find(o => o.species === 'pangui')?.probability, 0.05);
     for (const [i, outcome] of options.entries()) for (const edge of [0, 1]) {
-      const draws = same ? i ? [0.9, (i - 1) / 2] : [0] : i === 2 ? [0.9, 0] : [i * 0.45];
-      const child = fusePets(a, b, 'fused-1', sequence(...draws, ...Array(7).fill(edge)));
+      const child = fusePets(a, b, 'fused-1', sequence(draws[i], ...Array(7).fill(edge)));
       assert.equal(outcome.species, child.species);
       assert.equal(outcome.isMutated, child.isMutated);
       assert.deepEqual(outcome.aptitudes.map(range => range[edge]), Object.values(child.aptitudes));
@@ -92,7 +98,7 @@ test('preview preserves innate skills and lists deduplicated candidates even whe
   const ids = Object.keys(PET_SKILLS);
   a.skillIds = ids.filter(id => id !== 'armor').slice(0, 8);
   b.skillIds = ['armor', ...ids.slice(5).filter(id => id !== 'armor')];
-  const [frog, turtle] = buildFusionPreview(fusionPlan([a, b], [a.id, b.id], '', false));
+  const [frog, , turtle] = buildFusionPreview(fusionPlan([a, b], [a.id, b.id], '', false));
   assert.deepEqual(frog.innate, []);
   assert.deepEqual(turtle.innate, ['armor']);
   const eligible = ids.filter(id => id !== 'armor').sort();

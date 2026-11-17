@@ -1,21 +1,17 @@
 import { APTITUDE_KEYS } from '../logic/aptitude';
-import { FUSION, type fusionPlan } from '../logic/pet-fusion';
+import { FUSION, fusionOutcomes, type fusionPlan } from '../logic/pet-fusion';
 import { MUTATION_CONFIG } from '../logic/mutation';
 import { SKILL_POOLS } from '../logic/pet-skills';
 import { WILD_SPECIES } from '../logic/wild-encounter';
 
-export function buildFusionPreview({ parents: [left, right], other }: ReturnType<typeof fusionPlan>) {
-  const same = left.species === right.species;
-  const primary = same ? [left.species] : [left.species, right.species];
-  const otherRate = (1 - FUSION.sameRate) / other.length;
+export function buildFusionPreview(plan: ReturnType<typeof fusionPlan>) {
+  const [left, right] = plan.parents;
   const isMutated = left.isMutated;
   const capScale = isMutated ? MUTATION_CONFIG.multiplier : 1;
   const inherited = [left, right].flatMap(pet => (pet.skillIds ?? [])
     .filter(id => !SKILL_POOLS[pet.species].innate.includes(id)));
   const unique = inherited.filter((id, i) => inherited.indexOf(id) === i);
-  return [...primary, ...other].map((species, i) => {
-    const probability = i >= primary.length ? otherRate : same ? FUSION.sameRate
-      : i === 0 ? FUSION.parentRate : FUSION.sameRate - FUSION.parentRate;
+  return fusionOutcomes(plan).map(({ species, probability }) => {
     const config = WILD_SPECIES[species];
     const aptitudes = APTITUDE_KEYS.map(key => {
       const average = (left.aptitudes[key] + right.aptitudes[key]) / 2;

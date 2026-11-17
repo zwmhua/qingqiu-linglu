@@ -97,6 +97,7 @@ export class BattleView extends Component {
   private fusionPreviewSpecies?: WildSpecies;
   private fusionMutated = false;
   private fusionOtherIds = ['', ''];
+  private fusionPicking = false;
   private inventoryOpen = false;
   private inventoryItem?: string;
   private inventoryPet?: string;
@@ -1522,6 +1523,7 @@ export class BattleView extends Component {
     this.fusionMessage = '';
     this.fusionConfirmation = undefined;
     this.fusionPreviewSpecies = undefined;
+    this.fusionPicking = false;
     this.skillOpen = undefined;
     this.loadSkillArt();
     this.render();
@@ -1535,12 +1537,14 @@ export class BattleView extends Component {
     try { plan = fusionPlan(entries, this.fusionIds, this.progress.selectedPetId, !this.onMap); }
     catch (error) { reason = error instanceof Error ? error.message : String(error); }
     const outcomes = plan ? buildFusionPreview(plan) : [];
+    const preview = outcomes.length > 0 && !this.fusionPicking;
     const visiblePets = entries.filter(pet => pet.isMutated === this.fusionMutated);
     this.rect(0, 0, CONFIG.width, CONFIG.height, '#000000', '', 0, close, 150).addComponent(BlockInputEvents);
     this.rect(54, 35, 1226, 680, '#000000', '', 0, undefined, 0).addComponent(BlockInputEvents);
-    if (this.fusionArt) this.image(0, 0, CONFIG.width, CONFIG.height, this.fusionArt);
-    this.text('合宠 · 两旧换一新', 510, 51, 27, ink, 314, 1);
-    this.button('关闭', 1206, 47, 65, 55, true, close, true);
+    if (preview) this.rect(150, 35, 1034, 680, '#FBF0DA', '#B99A63', 18);
+    else if (this.fusionArt) this.image(0, 0, CONFIG.width, CONFIG.height, this.fusionArt);
+    this.text(preview ? '合宠预览' : '合宠 · 两旧换一新', 510, 51, 27, ink, 314, 1);
+    this.button('关闭', preview ? 1100 : 1206, 47, 65, 55, true, close, !preview);
     for (const mutated of [false, true]) {
       const x = mutated ? 672 : 564, active = mutated === this.fusionMutated;
       this.rect(x, 95, 96, 35, active ? '#D5E2C9' : '#FCEDCC', '#BA975C', 8);
@@ -1549,17 +1553,21 @@ export class BattleView extends Component {
         this.fusionMutated = mutated;
         [this.fusionIds, this.fusionOtherIds] = [this.fusionOtherIds, this.fusionIds];
         this.fusionPreviewSpecies = undefined;
+        this.fusionPicking = false;
         this.fusionMessage = '';
         this.render();
       }, true);
     }
-    this.fusionIds.forEach((id, side) => {
+    if (!preview) this.fusionIds.forEach((id, side) => {
       const x = side ? 826 : 134, pet = entries.find(p => p.id === id);
       visiblePets.forEach((entry, i) => {
         const bx = x + i % 3 * 126, by = 48 + Math.floor(i / 3) * 30;
         const selected = entry.id === id;
         const choose = this.onMap && !this.fusionConfirmation ? () => {
-          this.fusionIds[side] = entry.id; this.fusionMessage = ''; this.render();
+          this.fusionIds[side] = entry.id;
+          this.fusionPicking = false;
+          this.fusionMessage = '';
+          this.render();
         } : undefined;
         this.rect(bx, by, 120, 28, selected ? '#497566' : '#FCEDCC', '#BA975C', 6, choose);
         this.text(`${entry.name} Lv.${entry.level}`, bx, by + 2, 15, selected ? '#FFF4D6' : ink, 120, 1);
@@ -1569,10 +1577,6 @@ export class BattleView extends Component {
       if (!pet) return;
       APTITUDE_KEYS.forEach((key, i) => this.text(`${['攻击', '防御', '体力', '法力', '躲避', '速度'][i]}资质 ${pet.aptitudes[key]}`,
         x + 10 + i % 2 * 186, 132 + Math.floor(i / 2) * 45, 19, ink, 164, 1));
-      if (outcomes.length) {
-        this.text(`成长 ${pet.growth.toFixed(3)}`, x, 249, 16, ink, 372, 1);
-        return;
-      }
       this.drawPetPortrait(pet, x + 186, 528, 118);
       this.text(`成长 ${pet.growth.toFixed(3)}`, x + 6, 525, 17, ink, 116);
       for (let i = 0; i < 8; i++) {
@@ -1586,20 +1590,24 @@ export class BattleView extends Component {
         } else this.text('空', sx, sy + 29, 14, ink, 86, 1);
       }
     });
-    this.text(`非必带遗传${FUSION.inheritance * 100}%`, 533, 140, 17, ink, 268, 1);
-    this.text('结果可能变弱', 533, 171, 17, '#873E28', 268, 1);
-    if (outcomes.length) {
+    this.text(`非必带遗传${FUSION.inheritance * 100}%`, preview ? 368 : 533, preview ? 660 : 140, 17, ink, 268, 1);
+    this.text('结果可能变弱', preview ? 645 : 533, preview ? 660 : 171, 17, '#873E28', 268, 1);
+    if (preview) {
       const selected = outcomes.find(outcome => outcome.species === this.fusionPreviewSpecies) ?? outcomes[0];
-      this.text(selected.isMutated ? '变异' : '普通', 617, 418, 21, ink, 100, 1);
       this.renderFusionPreview(outcomes, selected);
+      this.button('重新选宠', 174, 642, 182, 54, !this.fusionConfirmation, () => {
+        this.fusionPicking = true;
+        this.render();
+      });
     }
-    this.button('合宠', 630, 574, 74, 74, !reason && !this.fusionConfirmation, () => {
+    this.button('合宠', preview ? 961 : 630, preview ? 642 : 574, preview ? 197 : 74, preview ? 54 : 74,
+      preview && !this.fusionConfirmation, () => {
       try { this.fusionConfirmation = this.progress.prepareFusion(!this.onMap || !this.fusionOpen, this.fusionIds); }
       catch (error) { this.fusionMessage = String(error); }
       this.render();
-    }, true);
+    }, !preview);
     const message = this.fusionMessage || reason;
-    if (message) this.text(message, 142, 675, 20, '#873E28', 1050, 1);
+    if (message) this.text(message, 142, preview ? 617 : 675, 20, '#873E28', 1050, 1);
     this.renderSkillDetail();
     const pending = this.fusionConfirmation;
     if (!pending) return;
@@ -1628,46 +1636,47 @@ export class BattleView extends Component {
   private renderFusionPreview(outcomes: ReturnType<typeof buildFusionPreview>,
     selected: ReturnType<typeof buildFusionPreview>[number]): void {
     const ink = '#4A2C1D';
-    this.rect(119, 275, 409, 336, '#F9EFD9', '#B99A63', 12);
-    this.rect(811, 275, 409, 336, '#F9EFD9', '#B99A63', 12);
-    this.text('合宠造型概率', 140, 286, 22, ink, 366);
+    this.rect(174, 143, 345, 469, '#F7E9CF', '#C6A971', 12);
+    this.rect(541, 143, 617, 469, '#EEDDBF', '#C6A971', 12);
+    this.text('合宠造型概率', 189, 151, 23, ink, 315, 1);
     outcomes.forEach((outcome, i) => {
-      const y = 326 + i * 87, active = outcome === selected;
-      this.rect(140, y, 367, 76, active ? '#DFE9D6' : '#F3E4C8', active ? '#527561' : '#C6A971', 10, () => {
+      const y = 185 + i * 140, active = outcome === selected;
+      this.rect(193, y, 307, 131, active ? '#E5EDD9' : '#FCF0D8', active ? '#527561' : '#C6A971', 10, () => {
         this.fusionPreviewSpecies = outcome.species;
         this.render();
       });
-      this.drawPetPortrait(outcome, 194, y + 38, 69);
-      this.text(WILD_SPECIES[outcome.species].name, 245, y + 22, 22, ink, 142);
-      this.text(this.fusionPercent(outcome.probability), 400, y + 22, 22, '#356456', 85, 2);
+      this.drawPetPortrait(outcome, 346, y + 53, 104);
+      this.text(WILD_SPECIES[outcome.species].name, 207, y + 100, 20, ink, 178, 2);
+      this.text(this.fusionPercent(outcome.probability), 396, y + 100, 20, '#356456', 96);
     });
 
     const names = ['攻击资质', '防御资质', '体力资质', '法力资质', '躲避资质', '速度资质', '成长'];
     const ranges = [...selected.aptitudes, selected.growth.map(value => value.toFixed(3))];
-    this.text('资质范围', 828, 286, 20, ink, 375);
-    this.text(WILD_SPECIES[selected.species].name, 1050, 286, 18, '#356456', 151, 2);
+    this.text('资质范围', 565, 149, 23, ink, 375);
+    this.text(WILD_SPECIES[selected.species].name, 992, 151, 20, '#356456', 143, 2);
     ranges.forEach((range, i) => {
-      const x = 828 + i % 2 * 190, y = 317 + Math.floor(i / 2) * 24;
-      this.rect(x, y, 184, 22, '#EEDDB9', '', 4);
-      this.text(names[i], x + 6, y, 13, ink, 69);
-      this.text(range.join(' ～ '), x + 74, y, 13, ink, 102, 2);
+      const x = 565 + i % 2 * 289, y = 190 + Math.floor(i / 2) * 38;
+      this.rect(x, y, 275, 32, '#F8E9CD', '', 5);
+      this.text(names[i], x + 8, y + 2, 17, ink, 86);
+      this.text(range.join(' ～ '), x + 91, y + 2, 17, ink, 172, 2);
     });
 
-    this.text('技能最多情况', 828, 418, 20, ink, 200);
-    this.text(`最多 ${selected.maxSkills} 格`, 1050, 418, 20, '#356456', 151, 2);
-    this.text(`必带 ${selected.innate.length} · 遗传候选 ${selected.candidates.length}`, 828, 448, 15, ink, 373);
+    this.text('技能最多情况', 565, 350, 23, ink, 230);
+    this.text(`最多 ${selected.maxSkills} 格`, 988, 350, 23, '#356456', 147, 2);
+    this.text(`必带 ${selected.innate.length} · 遗传候选 ${selected.candidates.length}`, 565, 389, 18, ink, 550);
     const skills = [...selected.innate, ...selected.candidates];
+    const columns = skills.length <= 8 ? 4 : 6, step = 550 / columns;
     skills.forEach((id, i) => {
-      const x = 829 + (i % 6) * 61, y = 474 + Math.floor(i / 6) * 53;
-      this.drawSkillIcon(selected, id, x, y, 47);
-      this.rect(x, y, 47, 47, '#000000', '', 0, () => {
+      const x = 575 + (i % columns) * step + (step - 72) / 2, y = 423 + Math.floor(i / columns) * 82;
+      this.drawSkillIcon(selected, id, x, y, 72);
+      this.rect(x, y, 72, 72, '#000000', '', 0, () => {
         this.skillOpen = { pet: selected, id, x, y };
         this.render();
       }, 0);
     });
-    if (!skills.length) this.text('无可带技能', 828, 480, 17, ink, 373);
+    if (!skills.length) this.text('无可带技能', 565, 437, 19, ink, 550);
     if (skills.length > selected.maxSkills)
-      this.text('候选多于可用格数，不能同时出现。', 828, 582, 15, '#873E28', 373);
+      this.text('候选多于可用格数，不能同时出现。', 565, 584, 17, '#873E28', 550);
   }
 
   private openInventory(): void {

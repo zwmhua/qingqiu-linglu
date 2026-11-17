@@ -98,18 +98,16 @@ test('release downlevel fusion preserves species, skill order and random consump
     const b = { ...second, level: 10, isBaby: true, species, skillIds: ['armor', 'combo', 'waterarrow', 'thunder'] };
     assert.deepEqual(low.fusionPlan([a, b], [a.id, b.id], '', false, pool).other,
       species === 'tingwa' ? ['pangui', 'maomaochong'] : ['maomaochong']);
-    for (const edge of [0, 0.45, 0.9, 1]) {
+    for (const edge of [0, 0.45, 0.9001, 0.9499, 0.95, 1]) {
       const calls = [0, 0];
       const run = (module, index) => module.fusePets(a, b, 'fused-1', () => calls[index]++ === 0 ? edge : 0, pool);
       const child = run(low, 0), expected = run(native, 1);
       assert.deepEqual(child, expected);
       assert.equal(calls[0], calls[1]);
-      assert.equal(child.species, edge >= 0.9 ? (species === 'tingwa' ? 'pangui' : 'maomaochong')
-        : edge < 0.45 ? 'tingwa' : species);
+      assert.equal(child.species, edge >= 0.95 ? 'pangui' : edge >= 0.9001 ? 'maomaochong' : 'tingwa');
       assert.deepEqual(child.skillIds, child.species === 'pangui' ? ['armor', 'thunder', 'combo', 'waterarrow']
         : species === 'pangui' ? ['thunder', 'combo', 'waterarrow'] : ['thunder', 'combo', 'armor', 'waterarrow']);
-      assert.equal(calls[0], 53 + (edge >= 0.9 ? 1 : 0) +
-        (species === 'tingwa' && child.species !== 'pangui' ? 4 : 3));
+      assert.equal(calls[0], 53 + (species === 'tingwa' && child.species !== 'pangui' ? 4 : 3));
     }
   }
 });
@@ -1270,8 +1268,8 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
   }
   session.roster.entries.push(b); saveProgress(townDisk, session);
   const labels = [], actions = new Map(), preview = [];
-  v.drawPetPortrait = (pet, x) => {
-    if (x < 250) preview.push([pet.species, pet.isMutated]);
+  v.drawPetPortrait = pet => {
+    if ('probability' in pet) preview.push([pet.species, pet.isMutated]);
   };
   v.text = text => labels.push(text); v.rect = () => ({ addComponent() {} });
   v.button = (text, _x, _y, _w, _h, enabled, click) => { if (enabled) actions.set(text, click); return { addComponent() {} }; };
@@ -1284,17 +1282,18 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     assert.ok(v.town.movement.target); v.openFusion(); assert.equal(v.mapBlocked, true);
     assert.equal(v.town.movement.target, undefined); v.fusionIds = [a.id, b.id]; draw();
     assert.ok(labels.some(t => t.includes('90%'))); assert.ok(labels.some(t => t.includes('40%')));
-    assert.deepEqual(preview, [['tingwa', false], ['pangui', false], ['maomaochong', false]]);
-    assert.ok(labels.includes('普通'));
+    assert.deepEqual(preview, [['tingwa', false], ['maomaochong', false], ['pangui', false]]);
+    assert.equal(v.fusionMutated, false);
     assert.ok(!labels.includes('确认后才生成；不消耗道具。'));
     assert.ok(labels.includes('合宠造型概率') && labels.includes('资质范围'));
     assert.ok(labels.some(t => t.includes('最多') && t.includes('格')));
     assert.ok(actions.has('合宠') && !actions.has('预览详情') && !actions.has('返回'));
+    assert.ok(actions.has('重新选宠') && !labels.some(t => /资质 \d/.test(t)));
     actions.get('变异')(); draw();
     assert.deepEqual(v.fusionIds, ['', '']);
     assert.ok(!labels.includes('资质范围'));
     a.isMutated = b.isMutated = true; v.fusionIds = [a.id, b.id]; draw();
-    assert.ok(labels.includes('变异'));
+    assert.equal(v.fusionMutated, true);
     assert.equal(preview.length, 3);
     assert.ok(preview.every(([, mutated]) => mutated));
     a.isMutated = b.isMutated = false;
@@ -1305,6 +1304,7 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
     assert.deepEqual(preview, []);
     assert.ok(labels.includes('出战宠不能合宠'));
     assert.ok(!labels.includes('资质范围') && !actions.has('合宠'));
+    assert.ok(!actions.has('重新选宠'));
     v.fusionIds = [a.id, b.id]; draw();
     const before = townDisk.raw, writes = townDisk.writes;
     actions.get('合宠')(); draw(); assert.ok(labels.some(t => t.includes('两只原宠将消失')));
