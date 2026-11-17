@@ -1,36 +1,40 @@
 # 青丘灵录｜当前工程架构
 
-- 引擎：Cocos Creator 3.8.8，TypeScript；设计分辨率 1334×750。
-- 入口场景：`assets/boot/Boot.scene` 加载本地 `battle` Asset Bundle，加载完成后由玩家进入 `assets/battle/scenes/Battle.scene`。
-- 战斗规则：`assets/battle/scripts/Battle.ts`，不依赖 Cocos UI；可调玩法规则和纯逻辑放在 `assets/battle/logic/`，表现和站位参数放在 `assets/battle/scripts/config.ts`。浏览器与微信的查询及存储接口保留在 `assets/logic/platform.ts`。
-- 共用进度：`SessionProgress` 持有人物、携带、出战 ID、抓取编号、库存和最近结算 ID；P2-10 的 `local-progress.ts` 使用原主键与 v5 格式，加点/放生成功保存后才提交内存。所有保存入口（含 Battle 适配）携带库存和结算 ID。
-- 显示与交互：`BattleView.ts` 默认读取原键进度进入城镇，读档/迁移失败锁定并提示原因，提供重试。Boot 和 Battle.scene 加载边界不变；人物/宠物面板复用原绘制及事务入口。资质技能页显示前 8 个拥有/空位、后 4 个锁定位，文字占位与配置说明浮窗阻断地图输入。
-- P2-04/P2-10 结算：Battle 明确给出 victory/defeat/escaped，人物逃跑在原离场时点整队撤离；原 checkWinner 的 ended 保护只发一次经验。每次构造从同一会话分配安全递增场次 ID，并锁定 formal/test 掉率；刷新从最近成功结算 ID 继续。动画播完缓存本场掉落并将经验、宠物、出战、库存和结算 ID 序列化为同一 v5 候选，保存失败留场重试同一字符串且不重抽，成功才提交库存和结算 ID、提示材料并回原世界位置或战败回城；待保存不能加点/放生/重置绕过。非终结抓宠仍按原时点保存，不抽掉落。
-- P2-06 迁移：先按 v1/v2 临时面板或 v3 正式面板及原 roster 规则校验，再把原字符串保存到 `qingqiu-linglu:test-progress:backup:v<旧版本>`。不同内容的已有备份冲突即锁定；相同备份复用。补抽技能后完整验证 v4，核对主档未变化并成功写入后才创建会话。同实例失败重试保留候选字节；成功刷新不再抽取。未知业务字段/版本/技能拒绝；开发重置仅清主档、保留备份。
-- P2-10 将最终迁移目标扩展为 v5：v1～v3 沿用上述校验、各自备份和一次技能补抽；v4 单独按原技能规则校验、备份原字节，不重抽技能。补空库存与 lastSettledId=0 后一次写入完整 v5，写成功才创建会话；旧版本仍拒绝新增库存/结算字段。v5 严格检查道具 ID、非负安全整数库存和结算 ID，失败保留原主档。
-- 背包：`inventory.ts` 从 12 个 PET_SKILLS ID 派生稳定 `book:<skillId>`，加 `rejuvenation` 与 `mutation-rejuvenation`。同 ID 累加到同一格，不启用 pageSize=20 / stackLimit=99 的预留限制。正式掉率 8%/3%/1%，测试 50%/30%/10%，三类分别抽一次，命中书再等概率选一本；仅 victory 有资格。测试模式仅留在会话，默认 formal，不改变主键或背包。背包复用携带面板的遮罩、暂停和关闭入口，城野选择宠物不改变出战，战斗中只读；P2-11 开放技能书消耗，P2-12 开放两种还童露。
-- 技能数据：`pet-skills.ts` 配置 12 个初级技能、参数与物种池；自然生成不含雷击术/火球术。初始宠和敌方按独立随机源生成一次，抓取复制有序 `skillIds`。P2-07 在 `pet-panel.ts` 共用取整前公式计算巨力/硬甲/迅捷有效值，面板、加点预览和 Battle 装配共用；petPanel/petCombat 与 v4 保持基础值，野怪仍以 wildCombat 为基础。Battle 在首轮与继续战斗的新回合入口结算回血，动画结束后显示恢复值。宝宝升级每项 +1、潜能 +5；野生每项 +1 并随机分配新增 5 点，旧潜能原样保留、可手加，人物规则不变。
-- P2-08 在 `Battle` 中按普攻指令抽连打并逐击抽暴击，先结算主击和保护，再结算噬血、反弹、还击。噬血按目标与保护者实际失血合计计算。反弹与还击只由实际失血且存活在场的原目标触发，跳过保护和其他被动。动作结束再调用既有胜负与经验结算。`BattleView` 在同一队列按事件快照更新血条、技能浮字和日志，队列清空后才同步新回合状态或进入保存收口。
-- P2-09 的雷击术、火球术、水箭术在 `pet-skills.ts` 共用公式和耗蓝参数。战斗单位持有当前法力，野怪法力和灵力取宠物公式，其他基础战斗属性仍取 `wildCombat`。手动选敌后在实际执行时扣蓝并直接扣血。自动灵宠和野怪执行时按技能栏顺序选择首个付得起的主动法术。同场换宠保留余蓝，新场和升级补满。回放从回合前的蓝量开始，在施法光效峰值更新蓝条，在命中时更新目标血条。v4 进度沿用原字段。
-- 自然遭遇先按 5% 判定 0 级宝宝，仅宝宝再按 25% 抽变异；1～5 级野生不消耗变异随机数。抓取继承生成时的等级与两个身份，变异宝宝正常升级，已有存档含变异野生也原样保留，不做身份清洗。固定 mutationSample 为变异宝宝、babySample 为普通宝宝，仅明确开发预览启用。
-- 地图与战斗复用同一 SessionProgress、TownView 根节点和世界位置；战斗期间隐藏地图，清理瞬态层时保留地图与 Camera。战败城图加载失败锁定回城重试。自动状态复用当前 AutoCommands 最新值，不持久化。胜利、抓胜、逃跑成功回原位停步，重新给予 180 距离保护；战败回城。
-- 城镇：`TownView.ts` 从 `town` Bundle 加载 1672×941 斜俯视街图，复用 1334×750 视口、世界层跟随、镜头夹边和 180 单位/秒移动。`walkable-path.ts` 沿用现有 A* 路径规划，逐段校验并行走；`exploration.ts` 配置出生点和地点。点击地点标签打开原功能或显示未开放。波纹、人物翻转与动画只影响显示。开面板、后台/失焦、禁用、销毁清目标，UI 阻断地图触摸。
-- 野外：正式出城和回城切换 `TownView` 的区域。3344×941 野外图保留在 `outskirts`，以 750 高度等比铺到约 2665.25 宽。镜头夹边移动世界层，HUD 与面板留在视口层；城野共用原位置的人物和出战宠状态卡，从同一 SessionProgress 读取，头像沿用原面板入口与地图输入阻断。点击经视口换算为世界坐标，每个路径段须被凸区并集覆盖。
-- 城野切换先清目标，成功加载后替换地图节点、出生位置和距离状态，失败保留来源地图与计数。位置、区域、保护和抽取余数只在会话中使用。`EncounterDistance` 先消耗 180 保护，再每 60 距离按 10% 判定；`WalkMovement.update()` 对每个实际段调用截断接口，首命中清路径、丢弃剩余位移。TownView 更新人物和镜头后才通知 BattleView 开战，怪物使用现有生成器。
-- 开发样本必须同时满足 Creator `PREVIEW` 和 `devPreview=1`。`encounterSample=1` 固定当前预览的距离抽取为命中，仍须走满保护和间隔；`roundTripSample=single|pair|defeat` 固定遭遇输入，同档保存。旧直接战斗另需 `battlePreview=1`。发布构建不启用上述样本、固定开战或测试重置；正式入口无查询参数。
-- 资源边界：城图及原 UUID 留 `assets/town/`；人物、面板和城镇脚本留 `battle`，Boot 不静态引用地图，town 不反向依赖 battle 脚本。不新增分包；主键保持不变，P2-06 仅新增按版本的原档备份键。
-- 美术：`assets/battle/textures/` 下的背景、角色、汀蛙和玉石按钮；场景通过 SpriteFrame 引用素材。保留对应 `.meta` 文件以维持资源 UUID。
-- 验证：`tests/` 用 node:test 检查规则、存档兼容和站位。浏览器预览由 Cocos Creator 打开场景后启动。
+《青丘灵录》是横屏单机回合制抓宠与养成游戏，使用 **Cocos Creator 3.8.8 + TypeScript**，设计分辨率为 **1334×750**。阶段进度、任务验收和构建记录见 [STATUS.md](STATUS.md)、[任务卡](docs/cards/) 和 [构建与试玩记录](docs/wechat-build.md)。
 
-第一阶段可玩原型已完成。已实现卡 01 战斗、02a-1 基础抓取、02a-2 携带列表、02a-3a 同场召唤和 02a-3b 跨战斗携带恢复，快捷攻击、L 形按钮与自动战斗也已加入；02b 已实现并经华周试玩验收，变异在野怪出场时判定。目录与资源已整理，进度见 `STATUS.md`，后续卡序见 `docs/roadmap.md`。`docs/` 和 `docs/archive/` 保存设计资料及历史版本。
+## 启动与 Asset Bundle
 
-- P2-11 打书：`skill-books.ts` 配置 0/1、2、3、4～8 技能的新增率为 100%/60%/30%/0%，所有现有技能等概率进入顶替候选（含天生硬甲），顶替保留位置。`SessionProgress.prepareSkillBook` 创建一次确认，执行时重查城野上下文、库存、携带宠和技能是否变化；过期/重复确认不抽不写。View 使用 `progressSnapshot` 同时传入更新宠与减书库存，经主档入口写一次，成功才发布技能/库存并删除被顶替灵术的自动记忆。失败结束该确认，原内存与主档保持；重试需重新确认。基础缓存保持，技能属性及下场战斗沿用 `effectivePetPanel` 派生公式。版本、主键、结算 ID 均沿用 v5。
+Web Mobile 和微信小游戏的构建配置分别位于 `settings/web-mobile-build.json` 和 `settings/wechat-build.json`。两端都从主包的 `assets/boot/Boot.scene` 启动。`assets/boot/BootView.ts` 加载 `battle` Bundle 和其中的 `assets/battle/scenes/Battle.scene`，显示进度并提供失败重试。加载完成后点「开始游戏」，游戏读取本地存档并进入城镇。
 
-- P2-11 修订：v5 校验实际拥有的技能，允许磐龟硬甲被顶替；v4 校验及自然生成仍要求必带。城野宠物面板独立「设为出战」按钮调用 SessionProgress.selectPet，构造新 selectedPetId 的完整快照，保存成功才修改会话；头像点击只查看。非地图状态（含待保存结算）禁用且回调重查，写失败提示并保旧。
+| Bundle | 源目录 | 加载与内容 |
+| --- | --- | --- |
+| `battle` | `assets/battle/` | Boot 加载。包含游戏场景、逻辑、界面脚本、战斗资源、人物与召唤兽面板、合宠底图及技能图标。 |
+| `town` | `assets/town/` | `TownView` 按需加载。包含城镇贴图及地图人物的 Spine 资源。 |
+| `outskirts` | `assets/outskirts/` | `TownView` 出城时加载。包含野外宽幅地图贴图。 |
+| `inventory` | `assets/inventory/` | `BattleView` 打开背包时按需加载。包含技能书封面及两种还童露图标。 |
 
-- P2-12 还童：`rejuvenation.ts` 复用物种完整范围抽样（不使用自然宝宝上半段），新资质仅应用一次变异倍率；等级/经验/潜能清零、五项随机50点，技能按自然物种池重生，保留ID、名字与来源。`SessionProgress.prepareRejuvenation` 在准备及执行时校验实际出战ID、身份、材料和地图上下文，确认失效或重复执行不抽不写。与打书共用背包选宠、二次确认及完整 progressSnapshot 保存；写成功才发布宠物与库存并清除失效法术记忆。基础缓存及HP重算，法力沿用 effectivePetPanel 派生及战斗装配回满，无新存档字段。仅当前v5允许合法 initial 普通汀蛙成为宝宝及后续宝宝升级，v1～v4仍按原规则校验和迁移。
+人物面板、召唤兽面板、合宠和技能美术位于 `assets/battle/textures/ui/`。`art-source/` 用于保存美术源文件，构建使用 `assets/` 内导入的资源。`.meta` 记录资源 UUID 和导入配置，包括目录的 Bundle 配置。
 
-- P2-13 合宠：`pet-fusion.ts`集中10级门槛、造型基础权重45/45/10（同种90/10）、六资质独立0.70～1.10倍率、成长0.96～1.02倍率、物种上限及父方必带排除后的40%遗传。正式物种池固定5%出磐龟，其余95%按其它物种原权重比例分配。预览仅列双亲物种及实际概率。结果保留全部必带和成功继承的唯一技能。普通/变异身份不混合，宝宝/野生点数按现有预算重建。
-- 当前保存目标升级为v6（主键不变）：`nextFusedId`与携带名单同一快照保存，`fused-<n>`使用独立单调序号。仅v6合成来源允许超过八个技能，技能ID仍须已知且不重复。v6拒绝缺失/非法序号、ID与来源不符、重复ID及序号不大于现存合成ID；放生不回退序号。v1～v4仍按各自原规则校验和备份，v5沿用已允许的initial宝宝和打书后技能规则，保留库存/结算/捕获计数/出战ID，补序号后迁移；v5不重抽技能。
-- `SessionProgress.prepareFusion`准备确认时不生成；执行重查上下文、双亲和序号。失败候选按双亲完整资料和序号保存在会话中，重试复用候选（包括左右交换），但保存名单和其余进度取当前会话，避免复用旧快照。确认令牌一次性且有同步重入保护；写成功才发布两旧换一新和序号、清除父宠自动记忆。失败不揭示结果。
-- 城野地图「合宠」与丹炉共用入口，复用rosterOpen阻断移动/暗遇。点任一整栏父宠区域打开选宠，点头像选中或取消，选中合格宠物后点「选择」放入。双亲合格后可点丹炉合成，或点炉下「预览」查看造型、资质、成长与技能候选。同造型的两张立绘各显示该造型一半概率。主界面与预览技能格均按四列三行显示，超出可滚动。二次确认说明两宠消失，取消不生成不写。成功打开新宠资料，原出战宠保持；新宠可沿用地图设为出战与下场装配。Battle和View宠识别已纳入fused前缀。实际浏览器验收状态见docs/wechat-build.md，代码实现不代表整卡验收完成。
+## 玩法逻辑与界面
+
+- `assets/battle/logic/` 是纯 TypeScript 玩法模块。战斗参数在 `battle-rules.ts`，抓取、野怪生成、资质、成长和变异的数值及公式分布在 `capture.ts`、`wild-encounter.ts`、`aptitude.ts`、`growth.ts` 和 `mutation.ts`。技能参数和法术公式在 `pet-skills.ts`，人物和召唤兽的属性计算分别由 `hero-progress.ts` 和 `pet-panel.ts` 提供。
+- `assets/battle/scripts/Battle.ts` 使用这些配置和公式编排回合、指令、战斗事件及胜负结算。战斗模型可在脱离 Cocos 场景的测试中运行。`assets/battle/scripts/BattleView.ts` 接入场景输入、指令按钮、事件回放、动效、城野入口和各面板。
+- `assets/battle/scripts/config.ts` 管理视口、站位、按钮位置、动画和地图可行走多边形。走路速度、地点、出生点及按距离触发暗雷的参数在 `assets/battle/logic/exploration.ts`，寻路和逐段移动在 `assets/battle/scripts/walkable-path.ts`。
+
+## 城野与养成界面
+
+- **城镇与野外**　`assets/battle/scripts/TownView.ts` 管理地图切换、镜头、人物移动及暗雷接线。城镇街图在 `assets/town/textures/`，野外贴图在 `assets/outskirts/textures/`。城野面板与战斗共享同一个会话进度。进入面板或战斗会中止地图移动，结算后返回地图，战败走回城路径。
+- **背包**　界面和道具使用确认在 `assets/battle/scripts/BattleView.ts`。`assets/battle/logic/inventory.ts` 负责道具定义、库存和掉落，`skill-books.ts` 与 `rejuvenation.ts` 分别负责打书和两种还童露。城野可使用道具，战斗背包只读。技能书共用 `assets/inventory/textures/items/item_skillbook.png`，封面叠加 battle Bundle 的对应技能图标。
+- **人物与召唤兽面板**　`BattleView.ts` 绘制人物属性、潜能加点、召唤兽属性、资质技能及出战操作。人物计算在 `assets/battle/logic/hero-progress.ts`，召唤兽计算在同目录的 `pet-panel.ts`、`base-stats.ts` 和 `pet-skills.ts`，携带名单在 `roster.ts`。技能格使用图标与角标，空位和锁定位有独立文字标记，点技能可查看说明气泡。
+- **合宠**　主界面、选宠弹窗、手动预览、确认及新宠结果在 `assets/battle/scripts/BattleView.ts`。左右父宠整栏都能打开选宠，点击同一格可选中或取消，选中合格宠物后点「选择」才放入。`assets/battle/scripts/fusion-preview.ts` 读取 `assets/battle/logic/pet-fusion.ts` 的规则，计算双亲造型概率、六项资质与成长区间及可能得到的技能。双亲同种时，并排的两张卡各显示该造型概率的一半。磐龟实际抽取率为 5%，预览只列双亲造型。主界面与预览的技能格为四列三行，超出可滚动。确认合成后才抽取并保存，保存成功后替换双亲并显示新宠结果。
+
+## 会话、结算与存档
+
+- `assets/battle/logic/session-progress.ts` 的 `SessionProgress` 持有人物、携带宠物、出战 ID、库存及结算 ID。背包道具和合宠确认先检查当前条件，保存成功后才更新会话。结算写入失败时保留待重试的候选，避免重抽掉落或重复发放。
+- `assets/battle/logic/local-progress.ts` 负责存档校验、快照和旧档迁移。当前版本为 **v6**，保存人物、宠物、出战选择、库存、抓取和合成序号及最近结算 ID。v1～v5 按原版本校验并保留原始备份后迁移至 v6，已有技能 ID 保留。v6 的合成来源宠物可保存超过八个合法且不重复的技能。
+- `assets/logic/platform.ts` 提供浏览器参数及存储适配。Web 使用本地存储，微信使用同步存储，两端沿用主键 `qingqiu-linglu:test-progress`。读档或迁移失败时保留原档，由界面显示原因并提供重试。
+
+## 测试与浏览器验收
+
+- `tests/*.test.mjs` 使用 Node.js 自带的 `node:test`，覆盖启动、规则、面板接线、地图移动、合宠和存档兼容等。运行全量 `node --test tests/*.test.mjs` 前，将 `COCOS_TYPESCRIPT` 指向本机 Creator 内置的 TypeScript 模块目录，供涉及 Cocos 视图的集成测试转译脚本。
+- 浏览器验收使用 **ego-browser**，按任务卡在 Creator 预览或对应的 Web Mobile 构建中实点。固定遭遇、开发测试入口等由 `PREVIEW` 和 `devPreview=1` 控制，正式构建通过正常标题入口运行。微信模拟器与真机的结果在构建记录中单列。
