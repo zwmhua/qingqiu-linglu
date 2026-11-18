@@ -642,6 +642,7 @@ async function roundTripView(sample = 'single') {
 
 test('map victory waits for playback, retries the identical snapshot, and blocks side writes', async () => {
   const { v, session, position } = await roundTripView();
+  session.warehouse = { rejuvenation: 105 };
   const battle = v.battle, root = v.town.root, movement = v.town.movement;
   const before = townDisk.raw, writes = townDisk.writes;
   v.startFixedBattle();
@@ -683,6 +684,7 @@ test('map victory waits for playback, retries the identical snapshot, and blocks
   v.finishBattle();
   nextAttack.call(v);
   assert.equal(townDisk.raw, snapshot);
+  assert.deepEqual(loadSessionProgress(townDisk).warehouse, { rejuvenation: 105 });
   assert.equal(townDisk.writes, writes + 1);
   assert.equal(v.mapBattle, false);
   assert.equal(v.town.root, root);
@@ -918,7 +920,7 @@ test('startup retries migration with the same candidate before creating a playab
   saveProgress(townDisk, source);
   const saved = JSON.parse(townDisk.raw);
   saved.version = 3;
-  delete saved.inventory; delete saved.lastSettledId; delete saved.nextFusedId;
+  delete saved.inventory; delete saved.lastSettledId; delete saved.nextFusedId; delete saved.warehouse;
   saved.pets.forEach(p => { delete p.skillIds; });
   const raw = JSON.stringify(saved), values = new Map([['qingqiu-linglu:test-progress', raw]]), attempts = [];
   const original = { getItem: townDisk.getItem, setItem: townDisk.setItem };
@@ -1314,7 +1316,7 @@ test('warehouse tabs guard context and preserve independent scrolling and select
     assert.equal(v.warehouseOpen, true);
     assert.equal(slots.filter(n => n.name?.startsWith('warehouse-left-slot-')).length, 25);
     assert.equal(slots.filter(n => n.name?.startsWith('warehouse-right-slot-')).length, 30);
-    v.warehouseInventory = { ...session.inventory }; draw();
+    session.warehouse = { ...session.inventory }; draw();
     const left = v.layer.children.find(n => n.name === 'warehouse-left-grid');
     const right = v.layer.children.find(n => n.name === 'warehouse-right-grid');
     left.scroll.scrollToOffset({ x: 0, y: 75 }); left.handlers.scrolling();
@@ -1349,6 +1351,7 @@ test('skill book view confirms on maps, cancels without work and guards stale ca
   const { v, session, complete } = await roundTripView();
   v.mapBattle = false;
   const pet = session.roster.entries[0];
+  session.warehouse = { 'book:thunder': 12 };
   pet.skillIds = ['crit']; session.inventory = { 'book:thunder': 3 };
   const labels = [], actions = new Map();
   v.text = text => labels.push(text);
@@ -1380,6 +1383,7 @@ test('skill book view confirms on maps, cancels without work and guards stale ca
   townDisk.fail = false; choose();
   const confirm = actions.get('确认打书'); confirm(); confirm(); cancelledCallback();
   assert.equal(townDisk.writes, writes + 1); assert.equal(session.inventory['book:thunder'], 2);
+  assert.deepEqual(loadSessionProgress(townDisk).warehouse, { 'book:thunder': 12 });
   assert.deepEqual(pet.skillIds, ['crit', 'thunder']); assert.match(v.bookMessage, /新增雷击术/);
   choose(); assert.match(v.bookMessage, /已学/);
   assert.equal(rolls, 0); assert.equal(townDisk.writes, writes + 1);
@@ -1441,6 +1445,7 @@ test('map deployment saves before changing selection; battle and pending settlem
 
 test('rejuvenation UI covers maps, cancellation, failure, stale confirmation, selection and settlement guards', async () => {
   const { v, session, complete } = await roundTripView(), pet = session.roster.entries[1];
+  session.warehouse = { rejuvenation: 8, 'mutation-rejuvenation': 9 };
   v.mapBattle = false; session.inventory = { rejuvenation: 5, 'mutation-rejuvenation': 2 };
   const labels = [], actions = new Map();
   v.text = text => labels.push(text); v.rect = () => ({ addComponent() {} });
@@ -1472,6 +1477,7 @@ test('rejuvenation UI covers maps, cancellation, failure, stale confirmation, se
     assert.equal(rolls, usedRolls); assert.equal(session.inventory.rejuvenation, count - 1);
     assert.match(v.bookMessage, /还童成功/); assert.equal(pet.level, 0); assert.equal(pet.isBaby, true);
     assert.equal(loadSessionProgress(townDisk).roster.entries[1].level, 0);
+    assert.deepEqual(loadSessionProgress(townDisk).warehouse, { rejuvenation: 8, 'mutation-rejuvenation': 9 });
   }
   const saved = townDisk.raw, savedWrites = townDisk.writes;
   choose(); const switched = actions.get('确认还童');
@@ -1497,6 +1503,7 @@ test('rejuvenation UI covers maps, cancellation, failure, stale confirmation, se
 test('fusion city and field UI blocks movement, cancels, retries without reroll and opens result', async () => {
   const { v, session, complete } = await roundTripView();
   const { petCombat } = await import('../assets/battle/logic/pet-panel.ts');
+  session.warehouse = { 'book:regen': 45 };
   v.mapBattle = false; const a = session.roster.entries[1], b = { ...a, id: 'caught-1', origin: 'captured' };
   for (const pet of [a, b]) {
     Object.assign(pet, { level: 10, isBaby: true, potential: 50,
@@ -1692,6 +1699,7 @@ test('fusion city and field UI blocks movement, cancels, retries without reroll 
   assert.equal(v.fusionOpen, false); assert.equal(v.rosterOpen, true); assert.equal(v.isPet({ id: 'fused-1' }), true);
   assert.equal(v.petPanelPage, 'aptitude');
   assert.equal(v.fusionResult, true);
+  assert.deepEqual(loadSessionProgress(townDisk).warehouse, { 'book:regen': 45 });
   const reloaded = loadSessionProgress(townDisk).roster;
   assert.equal(reloaded.nextFusedId, 2);
   assert.deepEqual(reloaded.entries.find(pet => pet.id === 'fused-1').skillIds, skills);

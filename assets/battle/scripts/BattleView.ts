@@ -109,7 +109,6 @@ export class BattleView extends Component {
   private inventoryTipOpen = false;
   private inventoryScrollY = 0;
   private warehouseOpen = false;
-  private warehouseInventory: Inventory = {};
   private warehouseScroll = [0, 0];
   private warehouseSide = 1;
   private bagFrames = new Map<string, SpriteFrame>();
@@ -1855,7 +1854,6 @@ export class BattleView extends Component {
     this.inventoryTipOpen = false;
     this.inventoryScrollY = 0;
     this.warehouseOpen = false;
-    this.warehouseInventory = {};
     this.warehouseScroll = [0, 0];
     this.bookConfirmation = undefined;
     this.bookMessage = '';
@@ -2030,7 +2028,7 @@ export class BattleView extends Component {
     });
     this.bagControl('整理仓库', 265, 644, 265, 56, false, () => {});
     this.bagControl('整理背包', 798, 644, 265, 56, false, () => {});
-    this.renderWarehouseGrid(this.warehouseInventory, 0);
+    this.renderWarehouseGrid(this.progress.warehouse, 0);
     this.renderWarehouseGrid(this.progress.inventory, 1);
   }
 

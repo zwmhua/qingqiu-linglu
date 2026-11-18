@@ -26,7 +26,7 @@ test('a turtle can lose innate armor, reload v5 unchanged and learn another book
   assert.deepEqual(restored.roster.entries[1].skillIds, ['thunder', 'crit', 'power', 'regen']);
   assert.equal(restored.inventory['book:thunder'], 0);
   assert.equal(restored.prepareSkillBook(false, pet.id, 'book:fireball').rate, 0);
-  const old = JSON.parse(raw); old.version = 4; delete old.inventory; delete old.lastSettledId; delete old.nextFusedId;
+  const old = JSON.parse(raw); old.version = 4; delete old.inventory; delete old.lastSettledId; delete old.nextFusedId; delete old.warehouse;
   disk.raw = JSON.stringify(old);
   assert.throws(() => loadSessionProgress(disk), /技能不兼容/);
 });
@@ -254,4 +254,19 @@ test('fusion persists once before replacing parents, retries same child against 
   const next = restored.prepareFusion(false, [a.id, b.id]).execute(false, (pets, seq) =>
     disk.setItem('', progressSnapshot(restored, undefined, undefined, pets, undefined, undefined, seq)), random);
   assert.equal(next.id, 'fused-2'); assert.equal(loadSessionProgress(disk).roster.nextFusedId, 3);
+});
+
+test('mutation rejuvenation consumes a bag bottle and preserves the warehouse on reload', async () => {
+  const { progressSnapshot } = await import('../assets/battle/logic/local-progress.ts');
+  const session = new SessionProgress(initialHero()), disk = storage(), pet = session.roster.entries[1];
+  Object.assign(pet, { id: 'caught-1', origin: 'captured', isMutated: true });
+  const item = 'mutation-rejuvenation';
+  session.inventory = { [item]: 2 };
+  session.warehouse = { [item]: 7 };
+  session.prepareRejuvenation(false, pet.id, item).execute(false, (updated, inventory) =>
+    disk.setItem('', progressSnapshot(session, undefined, updated, undefined, inventory)), () => 0);
+  const restored = loadSessionProgress(disk);
+  assert.deepEqual(restored.inventory, { [item]: 1 });
+  assert.deepEqual(restored.warehouse, { [item]: 7 });
+  assert.equal(restored.roster.entries[1].isBaby, true);
 });

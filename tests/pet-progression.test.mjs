@@ -186,7 +186,7 @@ test('legacy pet records restore unchanged with zero experience and potential', 
   saveProgress(storage, battle);
   const legacy = JSON.parse(raw);
   legacy.version = 2;
-  delete legacy.inventory; delete legacy.lastSettledId; delete legacy.nextFusedId;
+  delete legacy.inventory; delete legacy.lastSettledId; delete legacy.nextFusedId; delete legacy.warehouse;
   legacy.pets.forEach(pet => { delete pet.skillIds; });
   for (const pet of legacy.pets) Object.assign(pet, wildCombat(pet.species, pet.level));
   raw = JSON.stringify(legacy);

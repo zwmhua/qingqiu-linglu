@@ -12,7 +12,7 @@ const key = 'qingqiu-linglu:test-progress';
 function fixture(version) {
   const saved = JSON.parse(progressSnapshot(new SessionProgress(initialHero(), undefined, undefined, () => 0)));
   saved.version = version;
-  delete saved.inventory; delete saved.lastSettledId; delete saved.nextFusedId;
+  delete saved.inventory; delete saved.lastSettledId; delete saved.nextFusedId; delete saved.warehouse;
   for (const pet of saved.pets) {
     delete pet.skillIds;
     pet.skill = '露珠弹';
@@ -40,7 +40,7 @@ test('each original version backs up exact bytes before committing and reloads w
     const storage = disk(original), raw = storage.values.get(key);
     const session = new ProgressLoader().load(storage, () => 0);
     assert.equal(storage.values.get(`${key}:backup:v${version}`), raw);
-    assert.equal(JSON.parse(storage.values.get(key)).version, 6);
+    assert.equal(JSON.parse(storage.values.get(key)).version, 7);
     assert.deepEqual(session.roster.entries.map(p => [p.baseStats, p.potential]), original.pets.map(p => [p.baseStats, p.potential ?? 0]));
     assert.deepEqual(storage.attempts.map(([k]) => k), [`${key}:backup:v${version}`, key]);
     for (let i = 0; i < 2; i++) assert.deepEqual(new ProgressLoader().load(storage, () => assert.fail('reroll')).roster.entries, session.roster.entries);
@@ -130,7 +130,7 @@ test('captured mutated babies level normally and existing mutated wild saves rem
   for (const isBaby of [true, false]) for (const version of [3, 4]) {
     const saved = JSON.parse(progressSnapshot(session));
     saved.version = version;
-    delete saved.inventory; delete saved.lastSettledId; delete saved.nextFusedId;
+    delete saved.inventory; delete saved.lastSettledId; delete saved.nextFusedId; delete saved.warehouse;
     saved.pets.at(-1).isBaby = isBaby;
     if (version === 3) saved.pets.forEach(p => { delete p.skillIds; });
     const restored = new ProgressLoader().load(disk(saved), () => 0).roster.entries.at(-1);
@@ -146,7 +146,7 @@ test('v4 keeps exact ordered skills and progress, v5 validates inventory and set
   source.selectedPetId = 'pet-2';
   const old = JSON.parse(progressSnapshot(source));
   old.nextCapturedId = 12;
-  old.version = 4; delete old.inventory; delete old.lastSettledId; delete old.nextFusedId;
+  old.version = 4; delete old.inventory; delete old.lastSettledId; delete old.nextFusedId; delete old.warehouse;
   for (const mutate of [s => s.pets[0].skillIds = ['alien'], s => s.pets[0].skillIds = ['regen', 'regen'],
     s => s.inventory = {}, s => s.lastSettledId = 0]) {
     const bad = structuredClone(old); mutate(bad); const storage = disk(bad), raw = storage.values.get(key);
@@ -166,7 +166,7 @@ test('v4 keeps exact ordered skills and progress, v5 validates inventory and set
     storage.fail = '';
     const restored = loader.load(storage, () => assert.fail('v4 reroll'));
     const saved = JSON.parse(storage.values.get(key));
-    assert.deepEqual(saved, { ...old, version: 6, nextFusedId: 1, inventory: {}, lastSettledId: 0 });
+    assert.deepEqual(saved, { ...old, version: 7, warehouse: {}, nextFusedId: 1, inventory: {}, lastSettledId: 0 });
     assert.equal(storage.values.get(`${key}:backup:v4`), raw);
     if (attempted) assert.equal(storage.values.get(key), attempted);
     restored.inventory = { rejuvenation: 100 }; restored.lastSettledId = 7;
@@ -193,7 +193,7 @@ test('v5 initial babies and captured mutation babies reload; old initial constra
   assert.equal(new ProgressLoader().load(disk(saved)).roster.entries[1].isBaby, true);
   for (const version of [1, 2, 3, 4]) {
     const legacy = structuredClone(saved); legacy.version = version;
-    delete legacy.inventory; delete legacy.lastSettledId; delete legacy.nextFusedId;
+    delete legacy.inventory; delete legacy.lastSettledId; delete legacy.nextFusedId; delete legacy.warehouse;
     if (version < 4) legacy.pets.forEach(p => { delete p.skillIds; });
     if (version < 3) legacy.pets.forEach(p => Object.assign(p, wildCombat(p.species, p.level)));
     if (version === 1) legacy.pets.forEach(p => { delete p.exp; delete p.potential; });
@@ -215,10 +215,10 @@ test('v5 initial babies and captured mutation babies reload; old initial constra
 });
 
 
-test('v5 preserves rejuvenated initial babies, overwritten innate skills and inventory in v6', async () => {
+test('v5 preserves rejuvenated initial babies, overwritten innate skills and inventory in v7', async () => {
   const { rejuvenate } = await import('../assets/battle/logic/rejuvenation.ts');
   const source = new SessionProgress(initialHero()), old = JSON.parse(progressSnapshot(source));
-  old.version = 5; delete old.nextFusedId; old.nextCapturedId = 19; old.lastSettledId = 23;
+  old.version = 5; delete old.nextFusedId; delete old.warehouse; old.nextCapturedId = 19; old.lastSettledId = 23;
   old.inventory = { rejuvenation: 7, 'book:thunder': 8 };
   old.pets[0] = rejuvenate(old.pets[0], () => 0);
   Object.assign(old.pets[1], { id: 'caught-7', origin: 'captured', species: 'pangui', skillIds: ['thunder', 'fireball'] });
@@ -227,7 +227,7 @@ test('v5 preserves rejuvenated initial babies, overwritten innate skills and inv
   storage.fail = key; assert.throws(() => loader.load(storage, () => assert.fail('reroll')));
   assert.equal(storage.values.get(key), raw); assert.equal(storage.values.get(`${key}:backup:v5`), raw);
   storage.fail = ''; const restored = loader.load(storage, () => assert.fail('reroll'));
-  assert.deepEqual(JSON.parse(progressSnapshot(restored)), { ...old, version: 6, nextFusedId: 1 });
+  assert.deepEqual(JSON.parse(progressSnapshot(restored)), { ...old, version: 7, warehouse: {}, nextFusedId: 1 });
   assert.equal(progressSnapshot(new ProgressLoader().load(storage)), progressSnapshot(restored));
   const current = JSON.parse(progressSnapshot(restored));
   Object.assign(current.pets[1], { id: 'fused-7', origin: 'fused' }); current.selectedPetId = 'fused-7'; current.nextFusedId = 8;
@@ -238,5 +238,44 @@ test('v5 preserves rejuvenated initial babies, overwritten innate skills and inv
     const bad = structuredClone(current); mutate(bad); const invalid = disk(bad), bytes = invalid.values.get(key);
     assert.throws(() => new ProgressLoader().load(invalid)); assert.equal(invalid.values.get(key), bytes);
     assert.equal(invalid.attempts.length, 0);
+  }
+});
+
+test('v6 migration backs up original bytes, retries unchanged and keeps the full fused roster and sequences', async () => {
+  const { PET_SKILLS } = await import('../assets/battle/logic/pet-skills.ts');
+  const old = JSON.parse(progressSnapshot(new SessionProgress(initialHero())));
+  delete old.warehouse;
+  Object.assign(old, { version: 6, nextCapturedId: 53, nextFusedId: 42, lastSettledId: 123,
+    inventory: { 'book:thunder': 1, rejuvenation: 107 }, selectedPetId: 'fused-17' });
+  old.hero.exp = 3;
+  Object.assign(old.pets[1], { id: old.selectedPetId, origin: 'fused', exp: 4,
+    skillIds: Object.keys(PET_SKILLS).slice(0, 10) });
+  const storage = disk(old), raw = JSON.stringify(old, null, 2), backup = key + ':backup:v6';
+  storage.values.set(key, raw);
+  const loader = new ProgressLoader(), noRoll = () => assert.fail('unexpected reroll');
+  storage.fail = key;
+  assert.throws(() => loader.load(storage, noRoll), /write failed/);
+  assert.equal(storage.values.get(key), raw);
+  assert.equal(storage.values.get(backup), raw);
+  const candidate = storage.attempts.at(-1)[1];
+  storage.fail = '';
+  const session = loader.load(storage, noRoll);
+  assert.deepEqual(JSON.parse(progressSnapshot(session)), { ...old, version: 7, warehouse: {} });
+  assert.equal(storage.values.get(key), candidate);
+  assert.deepEqual(storage.attempts.map(([k]) => k), [backup, key, key]);
+  session.warehouse = { rejuvenation: 103, 'book:crit': 2 };
+  storage.setItem(key, progressSnapshot(session));
+  assert.deepEqual(new ProgressLoader().load(storage, noRoll).warehouse, session.warehouse);
+  assert.equal(storage.values.get(backup), raw);
+});
+
+test('warehouse is required and validated in v7 and forbidden in older snapshots', () => {
+  const saved = JSON.parse(progressSnapshot(new SessionProgress(initialHero())));
+  for (const patch of [{ warehouse: null }, { warehouse: undefined }, { warehouse: [] },
+    { warehouse: { alien: 1 } }, { warehouse: { rejuvenation: -1 } }, { version: 6, warehouse: {} }]) {
+    const storage = disk({ ...saved, ...patch }), raw = storage.values.get(key);
+    assert.throws(() => new ProgressLoader().load(storage));
+    assert.equal(storage.values.get(key), raw);
+    assert.deepEqual(storage.attempts, []);
   }
 });

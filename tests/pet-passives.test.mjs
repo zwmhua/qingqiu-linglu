@@ -143,12 +143,14 @@ test('capture, upgrade, allocation and v4 reload retain base caches and ordered 
   const preview = petPanelPreview(caught, draft);
   assert.deepEqual(preview.panel, effectivePetPanel({ ...caught, baseStats: draft.stats }));
   assert.equal(preview.delta('attack'), `+${preview.panel.attack - effectivePetPanel(caught).attack}`);
+  b.session.warehouse = { 'book:crit': 9 };
   let raw;
   const disk = { getItem: () => raw, setItem: (_key, value) => { raw = value; } };
   assert.equal(b.confirmPetAllocation(caught.id, draft, pet => saveProgress(disk, b, undefined, pet)), true);
   assert.deepEqual(values(unit), values(preview.panel));
   assert.deepEqual(values(caught), values(petPanel(caught)));
-  assert.equal(JSON.parse(raw).version, 6);
+  assert.equal(JSON.parse(raw).version, 7);
+  assert.deepEqual(loadSessionProgress(disk).warehouse, { 'book:crit': 9 });
   assert.deepEqual(readProgress(disk).pets.at(-1).skillIds, skills);
   const session = loadSessionProgress(disk), next = new Battle(() => 0, 1, 0, session);
   assert.deepEqual(values(next.pets.at(-1)), values(unit));

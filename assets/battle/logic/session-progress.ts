@@ -18,6 +18,7 @@ export class SessionProgress {
   selectedPetId: string;
   heroProgress?: HeroProgress;
   inventory: Inventory = {};
+  warehouse: Inventory = {};
   lastSettledId = 0;
   dropMode: DropMode = 'formal';
   private battleSequence = 0;
