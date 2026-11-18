@@ -2078,6 +2078,8 @@ export class BattleView extends Component {
     this.bagControl('整理背包', 798, 644, 265, 56, true, () => sort(1));
     this.renderWarehouseGrid(warehouse, 0, current);
     const bagItems = this.renderWarehouseGrid(inventory, 1, current);
+    // Cocos requires a UITransform on nodes registered for pointer capture.
+    this.layer.addComponent(UITransform).setContentSize(0, 0);
     this.layer.on(Node.EventType.TOUCH_START, (event: EventTouch) => {
       if (current() && event.target?.parent !== bagItems) this.cancelWarehouseTap();
     }, this, true);

@@ -1441,7 +1441,8 @@ async function warehouseTapSample(t) {
 }
 
 test('warehouse bag double tap is interrupted by a cancelled drag on the left side', async t => {
-  const { slot, start, tap, unchanged } = await warehouseTapSample(t);
+  const { v, slot, start, tap, unchanged } = await warehouseTapSample(t);
+  assert.deepEqual(v.layer.size, [0, 0], 'Cocos pointer capture needs a UITransform without a hit area');
   tap('right', 0);
   const dragged = slot('left', 0);
   start(dragged);
