@@ -2125,11 +2125,18 @@ export class BattleView extends Component {
     editor.addComponent(UITransform).setContentSize(270, 56);
     const input = editor.addComponent(EditBox);
     input.inputMode = EditBox.InputMode.NUMERIC;
+    input.placeholder = '';
     input.string = choice.draft;
     if (input.textLabel) {
-      input.textLabel.fontSize = 24;
-      input.textLabel.color = C('#382619');
-      input.textLabel.horizontalAlign = Label.HorizontalAlign.CENTER;
+      const label = input.textLabel;
+      label.fontSize = 24;
+      label.lineHeight = 32;
+      label.color = C('#382619');
+      label.horizontalAlign = Label.HorizontalAlign.CENTER;
+      label.verticalAlign = Label.VerticalAlign.CENTER;
+      label.overflow = Label.Overflow.CLAMP;
+      label.node.setPosition(0, 0);
+      label.node.getComponent(UITransform)!.setContentSize(260, 56);
     }
     editor.on(EditBox.EventType.TEXT_CHANGED, () => { if (active()) choice.draft = input.string; });
     const step = (delta: number) => {
@@ -2137,8 +2144,10 @@ export class BattleView extends Component {
       const count = warehouseQuantity(input.string, choice.max) ?? choice.max;
       choice.draft = input.string = String(Math.min(choice.max, Math.max(1, count + delta)));
     };
-    this.button('−', 447, 310, 70, 60, true, () => step(-1));
-    this.button('＋', 817, 310, 70, 60, true, () => step(1));
+    this.rect(447, 310, 70, 60, '#E5CB8D', '#C6A971', 8);
+    this.rect(817, 310, 70, 60, '#E5CB8D', '#C6A971', 8);
+    this.button('−', 447, 310, 70, 60, true, () => step(-1), true);
+    this.button('＋', 817, 310, 70, 60, true, () => step(1), true);
     this.text(`${choice.invalid ? '请输入整数，范围' : '数量'} 1–${choice.max}`, 397, 386, 20, '#F3DFAD', 540, 1);
     this.button('取消', 447, 449, 185, 54, true, cancel);
     this.button('确认', 702, 449, 185, 54, true, () => {
