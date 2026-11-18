@@ -1177,7 +1177,7 @@ test('bag grid and tooltip use the same loaded skill emblem as the pet panel', a
   const frames = new Map();
   for (const bundle of ['inventory', 'battle']) {
     bundleLoads[bundle](null, { load(path, _type, ready) {
-      const source = path.replace(/\/spriteFrame$/, path.includes('bag_panel') ? '.jpg.meta' : '.png.meta');
+      const source = path.replace(/\/spriteFrame$/, path.includes('_panel') && !path.includes('ui/') ? '.jpg.meta' : '.png.meta');
       const meta = JSON.parse(readFileSync(new URL(`../assets/${bundle}/${source}`, import.meta.url), 'utf8'));
       assert.ok(Object.values(meta.subMetas).some(part => part.name === 'spriteFrame'));
       const frame = new SpriteFrame();
@@ -1263,7 +1263,7 @@ test('bag lays out 25 slots on its art, stacks by ID, and only enters pet select
   assert.equal(v.inventoryItem, 'rejuvenation');
   assert.equal(actions.has('使用'), true);
   assert.ok(labels.get('使用').x < labels.get('整理').x);
-  for (const tab of ['任务', '仓库', '整理']) {
+  for (const tab of ['任务', '整理']) {
     actions.get(tab)();
     draw();
     assert.ok(labels.has(`${tab}·未开放`));
@@ -1294,6 +1294,55 @@ test('bag lays out 25 slots on its art, stacks by ID, and only enters pet select
   } finally {
     for (const id of extras) { delete ITEMS[id]; delete session.inventory[id]; }
   }
+});
+
+test('warehouse tabs guard context and preserve independent scrolling and selection sources', async () => {
+  const { v, session } = await roundTripView(), slots = [], labels = new Map(), actions = new Map(), actionRects = new Map();
+  v.mapBattle = false; v.town.region = 'town';
+  const extras = Array.from({ length: 26 }, (_, i) => `warehouse-test-${i}`);
+  try {
+    for (const id of extras) ITEMS[id] = { name: id, description: `说明${id}` };
+    session.inventory = Object.fromEntries(extras.map(id => [id, 1]));
+    v.rect = (x, y, w, h, _fill, _border, _radius, click) => {
+      const node = new Node(); Object.assign(node, { x, y, w, h, click, owner: v.layer }); slots.push(node); return node;
+    };
+    v.text = (label, x, y) => labels.set(label, { x, y, parent: v.layer });
+    v.button = (label, x, y, w, h, enabled, click) => { if (enabled) actions.set(label, click); actionRects.set(label, { x, y, w, h, owner: v.layer }); };
+    mockBagArt(v); v.bagFrames.set('warehouse', new SpriteFrame());
+    const draw = () => { slots.length = 0; labels.clear(); actions.clear(); v.layer = new Node('bag'); v.renderInventory(); };
+    v.openInventory(); draw(); actions.get('仓库')(); draw();
+    assert.equal(v.warehouseOpen, true);
+    assert.equal(slots.filter(n => n.name?.startsWith('warehouse-left-slot-')).length, 25);
+    assert.equal(slots.filter(n => n.name?.startsWith('warehouse-right-slot-')).length, 30);
+    v.warehouseInventory = { ...session.inventory }; draw();
+    const left = v.layer.children.find(n => n.name === 'warehouse-left-grid');
+    const right = v.layer.children.find(n => n.name === 'warehouse-right-grid');
+    left.scroll.scrollToOffset({ x: 0, y: 75 }); left.handlers.scrolling();
+    assert.equal(v.warehouseScroll[0], 75); assert.equal(v.warehouseScroll[1], 0);
+    slots.find(n => n.name === 'warehouse-left-slot-25').click(); draw();
+    assert.equal(v.inventoryItem, extras[25]); assert.equal(v.warehouseSide, 0);
+    assert.ok(labels.has(extras[25])); assert.ok(actions.has('取出'));
+    const tipBox = slots.find(n => n.owner?.name === 'bag-tip' && n.w === 320);
+    const transfer = actionRects.get('取出');
+    assert.equal(transfer.owner.name, 'bag-tip');
+    const descriptionLines = (`说明${extras[25]}`).match(/.{1,15}/gu);
+    assert.ok(transfer.y >= labels.get(descriptionLines.at(-1)).y + 21);
+    assert.ok(transfer.y + transfer.h <= tipBox.y + tipBox.h);
+    slots.find(n => n.name === 'warehouse-right-slot-25').click(); draw();
+    assert.equal(v.warehouseSide, 1); assert.ok(actions.has('存入'));
+    assert.equal(v.warehouseScroll[0], 75); assert.equal(v.warehouseScroll[1], 0);
+    const rightAgain = v.layer.children.find(n => n.name === 'warehouse-right-grid');
+    rightAgain.scroll.scrollToOffset({ x: 0, y: 75 }); rightAgain.handlers.scrolling();
+    assert.equal(v.warehouseScroll[0], 75); assert.equal(v.warehouseScroll[1], 75);
+    assert.equal(v.inventoryItem, extras[25]); assert.equal(v.warehouseSide, 1);
+    assert.equal(v.inventoryTipOpen, false);
+    actions.get('背包')(); draw(); assert.equal(v.warehouseOpen, false);
+    actions.get('关闭')(); assert.equal(v.inventoryOpen, false);
+    v.town.region = 'outskirts'; v.openInventory(); draw(); actions.get('仓库')(); draw();
+    assert.equal(v.warehouseOpen, false); assert.ok(labels.has('回城后可使用仓库'));
+    v.mapBattle = true; draw(); actions.get('仓库')(); draw();
+    assert.equal(v.warehouseOpen, false); assert.ok(labels.has('战斗中只读'));
+  } finally { for (const id of extras) delete ITEMS[id]; }
 });
 
 test('skill book view confirms on maps, cancels without work and guards stale callbacks and changed context', async () => {

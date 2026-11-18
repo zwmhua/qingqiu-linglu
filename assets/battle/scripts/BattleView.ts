@@ -37,7 +37,7 @@ const POTENTIAL_RELEASE_EVENTS = ['pointerup', 'pointercancel', 'pointerout', 'm
 const C = (hex: string) => new Color(hex);
 const COMMAND_NAMES = ['攻击', '防御', '保护', '召唤', '抓取', '道具', '逃跑', '灵术', '撤退'] as const;
 const BAG_ART = {
-  panel: 'bag_panel', book: 'items/item_skillbook',
+  panel: 'bag_panel', warehouse: 'warehouse_panel', book: 'items/item_skillbook',
   rejuvenation: 'items/item_rebirth_dew', 'mutation-rejuvenation': 'items/item_rebirth_dew_mutant',
 } as const;
 const BAG_PANEL = { x: 10, y: 0, width: 1313, height: 740 };
@@ -108,6 +108,10 @@ export class BattleView extends Component {
   private inventoryChoosingPet = false;
   private inventoryTipOpen = false;
   private inventoryScrollY = 0;
+  private warehouseOpen = false;
+  private warehouseInventory: Inventory = {};
+  private warehouseScroll = [0, 0];
+  private warehouseSide = 1;
   private bagFrames = new Map<string, SpriteFrame>();
   private skillFrames = new Map<string, SpriteFrame>();
   private skillArtLoading = false;
@@ -1850,6 +1854,9 @@ export class BattleView extends Component {
     this.inventoryChoosingPet = false;
     this.inventoryTipOpen = false;
     this.inventoryScrollY = 0;
+    this.warehouseOpen = false;
+    this.warehouseInventory = {};
+    this.warehouseScroll = [0, 0];
     this.bookConfirmation = undefined;
     this.bookMessage = '';
     this.loadBagArt();
@@ -1965,12 +1972,13 @@ export class BattleView extends Component {
     };
     this.rect(0, 0, CONFIG.width, CONFIG.height, '#000000', '', 0,
       () => this.inventoryTipOpen ? dismissTip() : close(), 150).addComponent(BlockInputEvents);
-    const panel = this.bagFrames.get('panel');
+    const panel = this.bagFrames.get(this.warehouseOpen ? 'warehouse' : 'panel');
     if (!panel) {
       this.text(this.bagArtFailed ? '背包界面加载失败' : '加载中…', 467, 346, 25, '#F3DFAD', 400, 1);
       this.button('关闭', 601, 399, 132, 48, true, close);
       return;
     }
+    if (this.warehouseOpen) { this.renderWarehouse(panel, close, dismissTip); return; }
     const { x, y, width, height } = BAG_PANEL;
     const background = this.image(x, y, width, height, panel).node;
     background.name = 'bag-panel';
@@ -1984,7 +1992,13 @@ export class BattleView extends Component {
     };
     this.bagControl('关闭', 1191, 14, 106, 57, true, close);
     this.bagControl('任务', 953, 90, 229, 47, true, unavailable('任务'));
-    this.bagControl('仓库', 1235, 259, 64, 127, true, unavailable('仓库'));
+    this.bagControl('仓库', 1235, 259, 64, 127, true, () => {
+      this.inventoryTipOpen = false;
+      if (!this.onMap) this.bookMessage = '战斗中只读';
+      else if (this.town?.region !== 'town') this.bookMessage = '回城后可使用仓库';
+      else { this.warehouseOpen = true; this.inventoryItem = undefined; this.bookMessage = ''; }
+      this.render();
+    });
 
     const inventory = this.progress.inventory;
     this.renderInventoryGrid(inventory, panel);
@@ -2003,6 +2017,71 @@ export class BattleView extends Component {
     this.bagControl('整理', 957, 652, 225, 51, true, unavailable('整理'));
     if (this.inventoryChoosingPet && id) this.renderInventoryPets(id);
     this.renderBookConfirmation();
+  }
+
+  private renderWarehouse(frame: SpriteFrame, close: () => void, dismissTip: () => void): void {
+    const background = this.image(0, 0, 1334, 750, frame).node;
+    background.name = 'warehouse-panel';
+    background.addComponent(BlockInputEvents);
+    background.on(Node.EventType.TOUCH_END, dismissTip);
+    this.bagControl('关闭', 1195, 8, 110, 66, true, close);
+    this.bagControl('背包', 1230, 120, 75, 130, true, () => {
+      this.warehouseOpen = false; this.inventoryTipOpen = false; this.inventoryItem = undefined; this.render();
+    });
+    this.bagControl('整理仓库', 265, 644, 265, 56, false, () => {});
+    this.bagControl('整理背包', 798, 644, 265, 56, false, () => {});
+    this.renderWarehouseGrid(this.warehouseInventory, 0);
+    this.renderWarehouseGrid(this.progress.inventory, 1);
+  }
+
+  private renderWarehouseGrid(inventory: Inventory, side: number): void {
+    const ids = Object.keys(ITEMS).filter(id => inventory[id] > 0);
+    const rows = Math.max(5, Math.ceil(ids.length / 5));
+    const x = side ? 693 : 139, y = 175, width = 500, stepX = 100, stepY = 90, height = 450;
+    const panel = this.layer, grid = new Node(`warehouse-${side ? 'right' : 'left'}-grid`);
+    panel.addChild(grid); this.pos(grid, x + width / 2, y + height / 2);
+    grid.addComponent(UITransform).setContentSize(width, height);
+    const content = new Node('warehouse-items'); grid.addChild(content);
+    const transform = content.addComponent(UITransform);
+    transform.setContentSize(width, rows * stepY); transform.setAnchorPoint(0.5, 1);
+    content.setPosition(0, height / 2);
+    let tip: Node | undefined;
+    if (rows > 5) {
+      grid.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
+      const scroll = grid.addComponent(ScrollView);
+      scroll.horizontal = false; scroll.vertical = true; scroll.elastic = false; scroll.content = content;
+      scroll.scrollToOffset(new Vec2(0, Math.min(this.warehouseScroll[side], (rows - 5) * stepY)));
+      grid.on(ScrollView.EventType.SCROLLING, () => {
+        this.warehouseScroll[side] = scroll.getScrollOffset().y;
+        this.inventoryTipOpen = false; if (tip) tip.active = false;
+      });
+    } else this.warehouseScroll[side] = 0;
+    this.layer = content;
+    const left = CONFIG.width / 2 - width / 2, top = CONFIG.height / 2;
+    for (let i = 0; i < rows * 5; i++) {
+      const id = ids[i], count = inventory[id] ?? 0;
+      const sx = left + i % 5 * stepX, sy = top + Math.floor(i / 5) * stepY;
+      const selected = count > 0 && id === this.inventoryItem && side === this.warehouseSide;
+      const slot = this.rect(sx + 3, sy + 3, 94, 84, '#F9D783', selected ? '#FFF1B3' : '', 9, () => {
+        this.inventoryItem = count ? id : undefined; this.warehouseSide = side;
+        this.inventoryTipOpen = count > 0; this.render();
+      }, selected ? 55 : 0);
+      slot.name = `warehouse-${side ? 'right' : 'left'}-slot-${i}`;
+      if (!count) continue;
+      const skill = id.startsWith('book:') ? id.slice(5) : undefined;
+      const art = this.bagFrames.get(skill ? 'book' : id), emblem = skill ? this.skillFrames.get(skill) : undefined;
+      if (art) this.image(sx + 22, sy + 10, 54, 54, art);
+      else this.text(ITEMS[id].name, sx + 4, sy + 30, 13, '#FFF2C5', 90, 1);
+      if (art && emblem) this.image(sx + 41, sy + 24, 22, 22, emblem);
+      this.text(String(count), sx + 5, sy + 60, count > 999999999 ? 9 : 16, '#FFF2C5', 86, 2);
+    }
+    this.layer = panel;
+    const id = this.inventoryItem, index = id ? ids.indexOf(id) : -1;
+    if (this.inventoryTipOpen && side === this.warehouseSide && id && index >= 0) {
+      const tx = Math.min(x + index % 5 * stepX, x + width - 320);
+      const ty = Math.max(y, Math.min(y + height - 130, y + Math.floor(index / 5) * stepY - this.warehouseScroll[side]));
+      tip = this.renderInventoryTip(id, tx, ty, { x, y, width, rowStep: stepY, visibleRows: 5 }, side ? '存入' : '取出');
+    }
   }
 
   private bagControl(label: string, x: number, y: number, w: number, h: number,
@@ -2085,14 +2164,14 @@ export class BattleView extends Component {
     }
   }
 
-  private renderInventoryTip(id: string, slotX: number, slotY: number): Node {
+  private renderInventoryTip(id: string, slotX: number, slotY: number, bounds: Pick<typeof BAG_GRID, 'x' | 'y' | 'width' | 'rowStep' | 'visibleRows'> = BAG_GRID, action?: string): Node {
     const { name, description } = ITEMS[id];
     const lines = description.match(/.{1,15}/gu) ?? [];
-    const width = 320, height = Math.max(70, 45 + lines.length * 21);
-    const x = Math.min(slotX, BAG_GRID.x + BAG_GRID.width - width);
-    const below = slotY + BAG_GRID.rowStep + 4;
-    const bottom = BAG_GRID.y + BAG_GRID.visibleRows * BAG_GRID.rowStep;
-    const y = below + height <= bottom ? below : Math.max(BAG_GRID.y, slotY - height - 4);
+    const width = 320, height = Math.max(70, 45 + lines.length * 21) + (action ? 40 : 0);
+    const x = Math.min(slotX, bounds.x + bounds.width - width);
+    const below = slotY + bounds.rowStep + 4;
+    const bottom = bounds.y + bounds.visibleRows * bounds.rowStep;
+    const y = below + height <= bottom ? below : Math.max(bounds.y, slotY - height - 4);
     const panel = this.layer;
     const tip = new Node('bag-tip');
     panel.addChild(tip);
@@ -2105,6 +2184,7 @@ export class BattleView extends Component {
     if (art && emblem) this.image(x + 26, y + 23, 20, 20, emblem);
     this.text(name, x + 69, y + 8, 20, '#4A2C1D', 240);
     lines.forEach((line, i) => this.text(line, x + 69, y + 37 + i * 21, 15, '#4A2C1D', 240));
+    if (action) this.button(action, x + 205, y + height - 36, 100, 32, true, () => {});
     this.layer = panel;
     return tip;
   }
