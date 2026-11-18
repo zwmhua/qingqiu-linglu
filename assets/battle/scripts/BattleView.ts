@@ -1,6 +1,6 @@
 import { FUSION, fusionPlan } from '../logic/pet-fusion';
 import { buildFusionPreview } from './fusion-preview';
-import { assetManager, game, Game, _decorator, BlockInputEvents, Color, Component, type EventMouse, EventTouch, Graphics, Label, Mask, Node, ResolutionPolicy, RichText, Sprite, SpriteFrame, sys, tween, Tween, UIOpacity, UITransform, Vec3, view } from 'cc';
+import { type AssetManager, assetManager, game, Game, _decorator, BlockInputEvents, Color, Component, type EventMouse, EventTouch, Graphics, Label, Mask, Node, Rect, ResolutionPolicy, RichText, ScrollView, Sprite, SpriteFrame, sys, tween, Tween, UIOpacity, UITransform, Vec2, Vec3, view } from 'cc';
 import { TownView } from './TownView';
 import { AttackEvent, Battle, BattleEvent, SpellEvent, Unit } from './Battle';
 import { COMMAND_ICON_SIZE, COMMAND_LAYOUT, CONFIG, SPELL_TINTS } from './config';
@@ -36,10 +36,12 @@ const { ccclass, property } = _decorator;
 const POTENTIAL_RELEASE_EVENTS = ['pointerup', 'pointercancel', 'pointerout', 'mouseup', 'touchend', 'touchcancel', 'blur'] as const;
 const C = (hex: string) => new Color(hex);
 const COMMAND_NAMES = ['攻击', '防御', '保护', '召唤', '抓取', '道具', '逃跑', '灵术', '撤退'] as const;
-const BAG_ITEMS = Object.keys(ITEMS);
 const BAG_ART = {
-  book: 'item_skillbook', rejuvenation: 'item_rebirth_dew', 'mutation-rejuvenation': 'item_rebirth_dew_mutant',
+  panel: 'bag_panel', book: 'items/item_skillbook',
+  rejuvenation: 'items/item_rebirth_dew', 'mutation-rejuvenation': 'items/item_rebirth_dew_mutant',
 } as const;
+const BAG_PANEL = { x: 10, y: 0, width: 1313, height: 740 };
+const BAG_GRID = { x: 691, y: 147, width: 506, colStep: 101.5, rowStep: 99, artRowHeight: 85, columns: 5, visibleRows: 5 };
 declare const wx: Parameters<typeof wechatStorage>[0] & {
   showModal(options: { content: string; showCancel: boolean; success?: (result: { confirm: boolean }) => void;
     complete?: () => void }): void;
@@ -104,9 +106,13 @@ export class BattleView extends Component {
   private inventoryItem?: string;
   private inventoryPet?: string;
   private inventoryChoosingPet = false;
+  private inventoryTipOpen = false;
+  private inventoryScrollY = 0;
   private bagFrames = new Map<string, SpriteFrame>();
   private skillFrames = new Map<string, SpriteFrame>();
   private skillArtLoading = false;
+  private skillArtFailed = false;
+  private bagRowFrame?: SpriteFrame;
   private bagArtLoading = false;
   private bagArtFailed = false;
   private bookRandom = Math.random;
@@ -232,7 +238,10 @@ export class BattleView extends Component {
     this.stopPotentialRepeat();
   }
 
-  onDestroy(): void { this.town?.dispose(); }
+  onDestroy(): void {
+    this.town?.dispose();
+    this.bagRowFrame?.destroy();
+  }
 
   start(): void {
     let saved: SessionProgress | null = null;
@@ -1839,6 +1848,8 @@ export class BattleView extends Component {
     this.inventoryOpen = this.rosterOpen = true;
     this.inventoryItem = this.inventoryPet = undefined;
     this.inventoryChoosingPet = false;
+    this.inventoryTipOpen = false;
+    this.inventoryScrollY = 0;
     this.bookConfirmation = undefined;
     this.bookMessage = '';
     this.loadBagArt();
@@ -1846,42 +1857,44 @@ export class BattleView extends Component {
     this.render();
   }
 
-  private loadPanelArt(name: string, folder: string, icons: Record<string, string>): Promise<[string, SpriteFrame][]> {
-    return new Promise((resolve, reject) => {
-      assetManager.loadBundle(name, (error, bundle) => {
-        if (error || !bundle) { reject(error ?? new Error(name)); return; }
-        resolve(Promise.all(Object.entries(icons).map(([key, file]) =>
-          new Promise<[string, SpriteFrame]>((ready, failed) => {
-            bundle.load(`textures/${folder}/${file}/spriteFrame`, SpriteFrame, (err, frame) => {
-              if (err || !frame) failed(err ?? new Error(file));
-              else ready([key, frame]);
-            });
-          }))));
+  private async loadPanelArt(name: string, paths: Record<string, string>, frames: Map<string, SpriteFrame>): Promise<void> {
+    const bundle = await new Promise<AssetManager.Bundle>((resolve, reject) => {
+      assetManager.loadBundle(name, (error, loaded) => {
+        if (error || !loaded) reject(error ?? new Error(name));
+        else resolve(loaded);
       });
     });
+    const results = await Promise.allSettled(Object.entries(paths).filter(([key]) => !frames.has(key)).map(([key, path]) =>
+      new Promise<void>((resolve, reject) => {
+        bundle.load(`textures/${path}/spriteFrame`, SpriteFrame, (error, frame) => {
+          if (error || !frame) reject(error ?? new Error(path));
+          else { frames.set(key, frame); resolve(); }
+        });
+      })));
+    for (const result of results) if (result.status === 'rejected') throw result.reason;
   }
 
   private loadSkillArt(): void {
-    if (this.skillArtLoading || this.skillFrames.size) return;
+    if (this.skillArtLoading || (this.skillFrames.size && !this.skillArtFailed)) return;
     this.skillArtLoading = true;
-    const icons = Object.fromEntries(Object.keys(PET_SKILLS).map(id => [id, `skill_${id}`]));
-    for (const mark of ['badge_innate', 'badge_advanced', 'frame_advanced']) icons[mark] = mark;
-    this.loadPanelArt('battle', 'ui/skills', icons)
-      .then(frames => { this.skillFrames = new Map(frames); })
-      .catch(error => console.warn('技能图标加载失败', error))
+    const loadedBefore = this.skillFrames.size;
+    const icons = Object.fromEntries(Object.keys(PET_SKILLS).map(id => [id, `ui/skills/skill_${id}`]));
+    for (const mark of ['badge_innate', 'badge_advanced', 'frame_advanced']) icons[mark] = `ui/skills/${mark}`;
+    this.loadPanelArt('battle', icons, this.skillFrames)
+      .then(() => { this.skillArtFailed = false; })
+      .catch(error => { this.skillArtFailed = true; console.warn('技能图标加载失败', error); })
       .finally(() => {
         this.skillArtLoading = false;
-        if (this.isValid && this.rosterOpen && this.skillFrames.size) this.render();
+        if (this.isValid && this.rosterOpen && (this.inventoryOpen || this.skillFrames.size > loadedBefore)) this.render();
       });
   }
 
   private loadBagArt(): void {
-    if (this.bagArtLoading || this.bagFrames.size) return;
+    if (this.bagArtLoading || (this.bagFrames.has('panel') && !this.bagArtFailed)) return;
     this.bagArtLoading = true;
     this.bagArtFailed = false;
-    this.loadPanelArt('inventory', 'items', BAG_ART)
-      .then(frames => { this.bagFrames = new Map(frames); })
-      .catch(error => { this.bagArtFailed = true; console.warn('背包图标加载失败', error); })
+    this.loadPanelArt('inventory', BAG_ART, this.bagFrames)
+      .catch(error => { this.bagArtFailed = true; console.warn('背包素材加载失败', error); })
       .finally(() => {
         this.bagArtLoading = false;
         if (this.isValid && this.inventoryOpen) this.render();
@@ -1939,62 +1952,161 @@ export class BattleView extends Component {
   }
 
   private renderInventory(): void {
+    const dismissTip = () => {
+      if (!this.inventoryTipOpen) return;
+      this.inventoryTipOpen = false;
+      this.render();
+    };
     const close = () => {
       this.bookConfirmation = undefined;
+      this.inventoryTipOpen = false;
       this.inventoryChoosingPet = this.inventoryOpen = this.rosterOpen = false;
       this.render();
     };
-    this.rect(0, 0, CONFIG.width, CONFIG.height, '#000000', '', 0, close, 150).addComponent(BlockInputEvents);
-    this.rect(140, 62, 1054, 626, '#1E3835', '#E5CB8D', 16).addComponent(BlockInputEvents);
-    this.rect(157, 74, 1020, 59, '#29483F', '#92784B', 10);
-    this.text('背包', 184, 83, 31, '#F3DFAD', 190);
-    this.rect(279, 105, 725, 2, '#B2945E');
-    [287, 651, 995].forEach(x => this.text('◆', x - 10, 96, 12, '#E5CB8D', 20, 1));
-    this.button('关闭', 1028, 79, 132, 48, true, close);
-    this.rect(165, 149, 262, 512, '#DCCBA6', '#E5CB8D', 12);
-    this.rect(176, 160, 240, 490, '#EFDFC0', '#9C8156', 9);
-    this.text(BATTLE_RULES.hero.name, 184, 183, 24, '#4A2C1D', 224, 1);
-    if (this.heroArt) this.image(171, 251, 250, 250, this.heroArt);
-    this.rect(189, 566, 214, 54, '#29483F', '#9C8156', 10);
-    this.text('金币  0', 190, 576, 22, '#F3DFAD', 212, 1);
-    this.rect(445, 149, 724, 344, '#172E2A', '#92784B', 12);
+    this.rect(0, 0, CONFIG.width, CONFIG.height, '#000000', '', 0,
+      () => this.inventoryTipOpen ? dismissTip() : close(), 150).addComponent(BlockInputEvents);
+    const panel = this.bagFrames.get('panel');
+    if (!panel) {
+      this.text(this.bagArtFailed ? '背包界面加载失败' : '加载中…', 467, 346, 25, '#F3DFAD', 400, 1);
+      this.button('关闭', 601, 399, 132, 48, true, close);
+      return;
+    }
+    const { x, y, width, height } = BAG_PANEL;
+    const background = this.image(x, y, width, height, panel).node;
+    background.name = 'bag-panel';
+    background.addComponent(BlockInputEvents);
+    background.on(Node.EventType.TOUCH_END, dismissTip);
+    if (this.heroArt) this.image(198, 205, 335, 335, this.heroArt);
+    const unavailable = (label: string) => () => {
+      this.inventoryTipOpen = false;
+      this.bookMessage = `${label}·未开放`;
+      this.render();
+    };
+    this.bagControl('关闭', 1191, 14, 106, 57, true, close);
+    this.bagControl('任务', 953, 90, 229, 47, true, unavailable('任务'));
+    this.bagControl('仓库', 1235, 259, 64, 127, true, unavailable('仓库'));
+
     const inventory = this.progress.inventory;
-    for (let i = 0; i < Math.ceil(BAG_ITEMS.length / 5) * 5; i++) {
-      const id = BAG_ITEMS[i], count = inventory[id] ?? 0;
-      const x = 463 + i % 5 * 139, y = 166 + Math.floor(i / 5) * 106;
+    this.renderInventoryGrid(inventory, panel);
+    const id = this.inventoryItem;
+    const hasSelection = !!id && inventory[id] > 0;
+    const notice = this.bookMessage || (!this.onMap ? '战斗中只读'
+      : this.bagArtFailed || this.skillArtFailed ? '图标暂不可用，可按名称查看道具。' : '');
+    if (notice) this.text(notice, 85, 623, 15, '#513B25', 550, 1);
+    this.bagControl('使用', 705, 652, 225, 51, hasSelection && this.onMap, () => {
+      if (!this.onMap || !this.inventoryOpen || !id || id !== this.inventoryItem || !this.progress.inventory[id]) return;
+      this.bookMessage = '';
+      this.inventoryTipOpen = false;
+      this.inventoryChoosingPet = true;
+      this.render();
+    });
+    this.bagControl('整理', 957, 652, 225, 51, true, unavailable('整理'));
+    if (this.inventoryChoosingPet && id) this.renderInventoryPets(id);
+    this.renderBookConfirmation();
+  }
+
+  private bagControl(label: string, x: number, y: number, w: number, h: number,
+    enabled: boolean, click: () => void): void {
+    this.rect(x, y, w, h, '#233B30', '', 22, enabled ? click : undefined, enabled ? 0 : 115).name = label;
+  }
+
+  private renderInventoryGrid(inventory: Inventory, frame: SpriteFrame): void {
+    const ids = Object.keys(ITEMS).filter(id => inventory[id] > 0);
+    const { x: gridX, y: gridY, width, colStep, rowStep, columns, visibleRows } = BAG_GRID;
+    const rows = Math.max(visibleRows, Math.ceil(ids.length / columns));
+    const height = visibleRows * rowStep, contentHeight = rows * rowStep;
+    const panel = this.layer;
+    // Hide the baked description frame behind the taller grid.
+    this.rect(677, 576, 534, 74, '#F5E4CA');
+    const grid = new Node('bag-grid');
+    panel.addChild(grid);
+    this.pos(grid, gridX + width / 2, gridY + height / 2);
+    grid.addComponent(UITransform).setContentSize(width, height);
+    const content = new Node('bag-items');
+    grid.addChild(content);
+    const transform = content.addComponent(UITransform);
+    transform.setContentSize(width, contentHeight);
+    transform.setAnchorPoint(0.5, 1);
+    content.setPosition(0, height / 2);
+    let tip: Node | undefined;
+    if (rows > visibleRows) {
+      grid.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
+      const scroll = grid.addComponent(ScrollView);
+      scroll.horizontal = false;
+      scroll.vertical = true;
+      scroll.elastic = false;
+      scroll.content = content;
+      scroll.scrollToOffset(new Vec2(0, Math.min(this.inventoryScrollY, contentHeight - height)));
+      grid.on(ScrollView.EventType.SCROLLING, () => {
+        this.inventoryScrollY = scroll.getScrollOffset().y;
+        this.inventoryTipOpen = false;
+        if (tip) tip.active = false;
+      });
+    } else this.inventoryScrollY = 0;
+
+    this.layer = content;
+    // Drawing helpers subtract the screen center. In this layer the origin is the grid's top center.
+    const left = CONFIG.width / 2 - width / 2, top = CONFIG.height / 2;
+    if (!this.bagRowFrame) {
+      this.bagRowFrame = new SpriteFrame();
+      this.bagRowFrame.reset({ texture: frame.texture,
+        rect: new Rect(gridX - BAG_PANEL.x, gridY - BAG_PANEL.y, width, BAG_GRID.artRowHeight) });
+      this.bagRowFrame.packable = false;
+    }
+    for (let row = 0; row < rows; row++) this.image(left, top + row * rowStep, width, rowStep, this.bagRowFrame);
+    for (let i = 0; i < rows * columns; i++) {
+      const id = ids[i], count = inventory[id] ?? 0;
+      const x = left + 3 + i % columns * colStep, y = top + 3 + Math.floor(i / columns) * rowStep;
       const selected = count > 0 && id === this.inventoryItem;
-      const slot = this.rect(x, y, 132, 98, selected ? '#527561' : '#29463D',
-        selected ? '#FFD889' : '#776A4C', 8, () => {
+      const slot = this.rect(x, y, 94, rowStep - 6, '#F9D783', selected ? '#FFF1B3' : '', 9, () => {
           this.inventoryItem = count > 0 ? id : undefined;
+          this.inventoryTipOpen = count > 0;
           this.bookMessage = '';
           this.render();
-        });
+        }, selected ? 55 : 0);
       slot.name = `bag-slot-${i}`;
       if (!count) continue;
       const skill = id.startsWith('book:') ? id.slice(5) : undefined;
       const art = this.bagFrames.get(skill ? 'book' : id);
       const emblem = skill ? this.skillFrames.get(skill) : undefined;
-      if (art) this.image(x + 32, y + 4, 68, 68, art);
-      else this.text(ITEMS[id].name, x + 3, y + 32, 14, '#F3DFAD', 126, 1);
-      if (art && emblem) this.image(x + 57, y + 21, 25, 25, emblem);
-      this.text(String(count), x + 5, y + 73, count > 999999999 ? 12 : 16, '#FFF2C5', 119, 2);
+      if (art) this.image(x + 19, y + 10, 56, 56, art);
+      else this.text(ITEMS[id].name, x + 3, y + 32, 13, '#FFF2C5', 88, 1);
+      if (art && emblem) this.image(x + 39, y + 24, 22, 22, emblem);
+      const large = count > 999999999;
+      this.text(String(count), x + 4, y + rowStep - (large ? 24 : 29), large ? 9 : 16, '#FFF2C5', 85, 2);
     }
-    this.rect(445, 507, 724, 154, '#263F37', '#92784B', 12);
+    this.layer = panel;
     const id = this.inventoryItem;
-    if (id && inventory[id] > 0) {
-      this.text(`${ITEMS[id].name}   数量 ${inventory[id]}`, 465, 518, 22, '#F3DFAD', 665);
-      this.text(ITEMS[id].description, 465, 552, 18, '#E5DBBC', 687);
-      this.button('使用', 1009, 600, 140, 46, this.onMap, () => {
-        this.bookMessage = '';
-        this.inventoryChoosingPet = true;
-        this.render();
-      });
-    } else this.text('点击道具查看', 465, 535, 22, '#D3C7A5', 540);
-    if (!this.onMap) this.text('战斗中只读', 465, 613, 19, '#F4DC9C', 510);
-    else this.text(this.bookMessage || (this.bagArtFailed ? '图标暂不可用，可按名称查看道具。' : ''),
-      465, 611, 19, '#F4DC9C', 525);
-    if (this.inventoryChoosingPet && id) this.renderInventoryPets(id);
-    this.renderBookConfirmation();
+    const index = id ? ids.indexOf(id) : -1;
+    if (this.inventoryTipOpen && id && index >= 0) {
+      const x = gridX + index % columns * colStep;
+      const y = gridY + Math.floor(index / columns) * rowStep - this.inventoryScrollY;
+      tip = this.renderInventoryTip(id, x, y);
+    }
+  }
+
+  private renderInventoryTip(id: string, slotX: number, slotY: number): Node {
+    const { name, description } = ITEMS[id];
+    const lines = description.match(/.{1,15}/gu) ?? [];
+    const width = 320, height = Math.max(70, 45 + lines.length * 21);
+    const x = Math.min(slotX, BAG_GRID.x + BAG_GRID.width - width);
+    const below = slotY + BAG_GRID.rowStep + 4;
+    const bottom = BAG_GRID.y + BAG_GRID.visibleRows * BAG_GRID.rowStep;
+    const y = below + height <= bottom ? below : Math.max(BAG_GRID.y, slotY - height - 4);
+    const panel = this.layer;
+    const tip = new Node('bag-tip');
+    panel.addChild(tip);
+    this.layer = tip;
+    this.rect(x, y, width, height, '#F9EFD9', '#93734D', 12).addComponent(BlockInputEvents);
+    const skill = id.startsWith('book:') ? id.slice(5) : undefined;
+    const art = this.bagFrames.get(skill ? 'book' : id);
+    const emblem = skill ? this.skillFrames.get(skill) : undefined;
+    if (art) this.image(x + 10, y + 12, 48, 48, art);
+    if (art && emblem) this.image(x + 26, y + 23, 20, 20, emblem);
+    this.text(name, x + 69, y + 8, 20, '#4A2C1D', 240);
+    lines.forEach((line, i) => this.text(line, x + 69, y + 37 + i * 21, 15, '#4A2C1D', 240));
+    this.layer = panel;
+    return tip;
   }
 
   private renderInventoryPets(item: string): void {
