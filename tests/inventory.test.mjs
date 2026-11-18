@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
 registerHooks({ resolve(s, c, next) { return next(s.startsWith('.') && !s.endsWith('.ts') ? `${s}.ts` : s, c); } });
-const { ITEMS, BOOK_IDS, DROP_RATES, rollDrops, addInventory, validateInventory, planWarehouseTransfer } = await import('../assets/battle/logic/inventory.ts');
+const { ITEMS, BOOK_IDS, DROP_RATES, rollDrops, addInventory, validateInventory,
+  planWarehouseTransfer, warehouseItemIds, warehouseQuantity } = await import('../assets/battle/logic/inventory.ts');
 const { PET_SKILLS } = await import('../assets/battle/logic/pet-skills.ts');
 test('catalog, fixed rates, independent thresholds and twelve equal book intervals', () => {
   assert.equal(Object.keys(ITEMS).length, 14);
@@ -58,4 +59,23 @@ test('warehouse rejects invalid actions without editing either side', () => {
   ]) assert.throws(() => planWarehouseTransfer(inventory, warehouse, direction, item, count), /无效|不足/);
   assert.deepEqual(inventory, { [id]: 7 });
   assert.deepEqual(warehouse, { [id]: Number.MAX_SAFE_INTEGER });
+});
+
+test('warehouse display uses record order by default and catalogue order on request', () => {
+  const inventory = { rejuvenation: 7, [BOOK_IDS[1]]: 2, [BOOK_IDS[0]]: 1, 'mutation-rejuvenation': 0 };
+  const original = JSON.stringify(inventory);
+  const sorted = [BOOK_IDS[0], BOOK_IDS[1], 'rejuvenation'];
+  assert.deepEqual(warehouseItemIds(inventory, false), ['rejuvenation', BOOK_IDS[1], BOOK_IDS[0]]);
+  assert.deepEqual(warehouseItemIds(inventory, true), sorted);
+  assert.deepEqual(warehouseItemIds(inventory, true), sorted);
+  assert.equal(JSON.stringify(inventory), original);
+});
+
+test('warehouse quantity accepts only whole numbers in the available range', () => {
+  assert.equal(warehouseQuantity('1', 7), 1);
+  assert.equal(warehouseQuantity('7', 7), 7);
+  assert.equal(warehouseQuantity(String(Number.MAX_SAFE_INTEGER), Number.MAX_SAFE_INTEGER), Number.MAX_SAFE_INTEGER);
+  for (const input of ['', '0', '-1', '3.5', '8', '1e0', '9007199254740992']) {
+    assert.equal(warehouseQuantity(input, 7), undefined);
+  }
 });

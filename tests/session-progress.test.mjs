@@ -288,3 +288,34 @@ test('warehouse session publishes only after persistence and prevents reentrant 
   assert.deepEqual(session.warehouse, { [id]: 9 });
   assert.equal(first(false, () => assert.fail('duplicate write')), false);
 });
+
+test('warehouse partial confirmation validates the deposit and withdrawal against their original stacks', () => {
+  const id = 'rejuvenation', session = new SessionProgress(initialHero());
+  session.inventory = { [id]: 7 };
+  session.warehouse = { [id]: 2 };
+  const prepare = () => session.prepareWarehouseTransfer('deposit', id, 7);
+  const noWrite = () => assert.fail('unexpected persistence');
+  for (const count of [0, -1, 2.5, 8, NaN]) {
+    assert.throws(() => prepare()(false, noWrite, count), /无效|不足/);
+  }
+  const staleSource = prepare();
+  session.inventory[id] = 6;
+  assert.throws(() => staleSource(false, noWrite, 3), /已变化/);
+  session.inventory[id] = 7;
+  const staleTarget = prepare();
+  session.warehouse[id] = 3;
+  assert.throws(() => staleTarget(false, noWrite, 3), /已变化/);
+  session.warehouse[id] = 2;
+  assert.throws(() => prepare()(true, noWrite, 3), /无法使用/);
+  const partial = prepare();
+  assert.equal(partial(false, next => {
+    assert.deepEqual(next, { inventory: { [id]: 4 }, warehouse: { [id]: 5 } });
+    assert.deepEqual(session.inventory, { [id]: 7 });
+    assert.deepEqual(session.warehouse, { [id]: 2 });
+  }, 3), true);
+  assert.equal(partial(false, noWrite, 3), false);
+  const withdraw = session.prepareWarehouseTransfer('withdraw', id, 5);
+  assert.equal(withdraw(false, next => assert.deepEqual(next, {
+    inventory: { [id]: 5 }, warehouse: { [id]: 4 },
+  }), 1), true);
+});

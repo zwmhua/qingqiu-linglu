@@ -26,17 +26,18 @@ export class SessionProgress {
   private fusing = false;
   private warehouseSaving = false;
 
-  prepareWarehouseTransfer(direction: WarehouseDirection, id: string, count: number) {
+  prepareWarehouseTransfer(direction: WarehouseDirection, id: string, available: number) {
     const { inventory, warehouse } = this;
     const bagCount = inventory[id], warehouseCount = warehouse[id];
     let consumed = false;
-    return (blocked: boolean, persist: (next: { inventory: Inventory; warehouse: Inventory }) => void): boolean => {
+    return (blocked: boolean, persist: (next: { inventory: Inventory; warehouse: Inventory }) => void,
+      count = available): boolean => {
       if (consumed || this.warehouseSaving) return false;
       consumed = true;
       if (blocked) throw new Error('当前无法使用仓库');
       if (this.inventory !== inventory || this.warehouse !== warehouse
         || inventory[id] !== bagCount || warehouse[id] !== warehouseCount
-        || (direction === 'deposit' ? bagCount : warehouseCount) !== count) {
+        || (direction === 'deposit' ? bagCount : warehouseCount) !== available) {
         throw new Error('道具数量已变化，请重新选择');
       }
       const next = planWarehouseTransfer(inventory, warehouse, direction, id, count);

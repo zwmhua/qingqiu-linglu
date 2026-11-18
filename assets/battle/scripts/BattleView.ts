@@ -1,6 +1,6 @@
 import { FUSION, fusionPlan } from '../logic/pet-fusion';
 import { buildFusionPreview } from './fusion-preview';
-import { type AssetManager, assetManager, game, Game, _decorator, BlockInputEvents, Color, Component, type EventMouse, EventTouch, Graphics, Label, Mask, Node, Rect, ResolutionPolicy, RichText, ScrollView, Sprite, SpriteFrame, sys, tween, Tween, UIOpacity, UITransform, Vec2, Vec3, view } from 'cc';
+import { type AssetManager, assetManager, game, Game, _decorator, BlockInputEvents, Color, Component, EditBox, type EventMouse, EventTouch, Graphics, Label, Mask, Node, Rect, ResolutionPolicy, RichText, ScrollView, Sprite, SpriteFrame, sys, tween, Tween, UIOpacity, UITransform, Vec2, Vec3, view } from 'cc';
 import { TownView } from './TownView';
 import { AttackEvent, Battle, BattleEvent, SpellEvent, Unit } from './Battle';
 import { COMMAND_ICON_SIZE, COMMAND_LAYOUT, CONFIG, SPELL_TINTS } from './config';
@@ -23,7 +23,7 @@ import { browserParams, progressIO, wechatStorage } from '../../logic/platform';
 import { ProgressLoader, progressSnapshot, resetProgress, saveProgress } from '../logic/local-progress';
 import { activeSpells, PET_SKILLS, SKILL_POOLS, skillDescription } from '../logic/pet-skills';
 import type { TargetMode } from '../logic/targeting';
-import { addInventory, ITEMS, rollDrops, type Inventory } from '../logic/inventory';
+import { addInventory, ITEMS, rollDrops, warehouseItemIds, warehouseQuantity, type Inventory } from '../logic/inventory';
 
 type SpellFxEvent = Pick<SpellEvent, 'kind' | 'actorId' | 'logIndex'> & Partial<Pick<SpellEvent, 'skillId' | 'manaAfter'>> & {
   targets: readonly { targetId: string; damage: number; hpAfter: number; missed?: boolean }[];
@@ -110,8 +110,11 @@ export class BattleView extends Component {
   private inventoryScrollY = 0;
   private warehouseOpen = false;
   private warehouseScroll = [0, 0];
+  private warehouseSorted = [false, false];
   private warehouseSide = 1;
-  private warehouseAction?: () => void;
+  private warehousePanel?: Node;
+  private warehouseChoice?: { id: string; label: string; max: number; draft: string; invalid?: boolean;
+    commit: (count: number) => void };
   private bagFrames = new Map<string, SpriteFrame>();
   private skillFrames = new Map<string, SpriteFrame>();
   private skillArtLoading = false;
@@ -134,7 +137,14 @@ export class BattleView extends Component {
   private get inBattle(): boolean { return !this.onMap && (this.battle.phase !== 'ended' || !this.resultSaved); }
   private stopTown = (): void => { this.town?.stop(); };
   private mapHidden = false;
-  private hideMap = (): void => { this.mapHidden = true; this.stopTown(); };
+  private hideMap = (): void => {
+    this.mapHidden = true;
+    this.stopTown();
+    if (this.warehouseChoice) {
+      this.warehouseChoice = undefined;
+      this.render();
+    }
+  };
   private showMap = (): void => { this.mapHidden = false; };
   private confirmHeroPoints(draft: HeroProgress): boolean {
     if (this.inBattle) return false;
@@ -233,6 +243,7 @@ export class BattleView extends Component {
     game.off(Game.EVENT_HIDE, this.hideMap);
     game.off(Game.EVENT_SHOW, this.showMap);
     this.stopTown();
+    this.warehouseChoice = this.warehousePanel = undefined;
     if (WECHAT) {
       wx.offTouchEnd(this.stopPotentialRepeat);
       wx.offTouchCancel(this.stopPotentialRepeat);
@@ -1854,8 +1865,7 @@ export class BattleView extends Component {
     this.inventoryChoosingPet = false;
     this.inventoryTipOpen = false;
     this.inventoryScrollY = 0;
-    this.warehouseOpen = false;
-    this.warehouseScroll = [0, 0];
+    this.leaveWarehouse();
     this.bookConfirmation = undefined;
     this.bookMessage = '';
     this.loadBagArt();
@@ -1958,13 +1968,14 @@ export class BattleView extends Component {
   }
 
   private renderInventory(): void {
-    this.warehouseAction = undefined;
+    this.warehousePanel = undefined;
     const dismissTip = () => {
       if (!this.inventoryTipOpen) return;
       this.inventoryTipOpen = false;
       this.render();
     };
     const close = () => {
+      this.leaveWarehouse();
       this.bookConfirmation = undefined;
       this.inventoryTipOpen = false;
       this.inventoryChoosingPet = this.inventoryOpen = this.rosterOpen = false;
@@ -2019,50 +2030,129 @@ export class BattleView extends Component {
     this.renderBookConfirmation();
   }
 
+  private leaveWarehouse(): void {
+    this.warehouseOpen = false;
+    this.warehousePanel = this.warehouseChoice = undefined;
+    this.warehouseScroll = [0, 0];
+    this.warehouseSorted = [false, false];
+  }
+
+  private get warehouseBlocked(): boolean {
+    return !this.inventoryOpen || !this.warehouseOpen || !this.onMap || this.town?.region !== 'town'
+      || this.town.loading || this.mapUnavailable || !this.usesTestProgress || (!!this.resultCandidate && !this.resultSaved);
+  }
+
   private renderWarehouse(frame: SpriteFrame, close: () => void, dismissTip: () => void): void {
     const background = this.image(0, 0, 1334, 750, frame).node;
     background.name = 'warehouse-panel';
+    this.warehousePanel = background;
     background.addComponent(BlockInputEvents);
     background.on(Node.EventType.TOUCH_END, dismissTip);
-    this.bagControl('关闭', 1195, 8, 110, 66, true, close);
+    const current = () => this.warehousePanel === background && this.inventoryOpen && this.warehouseOpen;
+    const sort = (side: number) => {
+      if (!current() || this.warehouseBlocked || this.warehouseChoice) return;
+      this.warehouseSorted[side] = true;
+      this.warehouseScroll[side] = 0;
+      this.inventoryTipOpen = false;
+      this.render();
+    };
+    const { warehouse, inventory } = this.progress;
+    const selected = this.inventoryItem;
+    if (selected && !(this.warehouseSide ? inventory : warehouse)[selected]) {
+      this.inventoryItem = undefined;
+      this.inventoryTipOpen = false;
+    }
+    this.bagControl('整理仓库', 265, 644, 265, 56, true, () => sort(0));
+    this.bagControl('整理背包', 798, 644, 265, 56, true, () => sort(1));
+    this.renderWarehouseGrid(warehouse, 0, current);
+    this.renderWarehouseGrid(inventory, 1, current);
+    if (this.bookMessage) this.text(this.bookMessage, 140, 626, 15, '#513B25', 1050, 1);
+    this.renderWarehouseChoice(current);
+    this.bagControl('关闭', 1195, 8, 110, 66, true, () => { if (current()) close(); });
     this.bagControl('背包', 1230, 120, 75, 130, true, () => {
-      this.warehouseOpen = false; this.inventoryTipOpen = false; this.inventoryItem = undefined;
+      if (!current()) return;
+      this.leaveWarehouse(); this.inventoryTipOpen = false; this.inventoryItem = undefined;
       this.bookMessage = ''; this.render();
     });
-    this.bagControl('整理仓库', 265, 644, 265, 56, false, () => {});
-    this.bagControl('整理背包', 798, 644, 265, 56, false, () => {});
-    this.renderWarehouseGrid(this.progress.warehouse, 0);
-    this.renderWarehouseGrid(this.progress.inventory, 1);
-    if (this.bookMessage) this.text(this.bookMessage, 140, 626, 15, '#513B25', 1050, 1);
   }
 
-  private warehouseTransferAction(id: string, count: number, side: number) {
+  private warehouseTransferAction(id: string, max: number, side: number, current: () => boolean) {
     const progress = this.progress;
-    const label = side ? '整堆存入' : '整堆取出';
-    const transfer = progress.prepareWarehouseTransfer(side ? 'deposit' : 'withdraw', id, count);
-    const click = () => {
-      if (this.warehouseAction !== click || !this.inventoryTipOpen || this.progress !== progress
-        || this.inventoryItem !== id || this.warehouseSide !== side) return;
-      this.warehouseAction = undefined;
+    const label = side ? '存入' : '取出';
+    const source = () => side ? progress.inventory : progress.warehouse;
+    const transfer = progress.prepareWarehouseTransfer(side ? 'deposit' : 'withdraw', id, max);
+    const commit = (count: number) => {
+      this.warehouseChoice = undefined;
       this.inventoryTipOpen = false;
-      const blocked = !this.inventoryOpen || !this.warehouseOpen || !this.onMap || this.town?.region !== 'town'
-        || !!this.town.loading || this.mapUnavailable || !this.usesTestProgress || (!!this.resultCandidate && !this.resultSaved);
       try {
-        if (transfer(blocked, next => saveProgress(progressStorage(), { ...progress, ...next }))) {
-          this.inventoryItem = undefined;
-          this.bookMessage = `已${label}`;
+        if (transfer(this.warehouseBlocked || this.progress !== progress,
+          next => saveProgress(progressStorage(), { ...progress, ...next }), count)) {
+          this.inventoryItem = source()[id] ? id : undefined;
+          this.bookMessage = count === max ? `已整堆${label}` : `已${label} ${count} 件`;
         }
       } catch (error) {
         this.bookMessage = `${label}失败：${error instanceof Error ? error.message : String(error)}`;
       }
       this.render();
     };
-    this.warehouseAction = click;
-    return { label, click };
+    return { label: max === 1 ? `整堆${label}` : label, click: () => {
+      if (!current() || !this.inventoryTipOpen || this.warehouseChoice || this.progress !== progress
+        || this.inventoryItem !== id || this.warehouseSide !== side) return;
+      if (max === 1 || this.warehouseBlocked) { commit(max); return; }
+      this.inventoryTipOpen = false;
+      this.bookMessage = '';
+      this.warehouseChoice = { id, label, max, draft: String(max), commit };
+      this.render();
+    } };
   }
 
-  private renderWarehouseGrid(inventory: Inventory, side: number): void {
-    const ids = Object.keys(ITEMS).filter(id => inventory[id] > 0);
+  private renderWarehouseChoice(current: () => boolean): void {
+    const choice = this.warehouseChoice;
+    if (!choice) return;
+    const active = () => current() && this.warehouseChoice === choice;
+    const cancel = () => {
+      if (!active()) return;
+      this.warehouseChoice = undefined;
+      this.render();
+    };
+    this.rect(0, 0, CONFIG.width, CONFIG.height, '#000000', '', 0, cancel, 155).addComponent(BlockInputEvents);
+    this.rect(367, 215, 600, 320, '#1E3835', '#E5CB8D', 12).addComponent(BlockInputEvents);
+    this.text(`${choice.label} · ${ITEMS[choice.id].name}`, 397, 243, 27, '#F3DFAD', 540, 1);
+    const box = this.rect(527, 310, 280, 60, '#F9EFD9', '#C6A971', 8);
+    box.name = 'warehouse-quantity';
+    const editor = new Node('quantity-input');
+    box.addChild(editor);
+    editor.addComponent(UITransform).setContentSize(270, 56);
+    const input = editor.addComponent(EditBox);
+    input.inputMode = EditBox.InputMode.NUMERIC;
+    input.string = choice.draft;
+    if (input.textLabel) {
+      input.textLabel.fontSize = 24;
+      input.textLabel.color = C('#382619');
+      input.textLabel.horizontalAlign = Label.HorizontalAlign.CENTER;
+    }
+    editor.on(EditBox.EventType.TEXT_CHANGED, () => { if (active()) choice.draft = input.string; });
+    const step = (delta: number) => {
+      if (!active()) return;
+      const count = warehouseQuantity(input.string, choice.max) ?? choice.max;
+      choice.draft = input.string = String(Math.min(choice.max, Math.max(1, count + delta)));
+    };
+    this.button('−', 447, 310, 70, 60, true, () => step(-1));
+    this.button('＋', 817, 310, 70, 60, true, () => step(1));
+    this.text(`${choice.invalid ? '请输入整数，范围' : '数量'} 1–${choice.max}`, 397, 386, 20, '#F3DFAD', 540, 1);
+    this.button('取消', 447, 449, 185, 54, true, cancel);
+    this.button('确认', 702, 449, 185, 54, true, () => {
+      if (!active()) return;
+      const count = warehouseQuantity(input.string, choice.max);
+      if (count !== undefined) { choice.commit(count); return; }
+      choice.draft = input.string;
+      choice.invalid = true;
+      this.render();
+    });
+  }
+
+  private renderWarehouseGrid(inventory: Inventory, side: number, current: () => boolean): void {
+    const ids = warehouseItemIds(inventory, this.warehouseSorted[side]);
     const rows = Math.max(5, Math.ceil(ids.length / 5));
     const x = side ? 693 : 139, y = 175, width = 500, stepX = 100, stepY = 90, height = 450;
     const panel = this.layer, grid = new Node(`warehouse-${side ? 'right' : 'left'}-grid`);
@@ -2077,8 +2167,10 @@ export class BattleView extends Component {
       grid.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
       const scroll = grid.addComponent(ScrollView);
       scroll.horizontal = false; scroll.vertical = true; scroll.elastic = false; scroll.content = content;
-      scroll.scrollToOffset(new Vec2(0, Math.min(this.warehouseScroll[side], (rows - 5) * stepY)));
+      this.warehouseScroll[side] = Math.min(this.warehouseScroll[side], (rows - 5) * stepY);
+      scroll.scrollToOffset(new Vec2(0, this.warehouseScroll[side]));
       grid.on(ScrollView.EventType.SCROLLING, () => {
+        if (!current() || this.warehouseChoice) return;
         this.warehouseScroll[side] = scroll.getScrollOffset().y;
         this.inventoryTipOpen = false; if (tip) tip.active = false;
       });
@@ -2090,6 +2182,8 @@ export class BattleView extends Component {
       const sx = left + i % 5 * stepX, sy = top + Math.floor(i / 5) * stepY;
       const selected = count > 0 && id === this.inventoryItem && side === this.warehouseSide;
       const slot = this.rect(sx + 3, sy + 3, 94, 84, '#F9D783', selected ? '#FFF1B3' : '', 9, () => {
+        if (!current() || this.warehouseChoice || this.warehouseBlocked
+          || inventory !== (side ? this.progress.inventory : this.progress.warehouse) || (inventory[id] ?? 0) !== count) return;
         this.inventoryItem = count ? id : undefined; this.warehouseSide = side;
         this.inventoryTipOpen = count > 0; this.render();
       }, selected ? 55 : 0);
@@ -2108,7 +2202,7 @@ export class BattleView extends Component {
       const tx = Math.min(x + index % 5 * stepX, x + width - 320);
       const ty = Math.max(y, Math.min(y + height - 130, y + Math.floor(index / 5) * stepY - this.warehouseScroll[side]));
       tip = this.renderInventoryTip(id, tx, ty, { x, y, width, rowStep: stepY, visibleRows: 5 },
-        this.warehouseTransferAction(id, inventory[id], side));
+        this.warehouseTransferAction(id, inventory[id], side, current));
     }
   }
 

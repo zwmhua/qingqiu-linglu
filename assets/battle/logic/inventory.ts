@@ -29,6 +29,15 @@ export function addInventory(inventory: Inventory, drops: Inventory): Inventory 
   return next;
 }
 
+export function warehouseItemIds(inventory: Inventory, sorted: boolean): string[] {
+  return Object.keys(sorted ? ITEMS : inventory).filter(id => Object.hasOwn(ITEMS, id) && inventory[id] > 0);
+}
+
+export function warehouseQuantity(input: string, available: number): number | undefined {
+  const count = Number(input);
+  return /^\d+$/.test(input) && Number.isSafeInteger(count) && count >= 1 && count <= available ? count : undefined;
+}
+
 export function planWarehouseTransfer(inventory: Inventory, warehouse: Inventory,
   direction: WarehouseDirection, id: string, count: number): { inventory: Inventory; warehouse: Inventory } {
   if (direction !== 'deposit' && direction !== 'withdraw') throw new Error('存取方向无效');
