@@ -116,6 +116,7 @@ export class BattleView extends Component {
   private warehouseSide = 1;
   private warehousePanel?: Node;
   private warehouseTap?: { id: string; at: number };
+  private warehousePress?: { slot: Node; finger: number };
   private warehouseChoice?: { id: string; label: string; max: number; draft: string; invalid?: boolean;
     commit: (count: number) => void };
   private bagFrames = new Map<string, SpriteFrame>();
@@ -142,7 +143,7 @@ export class BattleView extends Component {
   private mapHidden = false;
   private hideMap = (): void => {
     this.mapHidden = true;
-    this.warehouseTap = undefined;
+    this.cancelWarehouseTap();
     this.stopTown();
     if (this.warehouseChoice) {
       this.warehouseChoice = undefined;
@@ -248,7 +249,7 @@ export class BattleView extends Component {
     game.off(Game.EVENT_SHOW, this.showMap);
     this.stopTown();
     this.warehouseChoice = this.warehousePanel = undefined;
-    this.warehouseTap = undefined;
+    this.cancelWarehouseTap();
     if (WECHAT) {
       wx.offTouchEnd(this.stopPotentialRepeat);
       wx.offTouchCancel(this.stopPotentialRepeat);
@@ -1974,7 +1975,7 @@ export class BattleView extends Component {
 
   private renderInventory(): void {
     this.warehousePanel = undefined;
-    this.warehouseTap = undefined;
+    this.cancelWarehouseTap();
     const dismissTip = () => {
       if (!this.inventoryTipOpen) return;
       this.inventoryTipOpen = false;
@@ -2039,9 +2040,13 @@ export class BattleView extends Component {
   private leaveWarehouse(): void {
     this.warehouseOpen = false;
     this.warehousePanel = this.warehouseChoice = undefined;
-    this.warehouseTap = undefined;
+    this.cancelWarehouseTap();
     this.warehouseScroll = [0, 0];
     this.warehouseSorted = [false, false];
+  }
+
+  private cancelWarehouseTap(): void {
+    this.warehouseTap = this.warehousePress = undefined;
   }
 
   private get warehouseBlocked(): boolean {
@@ -2072,7 +2077,10 @@ export class BattleView extends Component {
     this.bagControl('整理仓库', 265, 644, 265, 56, true, () => sort(0));
     this.bagControl('整理背包', 798, 644, 265, 56, true, () => sort(1));
     this.renderWarehouseGrid(warehouse, 0, current);
-    this.renderWarehouseGrid(inventory, 1, current);
+    const bagItems = this.renderWarehouseGrid(inventory, 1, current);
+    this.layer.on(Node.EventType.TOUCH_START, (event: EventTouch) => {
+      if (current() && event.target?.parent !== bagItems) this.cancelWarehouseTap();
+    }, this, true);
     if (this.bookMessage) this.text(this.bookMessage, 140, 626, 15, '#513B25', 1050, 1);
     this.renderWarehouseChoice(current);
     this.bagControl('关闭', 1195, 8, 110, 66, true, () => { if (current()) close(); });
@@ -2168,35 +2176,33 @@ export class BattleView extends Component {
   }
 
   private bindWarehouseBagTap(slot: Node, id: string | undefined, current: () => boolean, select: () => void): void {
-    let finger: number | undefined;
-    const cancel = () => {
-      finger = undefined;
-      if (current()) this.warehouseTap = undefined;
-    };
+    const pressed = (event: EventTouch) => this.warehousePress?.slot === slot
+      && this.warehousePress.finger === event.getID();
     const dragged = (event: EventTouch) => {
       const start = event.getUIStartLocation(), point = event.getUILocation();
       return Math.hypot(point.x - start.x, point.y - start.y) >= WAREHOUSE_TAP_SLOP;
     };
     slot.on(Node.EventType.TOUCH_START, (event: EventTouch) => {
-      if (!current() || this.mapHidden) return;
-      finger = event.getID() ?? undefined;
-      if (this.warehouseTap?.id !== id) this.warehouseTap = undefined;
+      const finger = event.getID();
+      if (!current() || this.mapHidden || finger == null) return;
+      if (this.warehousePress || this.warehouseTap?.id !== id) this.cancelWarehouseTap();
+      this.warehousePress = { slot, finger };
     });
     slot.on(Node.EventType.TOUCH_MOVE, (event: EventTouch) => {
-      if (event.getID() === finger && dragged(event)) cancel();
+      if (pressed(event) && dragged(event)) this.cancelWarehouseTap();
     });
     slot.on(Node.EventType.TOUCH_CANCEL, (event: EventTouch) => {
-      if (event.getID() === finger) cancel();
+      if (pressed(event)) this.cancelWarehouseTap();
     });
     slot.on(Node.EventType.TOUCH_END, (event: EventTouch) => {
-      if (finger === undefined || event.getID() !== finger) return;
-      finger = undefined;
-      if (dragged(event) || this.mapHidden) { cancel(); return; }
+      if (!pressed(event)) return;
+      this.warehousePress = undefined;
+      if (dragged(event) || this.mapHidden) { this.cancelWarehouseTap(); return; }
       select();
     });
   }
 
-  private renderWarehouseGrid(inventory: Inventory, side: number, current: () => boolean): void {
+  private renderWarehouseGrid(inventory: Inventory, side: number, current: () => boolean): Node {
     const ids = warehouseItemIds(inventory, this.warehouseSorted[side]);
     const rows = Math.max(5, Math.ceil(ids.length / 5));
     const x = side ? 693 : 139, y = 175, width = 500, stepX = 100, stepY = 90, height = 450;
@@ -2207,7 +2213,7 @@ export class BattleView extends Component {
     const transform = content.addComponent(UITransform);
     transform.setContentSize(width, rows * stepY); transform.setAnchorPoint(0.5, 1);
     content.setPosition(0, height / 2);
-    grid.on(Node.EventType.MOUSE_WHEEL, () => { if (current()) this.warehouseTap = undefined; });
+    grid.on(Node.EventType.MOUSE_WHEEL, () => { if (current()) this.cancelWarehouseTap(); });
     let tip: Node | undefined;
     if (rows > 5) {
       grid.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
@@ -2218,7 +2224,7 @@ export class BattleView extends Component {
       grid.on(ScrollView.EventType.SCROLLING, () => {
         if (!current() || this.warehouseChoice) return;
         this.warehouseScroll[side] = scroll.getScrollOffset().y;
-        this.warehouseTap = undefined;
+        this.cancelWarehouseTap();
         this.inventoryTipOpen = false; if (tip) tip.active = false;
       });
     } else this.warehouseScroll[side] = 0;
@@ -2261,6 +2267,7 @@ export class BattleView extends Component {
       tip = this.renderInventoryTip(id, tx, ty, { x, y, width, rowStep: stepY, visibleRows: 5 },
         this.warehouseTransferAction(id, inventory[id], side, current));
     }
+    return content;
   }
 
   private bagControl(label: string, x: number, y: number, w: number, h: number,

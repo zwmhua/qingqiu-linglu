@@ -1396,7 +1396,7 @@ test('warehouse tabs guard context and preserve independent scrolling and select
   } finally { for (const id of extras) delete ITEMS[id]; }
 });
 
-test('warehouse bag double tap deposits the whole stack once and keeps failed saves atomic', async t => {
+async function warehouseTapSample(t) {
   const { v, session } = await roundTripView();
   v.mapBattle = false; v.town.region = 'town';
   const potion = 'rejuvenation', book = 'book:thunder';
@@ -1408,7 +1408,7 @@ test('warehouse bag double tap deposits the whole stack once and keeps failed sa
   t.mock.method(Date, 'now', () => now);
   const actions = new Map(), slots = [], notices = [];
   v.rect = (_x, _y, _w, _h, _fill, _border, _radius, click) => {
-    const node = new Node(); node.click = click; slots.push(node); return node;
+    const node = new Node(); node.click = click; slots.push(node); v.layer.addChild(node); return node;
   };
   v.text = label => notices.push(label);
   v.button = (label, _x, _y, _w, _h, enabled, click) => { if (enabled) actions.set(label, click); };
@@ -1418,7 +1418,17 @@ test('warehouse bag double tap deposits the whole stack once and keeps failed sa
     v.layer = new Node('bag'); v.renderInventory();
   };
   const slot = (side, index) => slots.find(n => n.name === 'warehouse-' + side + '-slot-' + index);
-  const tap = (side, index, delay = 100) => { now += delay; tapWarehouseSlot(slot(side, index)); };
+  const start = node => {
+    const event = { ...warehouseTouch(), target: node };
+    v.layer.handlers.start?.(event);
+    node.handlers.start?.(event);
+  };
+  const tap = (side, index, delay = 100) => {
+    now += delay;
+    const node = slot(side, index);
+    start(node);
+    (node.handlers.end ?? node.click)(warehouseTouch());
+  };
   const unchanged = () => {
     assert.equal(townDisk.raw, original);
     assert.equal(townDisk.writes, writes);
@@ -1427,6 +1437,32 @@ test('warehouse bag double tap deposits the whole stack once and keeps failed sa
     assert.equal(actions.has('确认'), false);
   };
   v.openInventory(); actions.get('仓库')();
+  return { v, session, potion, book, bag, stock, writes, actions, notices, slot, start, tap, unchanged };
+}
+
+test('warehouse bag double tap is interrupted by a cancelled drag on the left side', async t => {
+  const { slot, start, tap, unchanged } = await warehouseTapSample(t);
+  tap('right', 0);
+  const dragged = slot('left', 0);
+  start(dragged);
+  dragged.handlers.cancel?.(warehouseTouch(0, 35));
+  tap('right', 0);
+  unchanged();
+});
+
+test('warehouse bag double tap ignores release from before the map was hidden', async t => {
+  const { v, slot, start, tap, unchanged } = await warehouseTapSample(t);
+  const interrupted = slot('right', 0);
+  start(interrupted);
+  v.hideMap(); v.showMap();
+  (interrupted.handlers.end ?? interrupted.click)(warehouseTouch());
+  assert.equal(v.inventoryTipOpen, false);
+  tap('right', 0);
+  unchanged();
+});
+
+test('warehouse bag double tap deposits the whole stack once and keeps failed saves atomic', async t => {
+  const { v, session, potion, book, bag, stock, writes, actions, notices, slot, start, tap, unchanged } = await warehouseTapSample(t);
   tap('right', 0);
   assert.equal(v.inventoryItem, potion);
   assert.ok(v.inventoryTipOpen && actions.has('存入'));
@@ -1441,7 +1477,7 @@ test('warehouse bag double tap deposits the whole stack once and keeps failed sa
   unchanged();
 
   const dragged = slot('right', 0);
-  dragged.handlers.start?.(warehouseTouch());
+  start(dragged);
   dragged.handlers.move?.(warehouseTouch(0, 35));
   (dragged.handlers.end ?? dragged.click)(warehouseTouch());
   tap('right', 0);
