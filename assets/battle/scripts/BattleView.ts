@@ -40,7 +40,7 @@ const BAG_ART = {
   rejuvenation: 'items/item_rebirth_dew', 'mutation-rejuvenation': 'items/item_rebirth_dew_mutant',
 } as const;
 const BAG_PANEL = { x: 10, y: 0, width: 1313, height: 740 };
-const BAG_GRID = { x: 691, y: 147, width: 506, colStep: 101.5, rowStep: 85, columns: 5, visibleRows: 5 };
+const BAG_GRID = { x: 691, y: 147, width: 506, colStep: 101.5, rowStep: 99, artRowHeight: 85, columns: 5, visibleRows: 5 };
 declare const wx: Parameters<typeof wechatStorage>[0] & {
   showModal(options: { content: string; showCancel: boolean; success?: (result: { confirm: boolean }) => void;
     complete?: () => void }): void;
@@ -1722,6 +1722,8 @@ export class BattleView extends Component {
     const rows = Math.max(visibleRows, Math.ceil(ids.length / columns));
     const height = visibleRows * rowStep, contentHeight = rows * rowStep;
     const panel = this.layer;
+    // Hide the baked description frame behind the taller grid.
+    this.rect(677, 576, 534, 74, '#F5E4CA');
     const grid = new Node('bag-grid');
     panel.addChild(grid);
     this.pos(grid, gridX + width / 2, gridY + height / 2);
@@ -1751,21 +1753,18 @@ export class BattleView extends Component {
     this.layer = content;
     // Drawing helpers subtract the screen center. In this layer the origin is the grid's top center.
     const left = CONFIG.width / 2 - width / 2, top = CONFIG.height / 2;
-    if (rows > visibleRows) {
-      // Scroll the original cells with the items, reusing the same texture.
-      if (!this.bagRowFrame) {
-        this.bagRowFrame = new SpriteFrame();
-        this.bagRowFrame.reset({ texture: frame.texture,
-          rect: new Rect(gridX - BAG_PANEL.x, gridY - BAG_PANEL.y, width, rowStep) });
-        this.bagRowFrame.packable = false;
-      }
-      for (let row = 0; row < rows; row++) this.image(left, top + row * rowStep, width, rowStep, this.bagRowFrame);
+    if (!this.bagRowFrame) {
+      this.bagRowFrame = new SpriteFrame();
+      this.bagRowFrame.reset({ texture: frame.texture,
+        rect: new Rect(gridX - BAG_PANEL.x, gridY - BAG_PANEL.y, width, BAG_GRID.artRowHeight) });
+      this.bagRowFrame.packable = false;
     }
+    for (let row = 0; row < rows; row++) this.image(left, top + row * rowStep, width, rowStep, this.bagRowFrame);
     for (let i = 0; i < rows * columns; i++) {
       const id = ids[i], count = inventory[id] ?? 0;
       const x = left + 3 + i % columns * colStep, y = top + 3 + Math.floor(i / columns) * rowStep;
       const selected = count > 0 && id === this.inventoryItem;
-      const slot = this.rect(x, y, 94, 79, '#F9D783', selected ? '#FFF1B3' : '', 9, () => {
+      const slot = this.rect(x, y, 94, rowStep - 6, '#F9D783', selected ? '#FFF1B3' : '', 9, () => {
           this.inventoryItem = count > 0 ? id : undefined;
           this.inventoryTipOpen = count > 0;
           this.bookMessage = '';
@@ -1776,11 +1775,11 @@ export class BattleView extends Component {
       const skill = id.startsWith('book:') ? id.slice(5) : undefined;
       const art = this.bagFrames.get(skill ? 'book' : id);
       const emblem = skill ? this.bagFrames.get(skill) : undefined;
-      if (art) this.image(x + 19, y + 5, 56, 56, art);
-      else this.text(ITEMS[id].name, x + 3, y + 26, 13, '#FFF2C5', 88, 1);
-      if (emblem) this.image(x + 36, y + 21, 22, 22, emblem);
+      if (art) this.image(x + 19, y + 10, 56, 56, art);
+      else this.text(ITEMS[id].name, x + 3, y + 32, 13, '#FFF2C5', 88, 1);
+      if (emblem) this.image(x + 36, y + 26, 22, 22, emblem);
       const large = count > 999999999;
-      this.text(String(count), x + 4, y + (large ? 61 : 56), large ? 9 : 16, '#FFF2C5', 85, 2);
+      this.text(String(count), x + 4, y + rowStep - (large ? 24 : 29), large ? 9 : 16, '#FFF2C5', 85, 2);
     }
     this.layer = panel;
     const id = this.inventoryItem;

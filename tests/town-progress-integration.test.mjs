@@ -1092,6 +1092,11 @@ test('bag lays out 25 slots on its art, stacks by ID, and only enters pet select
   assert.deepEqual(INVENTORY_CONFIG, { pageSize: 20, stackLimit: 99 });
   assert.deepEqual(images[0], { x: 10, y: 0, width: 1313, height: 740, frame: panel });
   assert.equal(images.filter(image => image.frame === panel).length, 1);
+  const gridView = v.layer.children.find(node => node.name === 'bag-grid');
+  const gridBottom = 375 - gridView.position.y + gridView.size[1] / 2;
+  const gap = labels.get('使用').y - gridBottom;
+  assert.ok(gap >= 0 && gap <= 15);
+  assert.equal(images.filter(image => image.width === gridView.size[0] && image.height === gridView.size[1] / 5).length, 5);
   assert.equal(actions.has('金币  0'), false);
   assert.equal(actions.has('撷灵客'), false);
   assert.equal(slots.some(slot => slot.click && slot.x > 0 && slot.x < 650 && !slot.name?.startsWith('bag-slot-')), false);
@@ -1132,7 +1137,7 @@ test('bag lays out 25 slots on its art, stacks by ID, and only enters pet select
     const overflow = draw();
     const viewport = v.layer.children.find(node => node.name === 'bag-grid');
     assert.equal(overflow.length, 30);
-    assert.equal(images.filter(image => image.frame !== panel && image.width === 506 && image.height === 85).length, 6);
+    assert.equal(images.filter(image => image.width === viewport.size[0] && image.height === viewport.size[1] / 5).length, 6);
     assert.ok(viewport.scroll.vertical && !viewport.scroll.horizontal);
     assert.ok(viewport.scroll.content.size[1] > viewport.size[1]);
     viewport.scroll.scrollToOffset({ x: 0, y: 60 });
