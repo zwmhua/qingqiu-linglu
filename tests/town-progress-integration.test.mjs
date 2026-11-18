@@ -15,7 +15,7 @@ export const view = { setDesignResolutionSize() {} };
 export const ResolutionPolicy = { SHOW_ALL: 1, FIXED_WIDTH: 2 };
 export class Component { node = { children: [], addChild() {} }; }
 export class Node {
-  static EventType = { TOUCH_START: 'start', TOUCH_END: 'end', TOUCH_CANCEL: 'cancel', MOUSE_WHEEL: 'wheel' };
+  static EventType = { TOUCH_START: 'start', TOUCH_MOVE: 'move', TOUCH_END: 'end', TOUCH_CANCEL: 'cancel', MOUSE_WHEEL: 'wheel' };
   constructor(name) { this.name = name; }
   children = [];
   active = true;
@@ -1306,6 +1306,15 @@ test('bag lays out 25 slots on its art, stacks by ID, and only enters pet select
   }
 });
 
+function warehouseTouch(x = 0, y = 0) {
+  return { getID: () => 0, getUIStartLocation: () => ({ x: 0, y: 0 }), getUILocation: () => ({ x, y }) };
+}
+
+function tapWarehouseSlot(node) {
+  node.handlers.start?.(warehouseTouch());
+  (node.handlers.end ?? node.click)(warehouseTouch());
+}
+
 test('warehouse tabs guard context and preserve independent scrolling and selection sources', async () => {
   const { v, session } = await roundTripView(), slots = [], labels = new Map(), actions = new Map(), actionRects = new Map();
   v.mapBattle = false; v.town.region = 'town';
@@ -1329,7 +1338,7 @@ test('warehouse tabs guard context and preserve independent scrolling and select
     const right = v.layer.children.find(n => n.name === 'warehouse-right-grid');
     left.scroll.scrollToOffset({ x: 0, y: 75 }); left.handlers.scrolling();
     assert.equal(v.warehouseScroll[0], 75); assert.equal(v.warehouseScroll[1], 0);
-    slots.find(n => n.name === 'warehouse-left-slot-25').click(); draw();
+    tapWarehouseSlot(slots.find(n => n.name === 'warehouse-left-slot-25')); draw();
     assert.equal(v.inventoryItem, extras[25]); assert.equal(v.warehouseSide, 0);
     assert.ok(labels.has(extras[25])); assert.ok(actions.has('整堆取出'));
     const tipBox = slots.find(n => n.owner?.name === 'bag-tip' && n.w === 320);
@@ -1338,7 +1347,7 @@ test('warehouse tabs guard context and preserve independent scrolling and select
     const descriptionLines = (`说明${extras[25]}`).match(/.{1,15}/gu);
     assert.ok(transfer.y >= labels.get(descriptionLines.at(-1)).y + 21);
     assert.ok(transfer.y + transfer.h <= tipBox.y + tipBox.h);
-    slots.find(n => n.name === 'warehouse-right-slot-25').click(); draw();
+    tapWarehouseSlot(slots.find(n => n.name === 'warehouse-right-slot-25')); draw();
     assert.equal(v.warehouseSide, 1); assert.ok(actions.has('整堆存入'));
     assert.equal(v.warehouseScroll[0], 75); assert.equal(v.warehouseScroll[1], 0);
     const rightAgain = v.layer.children.find(n => n.name === 'warehouse-right-grid');
@@ -1349,7 +1358,10 @@ test('warehouse tabs guard context and preserve independent scrolling and select
     session.warehouse = Object.fromEntries([...extras].reverse().map(id => [id, 1]));
     session.inventory = { ...session.warehouse };
     draw();
-    const slot = (side, index) => slots.find(n => n.name === `warehouse-${side}-slot-${index}`).click;
+    const slot = (side, index) => {
+      const node = slots.find(n => n.name === `warehouse-${side}-slot-${index}`);
+      return () => tapWarehouseSlot(node);
+    };
     const control = name => actions.get(name);
     slot('left', 25)(); draw();
     assert.equal(v.inventoryItem, extras[0]);
@@ -1384,6 +1396,100 @@ test('warehouse tabs guard context and preserve independent scrolling and select
   } finally { for (const id of extras) delete ITEMS[id]; }
 });
 
+test('warehouse bag double tap deposits the whole stack once and keeps failed saves atomic', async t => {
+  const { v, session } = await roundTripView();
+  v.mapBattle = false; v.town.region = 'town';
+  const potion = 'rejuvenation', book = 'book:thunder';
+  const bag = { [potion]: 7, [book]: 3 }, stock = { [potion]: 2 };
+  session.inventory = bag; session.warehouse = stock;
+  saveProgress(townDisk, session);
+  const original = townDisk.raw, writes = townDisk.writes;
+  let now = 1000;
+  t.mock.method(Date, 'now', () => now);
+  const actions = new Map(), slots = [], notices = [];
+  v.rect = (_x, _y, _w, _h, _fill, _border, _radius, click) => {
+    const node = new Node(); node.click = click; slots.push(node); return node;
+  };
+  v.text = label => notices.push(label);
+  v.button = (label, _x, _y, _w, _h, enabled, click) => { if (enabled) actions.set(label, click); };
+  mockBagArt(v); v.bagFrames.set('warehouse', new SpriteFrame());
+  v.render = () => {
+    actions.clear(); slots.length = notices.length = 0;
+    v.layer = new Node('bag'); v.renderInventory();
+  };
+  const slot = (side, index) => slots.find(n => n.name === 'warehouse-' + side + '-slot-' + index);
+  const tap = (side, index, delay = 100) => { now += delay; tapWarehouseSlot(slot(side, index)); };
+  const unchanged = () => {
+    assert.equal(townDisk.raw, original);
+    assert.equal(townDisk.writes, writes);
+    assert.equal(session.inventory, bag);
+    assert.equal(session.warehouse, stock);
+    assert.equal(actions.has('确认'), false);
+  };
+  v.openInventory(); actions.get('仓库')();
+  tap('right', 0);
+  assert.equal(v.inventoryItem, potion);
+  assert.ok(v.inventoryTipOpen && actions.has('存入'));
+  unchanged();
+  tap('right', 1);
+  assert.equal(v.inventoryItem, book);
+  unchanged();
+  tap('left', 0); tap('left', 0);
+  assert.ok(actions.has('取出'));
+  unchanged();
+  tap('right', 0); tap('right', 0, 1000);
+  unchanged();
+
+  const dragged = slot('right', 0);
+  dragged.handlers.start?.(warehouseTouch());
+  dragged.handlers.move?.(warehouseTouch(0, 35));
+  (dragged.handlers.end ?? dragged.click)(warehouseTouch());
+  tap('right', 0);
+  unchanged();
+  const grid = v.layer.children.find(n => n.name === 'warehouse-right-grid');
+  grid.handlers.wheel?.();
+  tap('right', 0);
+  unchanged();
+
+  const stale = slot('right', 0);
+  actions.get('背包')(); actions.get('仓库')();
+  tapWarehouseSlot(stale); tap('right', 0);
+  unchanged();
+  const failedSlot = slot('right', 0);
+  const write = townDisk.setItem;
+  let attempts = 0;
+  const save = t.mock.method(townDisk, 'setItem', function (...args) {
+    attempts++; return write.apply(this, args);
+  });
+  townDisk.fail = true;
+  try { tap('right', 0); } finally { townDisk.fail = false; }
+  tapWarehouseSlot(failedSlot);
+  assert.equal(attempts, 1);
+  unchanged();
+  assert.ok(notices.some(label => /存入失败.*write failed/.test(label)));
+
+  tap('right', 0);
+  const second = slot('right', 0);
+  tap('right', 0);
+  assert.equal(v.inventoryTipOpen, false);
+  assert.equal(v.inventoryItem, undefined);
+  assert.equal(actions.has('确认'), false);
+  (second.handlers.end ?? second.click)(warehouseTouch());
+  tapWarehouseSlot(second);
+  tap('right', 0);
+  assert.equal(attempts, 2);
+  assert.equal(townDisk.writes, writes + 1);
+  assert.deepEqual(session.inventory, { [book]: 3 });
+  assert.deepEqual(session.warehouse, { [potion]: 9 });
+  assert.deepEqual(loadSessionProgress(townDisk).inventory, session.inventory);
+  assert.deepEqual(loadSessionProgress(townDisk).warehouse, session.warehouse);
+  assert.equal(session.warehouse[potion], bag[potion] + stock[potion]);
+  assert.equal(v.inventoryTipOpen, true);
+  assert.equal(v.inventoryItem, book);
+  assert.equal(actions.has('确认'), false);
+  save.mock.restore();
+});
+
 test('warehouse actions save both sides once, reject stale actions and retry after a failed write', async () => {
   const { v, session } = await roundTripView();
   v.mapBattle = false; v.town.region = 'town';
@@ -1391,10 +1497,10 @@ test('warehouse actions save both sides once, reject stale actions and retry aft
   const bag = { [book]: 1, [potion]: 7 }, stock = { [potion]: 2 };
   session.inventory = bag; session.warehouse = stock;
   saveProgress(townDisk, session);
-  const original = townDisk.raw, writes = townDisk.writes, slots = new Map(), actions = new Map(), notices = [], nodes = [];
+  const original = townDisk.raw, writes = townDisk.writes, actions = new Map(), notices = [], nodes = [];
   v.rect = (_x, _y, _w, _h, _fill, _border, _radius, click) => {
     const node = new Node();
-    if (click) Object.defineProperty(node, 'name', { set: name => slots.set(name, click) });
+    node.click = click;
     nodes.push(node);
     return node;
   };
@@ -1402,10 +1508,10 @@ test('warehouse actions save both sides once, reject stale actions and retry aft
   v.button = (label, _x, _y, _w, _h, enabled, click) => { if (enabled) actions.set(label, click); };
   mockBagArt(v); v.bagFrames.set('warehouse', new SpriteFrame());
   v.render = () => {
-    slots.clear(); actions.clear(); nodes.length = notices.length = 0;
+    actions.clear(); nodes.length = notices.length = 0;
     v.layer = new Node('bag'); v.renderInventory();
   };
-  const select = (side, index) => slots.get('warehouse-' + side + '-slot-' + index)();
+  const select = (side, index) => tapWarehouseSlot(nodes.find(n => n.name === 'warehouse-' + side + '-slot-' + index));
   const open = () => { v.openInventory(); actions.get('仓库')(); };
   const quantity = () => nodes.find(n => n.name === 'warehouse-quantity').children[0].editBox;
   const confirm = () => actions.get('确认');
