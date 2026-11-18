@@ -1323,15 +1323,15 @@ test('warehouse tabs guard context and preserve independent scrolling and select
     assert.equal(v.warehouseScroll[0], 75); assert.equal(v.warehouseScroll[1], 0);
     slots.find(n => n.name === 'warehouse-left-slot-25').click(); draw();
     assert.equal(v.inventoryItem, extras[25]); assert.equal(v.warehouseSide, 0);
-    assert.ok(labels.has(extras[25])); assert.ok(actions.has('取出'));
+    assert.ok(labels.has(extras[25])); assert.ok(actions.has('整堆取出'));
     const tipBox = slots.find(n => n.owner?.name === 'bag-tip' && n.w === 320);
-    const transfer = actionRects.get('取出');
+    const transfer = actionRects.get('整堆取出');
     assert.equal(transfer.owner.name, 'bag-tip');
     const descriptionLines = (`说明${extras[25]}`).match(/.{1,15}/gu);
     assert.ok(transfer.y >= labels.get(descriptionLines.at(-1)).y + 21);
     assert.ok(transfer.y + transfer.h <= tipBox.y + tipBox.h);
     slots.find(n => n.name === 'warehouse-right-slot-25').click(); draw();
-    assert.equal(v.warehouseSide, 1); assert.ok(actions.has('存入'));
+    assert.equal(v.warehouseSide, 1); assert.ok(actions.has('整堆存入'));
     assert.equal(v.warehouseScroll[0], 75); assert.equal(v.warehouseScroll[1], 0);
     const rightAgain = v.layer.children.find(n => n.name === 'warehouse-right-grid');
     rightAgain.scroll.scrollToOffset({ x: 0, y: 75 }); rightAgain.handlers.scrolling();
@@ -1345,6 +1345,79 @@ test('warehouse tabs guard context and preserve independent scrolling and select
     v.mapBattle = true; draw(); actions.get('仓库')(); draw();
     assert.equal(v.warehouseOpen, false); assert.ok(labels.has('战斗中只读'));
   } finally { for (const id of extras) delete ITEMS[id]; }
+});
+
+test('warehouse actions save both sides once, reject stale actions and retry after a failed write', async () => {
+  const { v, session } = await roundTripView();
+  v.mapBattle = false; v.town.region = 'town';
+  const book = 'book:thunder', potion = 'rejuvenation';
+  const bag = { [book]: 1, [potion]: 7 }, stock = { [potion]: 2 };
+  session.inventory = bag; session.warehouse = stock;
+  saveProgress(townDisk, session);
+  const original = townDisk.raw, writes = townDisk.writes, slots = new Map(), actions = new Map(), notices = [];
+  v.rect = (_x, _y, _w, _h, _fill, _border, _radius, click) => {
+    const node = new Node();
+    if (click) Object.defineProperty(node, 'name', { set: name => slots.set(name, click) });
+    return node;
+  };
+  v.text = label => notices.push(label);
+  v.button = (label, _x, _y, _w, _h, enabled, click) => { if (enabled) actions.set(label, click); };
+  mockBagArt(v); v.bagFrames.set('warehouse', new SpriteFrame());
+  v.render = () => { slots.clear(); actions.clear(); notices.length = 0; v.layer = new Node('bag'); v.renderInventory(); };
+  const select = (side, index) => slots.get('warehouse-' + side + '-slot-' + index)();
+  const open = () => { v.openInventory(); actions.get('仓库')(); };
+  open(); select('right', 0);
+  const outdated = actions.get('整堆存入');
+  select('right', 1); outdated();
+  const denied = actions.get('整堆存入');
+  v.town.region = 'outskirts'; denied(); v.town.region = 'town';
+  select('right', 1);
+  v.mapBattle = true; actions.get('整堆存入')(); v.mapBattle = false;
+  select('right', 1);
+  v.resultCandidate = original; v.resultSaved = false;
+  actions.get('整堆存入')();
+  v.resultCandidate = undefined;
+  select('right', 1);
+  const changed = actions.get('整堆存入');
+  session.inventory = { ...bag, [potion]: 6 }; changed(); session.inventory = bag;
+  assert.equal(townDisk.raw, original);
+  assert.equal(townDisk.writes, writes);
+
+  select('right', 1);
+  const failed = actions.get('整堆存入');
+  townDisk.fail = true;
+  try { failed(); } finally { townDisk.fail = false; }
+  failed();
+  assert.equal(townDisk.writes, writes);
+  assert.equal(townDisk.raw, original);
+  assert.equal(session.inventory, bag);
+  assert.equal(session.warehouse, stock);
+  assert.ok(notices.some(label => /整堆存入失败.*write failed/.test(label)));
+  assert.ok(notices.every(label => !/已整堆/.test(label)));
+
+  const move = (side, label) => {
+    select(side, 0);
+    const click = actions.get('整堆' + label);
+    click(); click();
+    assert.ok(notices.some(notice => notice.includes('已整堆' + label)));
+  };
+  move('right', '存入'); move('left', '取出');
+  assert.deepEqual(session.inventory, bag);
+  assert.deepEqual(session.warehouse, stock);
+  select('right', 1);
+  const deposit = actions.get('整堆存入'); deposit(); deposit();
+  assert.equal(townDisk.writes, writes + 3);
+  assert.deepEqual(session.inventory, { [book]: 1 });
+  assert.deepEqual(session.warehouse, { [potion]: 9 });
+  const reread = loadSessionProgress(townDisk);
+  assert.deepEqual(reread.inventory, session.inventory);
+  assert.deepEqual(reread.warehouse, session.warehouse);
+  v.townSession = reread;
+  actions.get('关闭')(); open(); move('left', '取出');
+  assert.equal(townDisk.writes, writes + 4);
+  assert.deepEqual(reread.inventory, { [book]: 1, [potion]: 9 });
+  assert.deepEqual(reread.warehouse, {});
+  assert.deepEqual({ ...JSON.parse(townDisk.raw), inventory: bag, warehouse: stock }, JSON.parse(original));
 });
 
 test('skill book view confirms on maps, cancels without work and guards stale callbacks and changed context', async () => {

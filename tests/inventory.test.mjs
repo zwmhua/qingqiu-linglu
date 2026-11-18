@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
 registerHooks({ resolve(s, c, next) { return next(s.startsWith('.') && !s.endsWith('.ts') ? `${s}.ts` : s, c); } });
-const { ITEMS, BOOK_IDS, DROP_RATES, rollDrops, addInventory, validateInventory } = await import('../assets/battle/logic/inventory.ts');
+const { ITEMS, BOOK_IDS, DROP_RATES, rollDrops, addInventory, validateInventory, planWarehouseTransfer } = await import('../assets/battle/logic/inventory.ts');
 const { PET_SKILLS } = await import('../assets/battle/logic/pet-skills.ts');
 test('catalog, fixed rates, independent thresholds and twelve equal book intervals', () => {
   assert.equal(Object.keys(ITEMS).length, 14);
@@ -36,4 +36,26 @@ test('one slot beyond 99, invalid IDs and quantities reject without mutating inp
   assert.throws(() => addInventory({ rejuvenation: Number.MAX_SAFE_INTEGER }, { rejuvenation: 1 }));
   assert.doesNotThrow(() => validateInventory({ rejuvenation: 0 }));
   for (const value of [-1, NaN, 1.1]) assert.throws(() => rollDrops('formal', () => value));
+});
+
+test('warehouse transfers conserve each item, merge past 99, and clear whole stacks', () => {
+  const id = 'rejuvenation', inventory = { [id]: 7, 'book:thunder': 1 }, warehouse = { [id]: 98 };
+  const partial = planWarehouseTransfer(inventory, warehouse, 'deposit', id, 3);
+  assert.deepEqual(partial, { inventory: { [id]: 4, 'book:thunder': 1 }, warehouse: { [id]: 101 } });
+  assert.equal(inventory[id] - partial.inventory[id], partial.warehouse[id] - warehouse[id]);
+  const whole = planWarehouseTransfer(partial.inventory, partial.warehouse, 'withdraw', id, 101);
+  assert.deepEqual(whole, { inventory: { [id]: 105, 'book:thunder': 1 }, warehouse: {} });
+  assert.deepEqual(inventory, { [id]: 7, 'book:thunder': 1 });
+  assert.deepEqual(warehouse, { [id]: 98 });
+});
+
+test('warehouse rejects invalid actions without editing either side', () => {
+  const id = 'rejuvenation', inventory = { [id]: 7 }, warehouse = { [id]: Number.MAX_SAFE_INTEGER };
+  for (const [direction, item, count] of [
+    ['other', id, 1], ['deposit', 'constructor', 1], ['deposit', 'book:thunder', 1],
+    ['deposit', id, 0], ['deposit', id, -1], ['deposit', id, 0.5], ['deposit', id, '1'],
+    ['deposit', id, NaN], ['deposit', id, Infinity], ['deposit', id, 8], ['deposit', id, 1],
+  ]) assert.throws(() => planWarehouseTransfer(inventory, warehouse, direction, item, count), /无效|不足/);
+  assert.deepEqual(inventory, { [id]: 7 });
+  assert.deepEqual(warehouse, { [id]: Number.MAX_SAFE_INTEGER });
 });

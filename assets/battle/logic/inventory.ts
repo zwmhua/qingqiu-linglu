@@ -1,6 +1,7 @@
 import { PET_SKILLS } from './pet-skills';
 
 export type Inventory = Record<string, number>;
+export type WarehouseDirection = 'deposit' | 'withdraw';
 export type DropMode = 'formal' | 'test';
 export const INVENTORY_CONFIG = { pageSize: 20, stackLimit: 99 } as const;
 export const BOOK_IDS = Object.keys(PET_SKILLS).map(id => `book:${id}`);
@@ -26,6 +27,23 @@ export function addInventory(inventory: Inventory, drops: Inventory): Inventory 
   for (const [id, count] of Object.entries(drops)) next[id] = (next[id] ?? 0) + count;
   validateInventory(next);
   return next;
+}
+
+export function planWarehouseTransfer(inventory: Inventory, warehouse: Inventory,
+  direction: WarehouseDirection, id: string, count: number): { inventory: Inventory; warehouse: Inventory } {
+  if (direction !== 'deposit' && direction !== 'withdraw') throw new Error('存取方向无效');
+  if (!Object.hasOwn(ITEMS, id) || !Number.isSafeInteger(count) || count < 1) throw new Error('存取道具或数量无效');
+  const deposit = direction === 'deposit';
+  const source = deposit ? inventory : warehouse;
+  const target = deposit ? warehouse : inventory;
+  validateInventory(source);
+  const available = source[id] ?? 0;
+  if (available < count) throw new Error('来源道具数量不足');
+  const from = { ...source };
+  if (available === count) delete from[id];
+  else from[id] = available - count;
+  const into = addInventory(target, { [id]: count });
+  return deposit ? { inventory: from, warehouse: into } : { inventory: into, warehouse: from };
 }
 
 export function rollDrops(mode: DropMode, random = Math.random): Inventory {

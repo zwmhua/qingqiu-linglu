@@ -111,6 +111,7 @@ export class BattleView extends Component {
   private warehouseOpen = false;
   private warehouseScroll = [0, 0];
   private warehouseSide = 1;
+  private warehouseAction?: () => void;
   private bagFrames = new Map<string, SpriteFrame>();
   private skillFrames = new Map<string, SpriteFrame>();
   private skillArtLoading = false;
@@ -1957,6 +1958,7 @@ export class BattleView extends Component {
   }
 
   private renderInventory(): void {
+    this.warehouseAction = undefined;
     const dismissTip = () => {
       if (!this.inventoryTipOpen) return;
       this.inventoryTipOpen = false;
@@ -2024,12 +2026,39 @@ export class BattleView extends Component {
     background.on(Node.EventType.TOUCH_END, dismissTip);
     this.bagControl('关闭', 1195, 8, 110, 66, true, close);
     this.bagControl('背包', 1230, 120, 75, 130, true, () => {
-      this.warehouseOpen = false; this.inventoryTipOpen = false; this.inventoryItem = undefined; this.render();
+      this.warehouseOpen = false; this.inventoryTipOpen = false; this.inventoryItem = undefined;
+      this.bookMessage = ''; this.render();
     });
     this.bagControl('整理仓库', 265, 644, 265, 56, false, () => {});
     this.bagControl('整理背包', 798, 644, 265, 56, false, () => {});
     this.renderWarehouseGrid(this.progress.warehouse, 0);
     this.renderWarehouseGrid(this.progress.inventory, 1);
+    if (this.bookMessage) this.text(this.bookMessage, 140, 626, 15, '#513B25', 1050, 1);
+  }
+
+  private warehouseTransferAction(id: string, count: number, side: number) {
+    const progress = this.progress;
+    const label = side ? '整堆存入' : '整堆取出';
+    const transfer = progress.prepareWarehouseTransfer(side ? 'deposit' : 'withdraw', id, count);
+    const click = () => {
+      if (this.warehouseAction !== click || !this.inventoryTipOpen || this.progress !== progress
+        || this.inventoryItem !== id || this.warehouseSide !== side) return;
+      this.warehouseAction = undefined;
+      this.inventoryTipOpen = false;
+      const blocked = !this.inventoryOpen || !this.warehouseOpen || !this.onMap || this.town?.region !== 'town'
+        || !!this.town.loading || this.mapUnavailable || !this.usesTestProgress || (!!this.resultCandidate && !this.resultSaved);
+      try {
+        if (transfer(blocked, next => saveProgress(progressStorage(), { ...progress, ...next }))) {
+          this.inventoryItem = undefined;
+          this.bookMessage = `已${label}`;
+        }
+      } catch (error) {
+        this.bookMessage = `${label}失败：${error instanceof Error ? error.message : String(error)}`;
+      }
+      this.render();
+    };
+    this.warehouseAction = click;
+    return { label, click };
   }
 
   private renderWarehouseGrid(inventory: Inventory, side: number): void {
@@ -2078,7 +2107,8 @@ export class BattleView extends Component {
     if (this.inventoryTipOpen && side === this.warehouseSide && id && index >= 0) {
       const tx = Math.min(x + index % 5 * stepX, x + width - 320);
       const ty = Math.max(y, Math.min(y + height - 130, y + Math.floor(index / 5) * stepY - this.warehouseScroll[side]));
-      tip = this.renderInventoryTip(id, tx, ty, { x, y, width, rowStep: stepY, visibleRows: 5 }, side ? '存入' : '取出');
+      tip = this.renderInventoryTip(id, tx, ty, { x, y, width, rowStep: stepY, visibleRows: 5 },
+        this.warehouseTransferAction(id, inventory[id], side));
     }
   }
 
@@ -2162,7 +2192,7 @@ export class BattleView extends Component {
     }
   }
 
-  private renderInventoryTip(id: string, slotX: number, slotY: number, bounds: Pick<typeof BAG_GRID, 'x' | 'y' | 'width' | 'rowStep' | 'visibleRows'> = BAG_GRID, action?: string): Node {
+  private renderInventoryTip(id: string, slotX: number, slotY: number, bounds: Pick<typeof BAG_GRID, 'x' | 'y' | 'width' | 'rowStep' | 'visibleRows'> = BAG_GRID, action?: { label: string; click: () => void }): Node {
     const { name, description } = ITEMS[id];
     const lines = description.match(/.{1,15}/gu) ?? [];
     const width = 320, height = Math.max(70, 45 + lines.length * 21) + (action ? 40 : 0);
@@ -2182,7 +2212,7 @@ export class BattleView extends Component {
     if (art && emblem) this.image(x + 26, y + 23, 20, 20, emblem);
     this.text(name, x + 69, y + 8, 20, '#4A2C1D', 240);
     lines.forEach((line, i) => this.text(line, x + 69, y + 37 + i * 21, 15, '#4A2C1D', 240));
-    if (action) this.button(action, x + 205, y + height - 36, 100, 32, true, () => {});
+    if (action) this.button(action.label, x + 177, y + height - 36, 128, 32, true, action.click);
     this.layer = panel;
     return tip;
   }

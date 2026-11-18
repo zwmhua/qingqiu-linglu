@@ -9,7 +9,7 @@ import { petCombat } from './pet-panel';
 import { petProgress, Roster, type CarriedPet, type RosterState } from './roster';
 import { pickWildLevel } from './wild-encounter';
 import { generateSkills } from './pet-skills';
-import type { Inventory, DropMode } from './inventory';
+import { planWarehouseTransfer, type Inventory, type DropMode, type WarehouseDirection } from './inventory';
 import { applyBook, bookPlan } from './skill-books';
 
 export class SessionProgress {
@@ -24,6 +24,33 @@ export class SessionProgress {
   private battleSequence = 0;
   private fusionCandidates = new Map<string, CarriedPet>();
   private fusing = false;
+  private warehouseSaving = false;
+
+  prepareWarehouseTransfer(direction: WarehouseDirection, id: string, count: number) {
+    const { inventory, warehouse } = this;
+    const bagCount = inventory[id], warehouseCount = warehouse[id];
+    let consumed = false;
+    return (blocked: boolean, persist: (next: { inventory: Inventory; warehouse: Inventory }) => void): boolean => {
+      if (consumed || this.warehouseSaving) return false;
+      consumed = true;
+      if (blocked) throw new Error('当前无法使用仓库');
+      if (this.inventory !== inventory || this.warehouse !== warehouse
+        || inventory[id] !== bagCount || warehouse[id] !== warehouseCount
+        || (direction === 'deposit' ? bagCount : warehouseCount) !== count) {
+        throw new Error('道具数量已变化，请重新选择');
+      }
+      const next = planWarehouseTransfer(inventory, warehouse, direction, id, count);
+      this.warehouseSaving = true;
+      try {
+        persist(next);
+        this.inventory = next.inventory;
+        this.warehouse = next.warehouse;
+        return true;
+      } finally {
+        this.warehouseSaving = false;
+      }
+    };
+  }
 
   prepareFusion(blocked: boolean, ids: readonly string[]) {
     const chosen = [...ids];

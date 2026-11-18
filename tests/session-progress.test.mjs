@@ -270,3 +270,21 @@ test('mutation rejuvenation consumes a bag bottle and preserves the warehouse on
   assert.deepEqual(restored.warehouse, { [item]: 7 });
   assert.equal(restored.roster.entries[1].isBaby, true);
 });
+
+test('warehouse session publishes only after persistence and prevents reentrant writes', () => {
+  const session = new SessionProgress(initialHero()), id = 'rejuvenation';
+  const inventory = { [id]: 7 }, warehouse = { [id]: 2 };
+  session.inventory = inventory; session.warehouse = warehouse;
+  const first = session.prepareWarehouseTransfer('deposit', id, 7);
+  const nested = session.prepareWarehouseTransfer('deposit', id, 7);
+  const persist = next => {
+    assert.equal(session.inventory, inventory);
+    assert.equal(session.warehouse, warehouse);
+    assert.deepEqual(next, { inventory: {}, warehouse: { [id]: 9 } });
+    assert.equal(nested(false, () => assert.fail('reentrant write')), false);
+  };
+  assert.equal(first(false, persist), true);
+  assert.deepEqual(session.inventory, {});
+  assert.deepEqual(session.warehouse, { [id]: 9 });
+  assert.equal(first(false, () => assert.fail('duplicate write')), false);
+});
