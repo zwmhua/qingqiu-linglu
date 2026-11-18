@@ -145,7 +145,6 @@ export class BattleView extends Component {
   private hideMap = (): void => {
     this.mapHidden = true;
     this.cancelWarehouseTap();
-    this.warehouseWithdrawGuard = undefined;
     this.stopTown();
     if (this.warehouseChoice) {
       this.warehouseChoice = undefined;
@@ -252,7 +251,6 @@ export class BattleView extends Component {
     this.stopTown();
     this.warehouseChoice = this.warehousePanel = undefined;
     this.cancelWarehouseTap();
-    this.warehouseWithdrawGuard = undefined;
     if (WECHAT) {
       wx.offTouchEnd(this.stopPotentialRepeat);
       wx.offTouchCancel(this.stopPotentialRepeat);
@@ -1978,7 +1976,7 @@ export class BattleView extends Component {
 
   private renderInventory(): void {
     this.warehousePanel = undefined;
-    this.cancelWarehouseTap();
+    this.cancelWarehouseTap(true);
     const dismissTip = () => {
       if (!this.inventoryTipOpen) return;
       this.inventoryTipOpen = false;
@@ -2044,13 +2042,13 @@ export class BattleView extends Component {
     this.warehouseOpen = false;
     this.warehousePanel = this.warehouseChoice = undefined;
     this.cancelWarehouseTap();
-    this.warehouseWithdrawGuard = undefined;
     this.warehouseScroll = [0, 0];
     this.warehouseSorted = [false, false];
   }
 
-  private cancelWarehouseTap(): void {
+  private cancelWarehouseTap(keepWithdrawalGuard = false): void {
     this.warehouseTap = this.warehousePress = undefined;
+    if (!keepWithdrawalGuard) this.warehouseWithdrawGuard = undefined;
   }
 
   private get warehouseBlocked(): boolean {
@@ -2067,6 +2065,7 @@ export class BattleView extends Component {
     const current = () => this.warehousePanel === background && this.inventoryOpen && this.warehouseOpen;
     const sort = (side: number) => {
       if (!current() || this.warehouseBlocked || this.warehouseChoice) return;
+      this.cancelWarehouseTap();
       this.warehouseSorted[side] = true;
       this.warehouseScroll[side] = 0;
       this.inventoryTipOpen = false;
@@ -2182,7 +2181,8 @@ export class BattleView extends Component {
     });
   }
 
-  private bindWarehouseSlotTap(slot: Node, id: string | undefined, side: number, current: () => boolean, select: () => void): void {
+  private bindWarehouseSlotTap(slot: Node, id: string | undefined, side: number, index: number,
+    current: () => boolean, select: () => void): void {
     const pressed = (event: EventTouch) => this.warehousePress?.slot === slot
       && this.warehousePress.finger === event.getID();
     const dragged = (event: EventTouch) => {
@@ -2192,7 +2192,10 @@ export class BattleView extends Component {
     slot.on(Node.EventType.TOUCH_START, (event: EventTouch) => {
       const finger = event.getID();
       if (!current() || this.mapHidden || finger == null) return;
-      if (this.warehousePress || this.warehouseTap?.id !== id || this.warehouseTap?.side !== side) this.cancelWarehouseTap();
+      if (this.warehousePress || this.warehouseTap?.id !== id || this.warehouseTap?.side !== side) {
+        const repeatsSlot = !side && this.warehouseWithdrawGuard?.index === index;
+        this.cancelWarehouseTap(repeatsSlot);
+      }
       this.warehousePress = { slot, finger };
     });
     slot.on(Node.EventType.TOUCH_MOVE, (event: EventTouch) => {
@@ -2245,6 +2248,7 @@ export class BattleView extends Component {
         if (!current() || this.warehouseChoice || this.warehouseBlocked
           || inventory !== (side ? this.progress.inventory : this.progress.warehouse) || (inventory[id] ?? 0) !== count) return;
         const at = Date.now(), earliest = at - WAREHOUSE_DOUBLE_TAP_MS;
+        // A quick repeat on the same slot can hit the next item after a withdrawal.
         const guard = this.warehouseWithdrawGuard;
         const repeatsWithdrawal = !side && guard?.index === i && guard.at >= earliest && guard.at <= at;
         this.warehouseWithdrawGuard = repeatsWithdrawal ? { index: i, at } : undefined;
@@ -2261,7 +2265,7 @@ export class BattleView extends Component {
       };
       const slot = this.rect(sx + 3, sy + 3, 94, 84, '#F9D783', selected ? '#FFF1B3' : '', 9,
         undefined, selected ? 55 : 0);
-      this.bindWarehouseSlotTap(slot, id, side, current, select);
+      this.bindWarehouseSlotTap(slot, id, side, i, current, select);
       slot.name = `warehouse-${side ? 'right' : 'left'}-slot-${i}`;
       if (!count) continue;
       const skill = id.startsWith('book:') ? id.slice(5) : undefined;

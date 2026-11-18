@@ -1585,6 +1585,25 @@ test('warehouse double tap withdraws once, merges into the bag and guards the re
   assert.deepEqual(session.warehouse, {});
 });
 
+const withdrawalInterruptions = {
+  'a tap on the panel background': ({ v, start }) => start(v.warehousePanel),
+  'sorting the warehouse': ({ actions }) => actions.get('整理仓库')(),
+  'a wheel event': ({ v }) => v.layer.children.find(n => n.name === 'warehouse-left-grid').handlers.wheel(),
+};
+for (const [name, interrupt] of Object.entries(withdrawalInterruptions)) {
+  test(`warehouse replacement can be double tapped after ${name}`, async t => {
+    const next = 'book:armor';
+    const sample = await warehouseTapSample(t, { rejuvenation: 2, [next]: 4 });
+    const { session, tap, writes } = sample;
+    tap('left', 0); tap('left', 0);
+    assert.equal(townDisk.writes, writes + 1);
+    interrupt(sample);
+    tap('left', 0); tap('left', 0);
+    assert.equal(townDisk.writes, writes + 2);
+    assert.equal(session.inventory[next], 4);
+  });
+}
+
 test('warehouse actions save both sides once, reject stale actions and retry after a failed write', async () => {
   const { v, session } = await roundTripView();
   v.mapBattle = false; v.town.region = 'town';
