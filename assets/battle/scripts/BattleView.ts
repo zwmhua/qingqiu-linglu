@@ -115,8 +115,9 @@ export class BattleView extends Component {
   private warehouseSorted = [false, false];
   private warehouseSide = 1;
   private warehousePanel?: Node;
-  private warehouseTap?: { id: string; at: number };
+  private warehouseTap?: { id: string; side: number; at: number };
   private warehousePress?: { slot: Node; finger: number };
+  private warehouseWithdrawGuard?: { index: number; at: number };
   private warehouseChoice?: { id: string; label: string; max: number; draft: string; invalid?: boolean;
     commit: (count: number) => void };
   private bagFrames = new Map<string, SpriteFrame>();
@@ -144,6 +145,7 @@ export class BattleView extends Component {
   private hideMap = (): void => {
     this.mapHidden = true;
     this.cancelWarehouseTap();
+    this.warehouseWithdrawGuard = undefined;
     this.stopTown();
     if (this.warehouseChoice) {
       this.warehouseChoice = undefined;
@@ -250,6 +252,7 @@ export class BattleView extends Component {
     this.stopTown();
     this.warehouseChoice = this.warehousePanel = undefined;
     this.cancelWarehouseTap();
+    this.warehouseWithdrawGuard = undefined;
     if (WECHAT) {
       wx.offTouchEnd(this.stopPotentialRepeat);
       wx.offTouchCancel(this.stopPotentialRepeat);
@@ -2041,6 +2044,7 @@ export class BattleView extends Component {
     this.warehouseOpen = false;
     this.warehousePanel = this.warehouseChoice = undefined;
     this.cancelWarehouseTap();
+    this.warehouseWithdrawGuard = undefined;
     this.warehouseScroll = [0, 0];
     this.warehouseSorted = [false, false];
   }
@@ -2076,12 +2080,13 @@ export class BattleView extends Component {
     }
     this.bagControl('整理仓库', 265, 644, 265, 56, true, () => sort(0));
     this.bagControl('整理背包', 798, 644, 265, 56, true, () => sort(1));
-    this.renderWarehouseGrid(warehouse, 0, current);
+    const stockItems = this.renderWarehouseGrid(warehouse, 0, current);
     const bagItems = this.renderWarehouseGrid(inventory, 1, current);
     // Cocos requires a UITransform on nodes registered for pointer capture.
     this.layer.addComponent(UITransform).setContentSize(0, 0);
     this.layer.on(Node.EventType.TOUCH_START, (event: EventTouch) => {
-      if (current() && event.target?.parent !== bagItems) this.cancelWarehouseTap();
+      const parent = event.target?.parent;
+      if (current() && parent !== stockItems && parent !== bagItems) this.cancelWarehouseTap();
     }, this, true);
     if (this.bookMessage) this.text(this.bookMessage, 140, 626, 15, '#513B25', 1050, 1);
     this.renderWarehouseChoice(current);
@@ -2177,7 +2182,7 @@ export class BattleView extends Component {
     });
   }
 
-  private bindWarehouseBagTap(slot: Node, id: string | undefined, current: () => boolean, select: () => void): void {
+  private bindWarehouseSlotTap(slot: Node, id: string | undefined, side: number, current: () => boolean, select: () => void): void {
     const pressed = (event: EventTouch) => this.warehousePress?.slot === slot
       && this.warehousePress.finger === event.getID();
     const dragged = (event: EventTouch) => {
@@ -2187,7 +2192,7 @@ export class BattleView extends Component {
     slot.on(Node.EventType.TOUCH_START, (event: EventTouch) => {
       const finger = event.getID();
       if (!current() || this.mapHidden || finger == null) return;
-      if (this.warehousePress || this.warehouseTap?.id !== id) this.cancelWarehouseTap();
+      if (this.warehousePress || this.warehouseTap?.id !== id || this.warehouseTap?.side !== side) this.cancelWarehouseTap();
       this.warehousePress = { slot, finger };
     });
     slot.on(Node.EventType.TOUCH_MOVE, (event: EventTouch) => {
@@ -2239,19 +2244,24 @@ export class BattleView extends Component {
       const select = () => {
         if (!current() || this.warehouseChoice || this.warehouseBlocked
           || inventory !== (side ? this.progress.inventory : this.progress.warehouse) || (inventory[id] ?? 0) !== count) return;
-        const at = Date.now(), first = this.warehouseTap;
-        if (side && count && first?.id === id && at >= first.at && at - first.at <= WAREHOUSE_DOUBLE_TAP_MS) {
+        const at = Date.now(), earliest = at - WAREHOUSE_DOUBLE_TAP_MS;
+        const guard = this.warehouseWithdrawGuard;
+        const repeatsWithdrawal = !side && guard?.index === i && guard.at >= earliest && guard.at <= at;
+        this.warehouseWithdrawGuard = repeatsWithdrawal ? { index: i, at } : undefined;
+        const first = this.warehouseTap;
+        if (count && first?.id === id && first.side === side && first.at >= earliest && first.at <= at) {
           this.warehouseTap = undefined;
           this.warehouseTransferAction(id, count, side, current).click(true);
+          if (!side && this.progress.warehouse !== inventory) this.warehouseWithdrawGuard = { index: i, at };
           return;
         }
         this.inventoryItem = count ? id : undefined; this.warehouseSide = side;
         this.inventoryTipOpen = count > 0; this.render();
-        if (side && count) this.warehouseTap = { id, at };
+        if (count && !repeatsWithdrawal) this.warehouseTap = { id, side, at };
       };
       const slot = this.rect(sx + 3, sy + 3, 94, 84, '#F9D783', selected ? '#FFF1B3' : '', 9,
-        side ? undefined : select, selected ? 55 : 0);
-      if (side) this.bindWarehouseBagTap(slot, id, current, select);
+        undefined, selected ? 55 : 0);
+      this.bindWarehouseSlotTap(slot, id, side, current, select);
       slot.name = `warehouse-${side ? 'right' : 'left'}-slot-${i}`;
       if (!count) continue;
       const skill = id.startsWith('book:') ? id.slice(5) : undefined;

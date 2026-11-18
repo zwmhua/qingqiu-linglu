@@ -1396,11 +1396,11 @@ test('warehouse tabs guard context and preserve independent scrolling and select
   } finally { for (const id of extras) delete ITEMS[id]; }
 });
 
-async function warehouseTapSample(t) {
+async function warehouseTapSample(t, stock = { rejuvenation: 2 }) {
   const { v, session } = await roundTripView();
   v.mapBattle = false; v.town.region = 'town';
   const potion = 'rejuvenation', book = 'book:thunder';
-  const bag = { [potion]: 7, [book]: 3 }, stock = { [potion]: 2 };
+  const bag = { [potion]: 7, [book]: 3 };
   session.inventory = bag; session.warehouse = stock;
   saveProgress(townDisk, session);
   const original = townDisk.raw, writes = townDisk.writes;
@@ -1471,7 +1471,7 @@ test('warehouse bag double tap deposits the whole stack once and keeps failed sa
   tap('right', 1);
   assert.equal(v.inventoryItem, book);
   unchanged();
-  tap('left', 0); tap('left', 0);
+  tap('right', 0); tap('left', 0);
   assert.ok(actions.has('取出'));
   unchanged();
   tap('right', 0); tap('right', 0, 1000);
@@ -1525,6 +1525,64 @@ test('warehouse bag double tap deposits the whole stack once and keeps failed sa
   assert.equal(v.inventoryItem, book);
   assert.equal(actions.has('确认'), false);
   save.mock.restore();
+});
+
+test('warehouse double tap withdraws once, merges into the bag and guards the replacement slot', async t => {
+  const refill = 'book:armor';
+  const stock = { rejuvenation: 2, [refill]: 4 };
+  const { v, session, potion, bag, writes, actions, notices, slot, start, tap, unchanged } = await warehouseTapSample(t, stock);
+  tap('left', 0);
+  assert.equal(v.inventoryItem, potion);
+  assert.ok(v.inventoryTipOpen && actions.has('取出'));
+  unchanged();
+  actions.get('取出')();
+  assert.equal(v.warehouseChoice.draft, '2');
+  assert.equal(townDisk.writes, writes);
+  actions.get('取消')();
+
+  tap('left', 1);
+  tap('left', 0);
+  unchanged();
+  const dragged = slot('left', 0);
+  start(dragged);
+  dragged.handlers.move?.(warehouseTouch(0, 35));
+  (dragged.handlers.end ?? dragged.click)(warehouseTouch());
+  tap('left', 0);
+  unchanged();
+  v.layer.children.find(n => n.name === 'warehouse-left-grid').handlers.wheel?.();
+  tap('left', 0);
+  unchanged();
+
+  const write = townDisk.setItem;
+  const save = t.mock.method(townDisk, 'setItem', function (...args) { return write.apply(this, args); });
+  townDisk.fail = true;
+  try { tap('left', 0); } finally { townDisk.fail = false; }
+  assert.equal(save.mock.callCount(), 1);
+  unchanged();
+  assert.ok(notices.some(label => /取出失败.*write failed/.test(label)));
+
+  tap('left', 0);
+  const stale = slot('left', 0);
+  tap('left', 0);
+  assert.equal(v.inventoryTipOpen, false);
+  assert.equal(v.inventoryItem, undefined);
+  assert.equal(actions.has('确认'), false);
+  (stale.handlers.end ?? stale.click)(warehouseTouch());
+  tapWarehouseSlot(stale);
+  for (let i = 0; i < 4; i++) tap('left', 0);
+  assert.equal(v.inventoryItem, refill);
+  assert.equal(save.mock.callCount(), 2);
+  assert.equal(townDisk.writes, writes + 1);
+  assert.deepEqual(session.inventory, { ...bag, [potion]: 9 });
+  assert.deepEqual(session.warehouse, { [refill]: 4 });
+  const reloaded = loadSessionProgress(townDisk);
+  assert.deepEqual(reloaded.inventory, session.inventory);
+  assert.deepEqual(reloaded.warehouse, session.warehouse);
+
+  tap('left', 0, 500); tap('left', 0);
+  assert.equal(save.mock.callCount(), 3);
+  assert.equal(session.inventory[refill], 4);
+  assert.deepEqual(session.warehouse, {});
 });
 
 test('warehouse actions save both sides once, reject stale actions and retry after a failed write', async () => {
